@@ -1,0 +1,190 @@
+[
+  {
+    "name": "NVH-01 yol verisi parkurlari",
+    "type": "qa",
+    "question": "yol verisi hangi yollardan toplanmakta",
+    "mode": "hybrid",
+    "document_id": 9,
+    "expected_contains": ["BozukYol", "Arnavut Kaldırım", "Otoban"],
+    "expected_source_document_ids": [9]
+  },
+  {
+    "name": "NVH-01 yol datası parkurlari",
+    "type": "qa",
+    "question": "Yol Datası Toplama Parkurları nelerdir?",
+    "mode": "hybrid",
+    "document_id": 9,
+    "expected_contains": ["BozukYol", "Arnavut Kaldırım", "Otoban"],
+    "expected_source_document_ids": [9]
+  },
+  {
+    "name": "NVH-01 ISO 2631",
+    "type": "qa",
+    "question": "RMS ivme değerleri hangi standarda göre değerlendirilmiştir?",
+    "mode": "hybrid",
+    "document_id": 9,
+    "expected_contains": ["ISO", "2631"],
+    "expected_source_document_ids": [9]
+  },
+  {
+    "name": "Konfor typo arama",
+    "type": "search",
+    "query": "komfor",
+    "mode": "hybrid",
+    "expected_document_ids": [9],
+    "expected_contains": ["KONFOR"]
+  },
+  {
+    "name": "Konfort typo arama",
+    "type": "search",
+    "query": "komfort",
+    "mode": "hybrid",
+    "expected_document_ids": [9],
+    "expected_contains": ["KONFOR"]
+  },
+  {
+    "name": "Titreşim analizi arama",
+    "type": "search",
+    "query": "titresim analizi",
+    "mode": "hybrid",
+    "expected_document_ids": [19]
+  },
+  {
+    "name": "Yan ayna değerleri",
+    "type": "qa",
+    "question": "Yan ayna titreşimleri incelenirken hangi değerler değerlendirilmiştir?",
+    "mode": "hybrid",
+    "document_id": 19,
+    "expected_contains": ["gRMS", "Crest"],
+    "expected_source_document_ids": [19]
+  },
+  {
+    "name": "Yan ayna ivmeolcer yerlesimi",
+    "type": "qa",
+    "question": "İvmeölçerler nereye yerleştirilmiştir?",
+    "mode": "hybrid",
+    "document_id": 19,
+    "expected_contains": ["yan ayna", "ivme"],
+    "expected_source_document_ids": [19]
+  },
+  {
+    "name": "DUR-01 malzeme",
+    "type": "qa",
+    "question": "Profil malzemeleri için hangi malzeme kullanılmıştır?",
+    "mode": "hybrid",
+    "document_id": 10,
+    "expected_contains": ["S235"],
+    "expected_source_document_ids": [10]
+  },
+  {
+    "name": "DUR-01 akma mukavemeti",
+    "type": "qa",
+    "question": "S235 malzemesinin akma mukavemeti kaç MPa?",
+    "mode": "hybrid",
+    "document_id": 10,
+    "expected_contains": ["235", "MPa"],
+    "expected_source_document_ids": [10]
+  },
+  {
+    "name": "Fren pedali tasarim sayisi",
+    "type": "qa",
+    "question": "Fren pedalı çalışmasında kaç farklı tasarım incelenmiştir?",
+    "mode": "hybrid",
+    "document_id": 17,
+    "expected_contains": ["3", "tasarım"],
+    "expected_source_document_ids": [17]
+  },
+  {
+    "name": "Fren pedali amacı",
+    "type": "qa",
+    "question": "Fren pedalı analiz çalışmasının amacı nedir?",
+    "mode": "hybrid",
+    "document_id": 17,
+    "expected_contains": ["fren", "pedal", "statik"],
+    "expected_source_document_ids": [17]
+  },
+  {
+    "name": "TEST-13 ekipmanlar",
+    "type": "qa",
+    "question": "TASE testinde hangi test ekipmanları kullanılmıştır?",
+    "mode": "hybrid",
+    "document_id": 20,
+    "expected_contains": ["EdaqXR", "GPS", "Sıcaklık Sensörü"],
+    "expected_source_document_ids": [20]
+  },
+  {
+    "name": "TEST-13 sensor sayisi",
+    "type": "qa",
+    "question": "Araçtaki komponentlere kaç adet sıcaklık sensörü yerleştirilmiştir?",
+    "mode": "hybrid",
+    "document_id": 20,
+    "expected_contains": ["14", "sıcaklık"],
+    "expected_source_document_ids": [20]
+  },
+  {
+    "name": "HIGH-G amacı",
+    "type": "qa",
+    "question": "HIGH-G Swept Steer testinde hangi değerler ölçülecektir?",
+    "mode": "hybrid",
+    "document_id": 2,
+    "expected_contains": ["yanal ivme", "direksiyon", "side slip"],
+    "expected_source_document_ids": [2]
+  },
+  {
+    "name": "HIGH-G ruzgar kosulu",
+    "type": "qa",
+    "question": "HIGH-G testinde rüzgar hızı kaç km/saati geçmemelidir?",
+    "mode": "hybrid",
+    "document_id": 2,
+    "expected_contains": ["16", "km"],
+    "expected_source_document_ids": [2]
+  },
+  {
+    "name": "Alternator braket arama",
+    "type": "search",
+    "query": "alternator braketi statik titreşim",
+    "mode": "hybrid",
+    "expected_document_ids": [6],
+    "expected_contains": ["alternator", "braket"]
+  },
+  {
+    "name": "Kalorifer optimizasyon arama",
+    "type": "search",
+    "query": "şoför altı kalorifer optimizasyon",
+    "mode": "hybrid",
+    "expected_document_ids": [14],
+    "expected_contains": ["kalorifer"]
+  },
+  {
+    "name": "ECE R107 arama",
+    "type": "search",
+    "query": "ECE R107 devrilme açısı",
+    "mode": "hybrid",
+    "expected_document_ids": [15],
+    "expected_contains": ["ECE", "R107"]
+  },
+  {
+    "name": "Kompozit sasi arama",
+    "type": "search",
+    "query": "kompozit şasi analizleri",
+    "mode": "hybrid",
+    "expected_document_ids": [16],
+    "expected_contains": ["kompozit", "şasi"]
+  },
+  {
+    "name": "Fren pedali arama",
+    "type": "search",
+    "query": "fren pedalı analiz çalışması",
+    "mode": "hybrid",
+    "expected_document_ids": [17],
+    "expected_contains": ["fren", "pedal"]
+  },
+  {
+    "name": "TASE sicaklik arama",
+    "type": "search",
+    "query": "sıcaklık sensörü TASE testi",
+    "mode": "hybrid",
+    "expected_document_ids": [20],
+    "expected_contains": ["Sıcaklık", "TASE"]
+  }
+]

@@ -15,6 +15,26 @@ class QAService:
     MIN_SECTION_TITLE_OVERLAP = 0.22
     QA_CANDIDATE_MULTIPLIER = 3
     SUPPLEMENTAL_CANDIDATE_LIMIT = 12
+    TOKEN_SYNONYMS = {
+        "data": {"data", "veri", "verisi", "datasi", "datasi"},
+        "veri": {"data", "veri", "verisi", "datasi", "datasi"},
+        "verisi": {"data", "veri", "verisi", "datasi", "datasi"},
+        "datasi": {"data", "veri", "verisi", "datasi", "datasi"},
+        "datasi": {"data", "veri", "verisi", "datasi", "datasi"},
+        "parkur": {"parkur", "parkuru", "parkurlari", "parkurlari", "guzergah", "rota"},
+        "parkurlari": {"parkur", "parkuru", "parkurlari", "guzergah", "rota"},
+        "guzergah": {"parkur", "parkuru", "parkurlari", "guzergah", "rota"},
+        "guzergahlar": {"parkur", "parkuru", "parkurlari", "guzergah", "guzergahlar", "rota", "yol", "yollar"},
+        "yol": {"yol", "yollar", "yollardan", "parkur", "parkurlari", "guzergah", "rota"},
+        "yollar": {"yol", "yollar", "yollardan", "parkur", "parkurlari", "guzergah", "rota"},
+        "yollardan": {"yol", "yollar", "yollardan", "parkur", "parkurlari", "guzergah", "rota"},
+        "toplama": {"toplama", "toplanan", "toplanmasi"},
+        "toplanan": {"toplama", "toplanan", "toplanmasi"},
+        "toplanmasi": {"toplama", "toplanan", "toplanmasi", "toplanmakta"},
+        "toplanmakta": {"toplama", "toplanan", "toplanmasi", "toplanmakta"},
+        "ekipman": {"ekipman", "ekipmanlari", "enstrumantasyon"},
+        "ekipmanlari": {"ekipman", "ekipmanlari", "enstrumantasyon"},
+    }
 
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -25,9 +45,10 @@ class QAService:
         question: str,
         mode: str = "hybrid",
         limit: int = 5,
+        document_id: int | None = None,
     ) -> dict:
         cleaned_question = " ".join(question.split())
-        results = self._run_search(cleaned_question, mode=mode, limit=limit)
+        results = self._run_search(cleaned_question, mode=mode, limit=limit, document_id=document_id)
         if not results:
             return {
                 "question": cleaned_question,
@@ -51,18 +72,30 @@ class QAService:
             "sources": results[:3],
         }
 
-    def _run_search(self, question: str, mode: str, limit: int) -> list[dict]:
+    def _run_search(self, question: str, mode: str, limit: int, document_id: int | None = None) -> list[dict]:
         candidate_limit = max(limit * self.QA_CANDIDATE_MULTIPLIER, limit)
-        if mode == "keyword":
-            base_results = self.search_service.keyword_search(question, limit=candidate_limit)
-        elif mode == "semantic":
-            base_results = self.search_service.semantic_search(question, limit=candidate_limit)
-        else:
-            base_results = self.search_service.hybrid_search(question, limit=candidate_limit)
-
         question_profile = self._question_profile(question)
-        supplemental_results = self._supplemental_chunk_candidates(question_profile)
-        return self._merge_result_lists(base_results, supplemental_results)
+        base_results: list[dict] = []
+        for query_variant in self._question_variants(question, question_profile):
+            if mode == "keyword":
+                variant_results = self.search_service.keyword_search(query_variant, limit=candidate_limit)
+            elif mode == "semantic":
+                variant_results = self.search_service.semantic_search(query_variant, limit=candidate_limit)
+            else:
+                variant_results = self.search_service.hybrid_search(query_variant, limit=candidate_limit)
+            base_results = self._merge_result_lists(base_results, variant_results)
+        supplemental_results = self._supplemental_chunk_candidates(question_profile, document_id=document_id)
+        merged_results = self._merge_result_lists(base_results, supplemental_results)
+        if document_id is None:
+            return merged_results
+
+        scoped_results = [
+            result for result in merged_results
+            if int(result.get("document_id", 0) or 0) == document_id
+        ]
+        if scoped_results:
+            return scoped_results
+        return self._document_chunk_candidates(question_profile, document_id=document_id)
 
     def _build_answer(self, question: str, results: list[dict]) -> tuple[str, float]:
         question_tokens = self.search_service.embedding_service.tokenize(question)
@@ -108,6 +141,7 @@ class QAService:
         ranked: list[tuple[float, dict]] = []
         subject_tokens = question_profile["subject_tokens"]
         subject_text = question_profile["subject_text"]
+        subject_aliases = question_profile["subject_aliases"]
 
         for rank, result in enumerate(results):
             section_title = result.get("section_title") or ""
@@ -116,8 +150,8 @@ class QAService:
             section_overlap = self._section_overlap(question_tokens, section_title)
             subject_overlap = self._text_overlap(subject_tokens, result["chunk_text"])
             title_subject_overlap = self._text_overlap(subject_tokens, section_title)
-            exact_subject_bonus = 0.45 if subject_text and subject_text in normalized_chunk else 0.0
-            exact_section_bonus = 0.55 if subject_text and subject_text in normalized_section else 0.0
+            exact_subject_bonus = 0.45 if self._contains_any_alias(normalized_chunk, subject_aliases) else 0.0
+            exact_section_bonus = 0.55 if self._contains_any_alias(normalized_section, subject_aliases) else 0.0
             list_pattern_bonus = 0.22 if question_profile["wants_list"] and self._looks_like_list_block(result["chunk_text"]) else 0.0
             section_list_bonus = 0.18 if question_profile["wants_list"] and self._looks_like_list_title(section_title) else 0.0
             retrieval_score = max(
@@ -246,29 +280,39 @@ class QAService:
         answer = "\n".join(f"{index + 1}. {item}" for index, item in enumerate(best_items[:8]))
         return answer, best_score
 
-    def _supplemental_chunk_candidates(self, question_profile: dict) -> list[dict]:
+    def _supplemental_chunk_candidates(self, question_profile: dict, document_id: int | None = None) -> list[dict]:
         subject_search_terms = question_profile["subject_search_terms"]
         if not subject_search_terms:
             return []
 
         token_conditions = [DocumentChunk.chunk_text.ilike(f"%{token}%") for token in subject_search_terms]
         token_conditions.extend(DocumentChunk.section_title.ilike(f"%{token}%") for token in subject_search_terms)
+        statement = self.search_service._base_chunk_query().where(or_(*token_conditions))
+        if document_id is not None:
+            statement = statement.where(DocumentChunk.document_id == document_id)
+        rows = self.session.execute(statement.limit(self.SUPPLEMENTAL_CANDIDATE_LIMIT * 4)).all()
+
+        return self._score_candidate_rows(rows, question_profile)
+
+    def _document_chunk_candidates(self, question_profile: dict, document_id: int) -> list[dict]:
         rows = self.session.execute(
             self.search_service._base_chunk_query()
-            .where(or_(*token_conditions))
-            .limit(self.SUPPLEMENTAL_CANDIDATE_LIMIT * 4)
+            .where(DocumentChunk.document_id == document_id)
+            .limit(self.SUPPLEMENTAL_CANDIDATE_LIMIT * 8)
         ).all()
+        return self._score_candidate_rows(rows, question_profile)
 
+    def _score_candidate_rows(self, rows: list, question_profile: dict) -> list[dict]:
         scored: list[tuple[float, dict]] = []
-        subject_text = question_profile["subject_text"]
+        subject_aliases = question_profile["subject_aliases"]
         for row in rows:
             section_title = row.section_title or ""
             normalized_chunk = self._normalize_text(row.chunk_text)
             normalized_section = self._normalize_text(section_title)
             subject_overlap = self._text_overlap(question_profile["subject_tokens"], row.chunk_text)
             section_overlap = self._text_overlap(question_profile["subject_tokens"], section_title)
-            exact_phrase_bonus = 0.95 if subject_text and subject_text in normalized_chunk else 0.0
-            exact_section_bonus = 1.05 if subject_text and subject_text in normalized_section else 0.0
+            exact_phrase_bonus = 0.95 if self._contains_any_alias(normalized_chunk, subject_aliases) else 0.0
+            exact_section_bonus = 1.05 if self._contains_any_alias(normalized_section, subject_aliases) else 0.0
             list_bonus = 0.28 if question_profile["wants_list"] and self._looks_like_list_block(row.chunk_text) else 0.0
             score = (
                 subject_overlap * 1.4
@@ -332,7 +376,10 @@ class QAService:
     @staticmethod
     def _looks_like_list_title(section_title: str) -> bool:
         lowered = QAService._normalize_text(section_title or "")
-        return any(token in lowered for token in ("parkur", "liste", "madde", "adim", "senaryo", "kosul"))
+        return any(
+            token in lowered
+            for token in ("parkur", "liste", "madde", "adim", "senaryo", "kosul", "ekipman", "deger", "olcum")
+        )
 
     @staticmethod
     def _split_sentences(text: str) -> list[str]:
@@ -346,14 +393,14 @@ class QAService:
     @staticmethod
     def _extract_list_items(text: str, subject_text: str = "") -> tuple[list[str], str]:
         normalized = text.replace("\r", "\n")
-        lowered = normalized.casefold()
+        lowered = normalized.lower()
         normalized_subject = QAService._normalize_text(subject_text) if subject_text else ""
-        normalized_lowered = QAService._normalize_text(lowered)
+        normalized_lowered = QAService._normalize_text(normalized)
         if normalized_subject:
             subject_index = normalized_lowered.find(normalized_subject)
             if subject_index >= 0:
                 normalized = normalized[subject_index:]
-                lowered = normalized.casefold()
+                lowered = normalized.lower()
 
         cue_patterns = (
             "bunlar:",
@@ -366,9 +413,13 @@ class QAService:
             "listesi",
         )
         for cue in cue_patterns:
-            cue_index = lowered.find(cue)
-            if cue_index >= 0:
-                normalized = normalized[cue_index + len(cue):]
+            cue_match = re.search(re.escape(cue), normalized, flags=re.IGNORECASE)
+            if cue_match:
+                normalized = normalized[cue_match.end():]
+                section_break = re.search(r"\s+(?:Şekil|Sekil|[2-9]\.\d+)\b", normalized, flags=re.IGNORECASE)
+                if section_break:
+                    normalized = normalized[: section_break.start()]
+                lowered = normalized.lower()
                 break
 
         first_numbered_match = re.search(r"\d+[.)-]?\s*", normalized)
@@ -386,19 +437,21 @@ class QAService:
             return numbered_line_items, header_text
 
         compact = " ".join(normalized.split())
-        numbered_inline_items = [
-            QAService._clean_list_item(match.group(1).strip(" ;:."))
-            for match in re.finditer(r"(?:^|\s)\d+[.)]\s*([^0-9].*?)(?=(?:\s+\d+[.)]\s)|$)", compact)
+        bullet_segments = [
+            QAService._clean_list_item(item.strip(" ;:."))
+            for item in re.split(r"\s+[•-]\s+", compact)
+            if item.strip()
         ]
-        numbered_inline_items = [item for item in numbered_inline_items if len(item) <= 120]
-        if len(numbered_inline_items) >= 3 and len(numbered_inline_items[0]) > 90:
-            numbered_inline_items = numbered_inline_items[1:]
-        if len(numbered_inline_items) >= 2:
-            return numbered_inline_items, header_text
-
-        bullet_segments = [QAService._clean_list_item(item.strip(" ;:.")) for item in re.split(r"\s+[•-]\s+", compact) if item.strip()]
         if len(bullet_segments) >= 3:
             return bullet_segments[1:], header_text
+
+        numbered_inline_items = [
+            QAService._clean_list_item(match.group(1).strip(" ;:."))
+            for match in re.finditer(r"(?:^|\s)\d+[.)-]?\s*([^0-9].*?)(?=(?:\s+\d+[.)-]?\s)|$)", compact)
+        ]
+        numbered_inline_items = [item for item in numbered_inline_items if len(item) <= 120]
+        if len(numbered_inline_items) >= 2:
+            return numbered_inline_items, header_text
 
         return [], header_text
 
@@ -420,8 +473,15 @@ class QAService:
         keyword_hint_bonus = 0.15 if question_profile["wants_reason"] and any(
             clue in self._normalize_text(sentence_lower) for clue in ("nedeni", "sebebi", "cunku", "sonuc", "degerlendirme")
         ) else 0.0
+        purpose_bonus = 0.35 if question_profile["wants_purpose"] and any(
+            clue in self._normalize_text(sentence_lower) for clue in ("amac", "temel amac", "hedef", "kapsam")
+        ) else 0.0
+        normalized_sentence = self._normalize_text(sentence_lower)
+        measurement_terms = ("olcul", "ivme", "direksiyon", "side slip", "kayma")
+        measurement_match_count = sum(1 for clue in measurement_terms if clue in normalized_sentence)
+        measurement_bonus = min(measurement_match_count * 0.22, 0.75) if question_profile["wants_measurement"] else 0.0
         label_bonus = 0.12 if question_profile["wants_name"] and any(
-            clue in self._normalize_text(sentence_lower) for clue in ("ad", "isim", "baslik", "bolum")
+            clue in normalized_sentence for clue in ("ad", "isim", "baslik", "bolum")
         ) else 0.0
         retrieval_bonus = (
             max(
@@ -433,6 +493,14 @@ class QAService:
         scope_bonus = 0.14 if context["scope"] == "section" else 0.0
         section_bonus = context["section_match"] * 0.2
         short_sentence_bonus = 0.08 if 35 <= len(sentence) <= 220 else 0.0
+        heading_like_penalty = 0.45 if len(sentence) < 90 and sentence.rstrip().endswith(":") else 0.0
+        measurement_noise_penalty = (
+            0.35
+            if question_profile["wants_measurement"]
+            and "degerlendirme" in normalized_sentence
+            and measurement_match_count == 0
+            else 0.0
+        )
         low_overlap_penalty = 0.25 if overlap_ratio < self.MIN_TOKEN_OVERLAP_RATIO else 0.0
         length_penalty = max(len(sentence) - 320, 0) / 900
         rank_bonus = max(0.15 - context["rank"] * 0.03, 0.0)
@@ -441,6 +509,8 @@ class QAService:
             + numeric_bonus
             + exact_phrase_bonus
             + keyword_hint_bonus
+            + purpose_bonus
+            + measurement_bonus
             + label_bonus
             + retrieval_bonus
             + scope_bonus
@@ -448,6 +518,8 @@ class QAService:
             + short_sentence_bonus
             + rank_bonus
             - low_overlap_penalty
+            - heading_like_penalty
+            - measurement_noise_penalty
             - length_penalty
         )
 
@@ -457,13 +529,19 @@ class QAService:
         unique_tokens = list(dict.fromkeys(token for token in subject_tokens if token))
         overlap = sum(1 for token in unique_tokens if self._normalize_text(token) in combined_text)
         overlap_ratio = overlap / len(unique_tokens) if unique_tokens else 0.0
-        subject_text = context["question_profile"]["subject_text"]
+        subject_aliases = context["question_profile"]["subject_aliases"]
         normalized_context = self._normalize_text(context["text"])
-        subject_bonus = 0.75 if subject_text and self._normalize_text(subject_text) in normalized_context else -0.3
+        subject_bonus = 0.75 if self._contains_any_alias(normalized_context, subject_aliases) else -0.3
+        topic_focus_terms = {
+            token
+            for token in context["question_profile"]["subject_tokens"]
+            if token in {"ekipman", "ekipmanlari", "enstrumantasyon", "parkur", "parkurlari", "guzergah", "yol", "yollar"}
+        }
+        topic_focus_bonus = 0.85 if topic_focus_terms and any(token in normalized_context for token in topic_focus_terms) else 0.0
         normalized_header = self._normalize_text(header_text)
         header_overlap = sum(1 for token in unique_tokens if self._normalize_text(token) in normalized_header)
         header_overlap_ratio = header_overlap / len(unique_tokens) if unique_tokens else 0.0
-        header_subject_bonus = 0.9 if subject_text and self._normalize_text(subject_text) in normalized_header else 0.0
+        header_subject_bonus = 0.9 if self._contains_any_alias(normalized_header, subject_aliases) else 0.0
         retrieval_bonus = (
             max(
                 float(context["result"].get("combined_score", 0.0) or 0.0),
@@ -479,9 +557,16 @@ class QAService:
         compact_bonus = 0.28 if average_length <= 28 else 0.14 if average_length <= 48 else -0.18
         colon_penalty = sum(0.1 for item in items if ":" in item)
         long_item_penalty = sum(0.12 for item in items if len(item) > 70)
+        visual_index_penalty = sum(
+            0.4
+            for item in items
+            if any(marker in self._normalize_text(item) for marker in ("gorsel", "grafik", "lokasyon"))
+        )
+        junk_item_penalty = sum(0.45 for item in items if self._normalize_text(item) in {"/", "page"})
         return (
             overlap_ratio
             + subject_bonus
+            + topic_focus_bonus
             + header_overlap_ratio * 0.9
             + header_subject_bonus
             + retrieval_bonus
@@ -492,16 +577,44 @@ class QAService:
             + compact_bonus
             - colon_penalty
             - long_item_penalty
+            - visual_index_penalty
+            - junk_item_penalty
         )
 
     @staticmethod
     def _question_profile(question: str) -> dict:
         lowered = QAService._normalize_text(question)
+        list_terms = (
+            "nelerdir",
+            "hangileri",
+            "listesi",
+            "maddeler",
+            "parkurlar",
+            "parkurlari",
+            "guzergah",
+            "guzergahlar",
+            "yollardan",
+            "yollarda",
+            "yollar",
+            "adlari",
+            "asamalar",
+            "ekipman",
+            "ekipmanlari",
+        )
+        raw_tokens = re.findall(r"\w+", lowered)
+        raw_token_set = set(raw_tokens)
+        wants_list = any(token in raw_token_set for token in list_terms) or (
+            "hangi" in raw_token_set
+            and any(token in raw_token_set for token in ("yol", "yollar", "parkur", "guzergah", "senaryo", "kosul", "ekipman", "ekipmanlari"))
+        )
         filler_tokens = {
             "nelerdir",
             "hangileri",
             "hangisi",
             "hangi",
+            "nereler",
+            "nerelerde",
+            "nereden",
             "listesi",
             "maddeler",
             "nedir",
@@ -509,17 +622,29 @@ class QAService:
             "ve",
             "veya",
         }
-        raw_tokens = re.findall(r"\w+", lowered)
         subject_tokens = [token for token in raw_tokens if token not in filler_tokens and len(token) >= 3]
-        subject_search_terms = list(dict.fromkeys(subject_tokens + [token[:5] for token in subject_tokens if len(token) >= 6]))
+        expanded_subject_tokens = QAService._expand_tokens(subject_tokens)
+        subject_aliases = QAService._build_subject_aliases(subject_tokens)
+        subject_search_terms = list(
+            dict.fromkeys(
+                expanded_subject_tokens
+                + [token[:5] for token in expanded_subject_tokens if len(token) >= 6]
+            )
+        )
         return {
-            "expects_number": any(token in lowered for token in ("kac", "maksimum", "minimum", "mpa", "mm", "deger", "oran")),
+            "expects_number": any(token in raw_token_set for token in ("kac", "maksimum", "minimum", "mpa", "mm", "oran")),
             "wants_reason": any(token in lowered for token in ("neden", "niye", "sebep", "gerekce")),
+            "wants_purpose": any(token in lowered for token in ("amac", "hedef", "kapsam")),
+            "wants_measurement": any(
+                token in raw_token_set
+                for token in ("olcul", "olculmektedir", "olculecektir", "deger", "degerler")
+            ),
             "wants_name": any(token in lowered for token in ("hangi", "hangisi", "ad", "isim", "baslik")),
-            "wants_list": any(token in lowered for token in ("nelerdir", "hangileri", "listesi", "maddeler", "parkurlar", "parkurlari", "adlari", "asamalar")),
-            "subject_tokens": subject_tokens,
+            "wants_list": wants_list,
+            "subject_tokens": expanded_subject_tokens,
             "subject_search_terms": subject_search_terms,
             "subject_text": " ".join(subject_tokens).strip(),
+            "subject_aliases": subject_aliases,
         }
 
     @staticmethod
@@ -554,6 +679,58 @@ class QAService:
                 overlap += 1
         return overlap / len(unique_tokens)
 
+    @classmethod
+    def _expand_tokens(cls, tokens: list[str]) -> list[str]:
+        expanded: list[str] = []
+        for token in tokens:
+            variants = cls.TOKEN_SYNONYMS.get(token, {token})
+            for variant in variants:
+                if variant not in expanded:
+                    expanded.append(variant)
+        return expanded
+
+    @classmethod
+    def _build_subject_aliases(cls, tokens: list[str]) -> list[str]:
+        aliases: list[str] = []
+        base = " ".join(tokens).strip()
+        if base:
+            aliases.append(base)
+        for index, token in enumerate(tokens):
+            variants = cls.TOKEN_SYNONYMS.get(token, {token})
+            for variant in variants:
+                if variant == token:
+                    continue
+                variant_tokens = list(tokens)
+                variant_tokens[index] = variant
+                alias = " ".join(variant_tokens).strip()
+                if alias and alias not in aliases:
+                    aliases.append(alias)
+        return [cls._normalize_text(alias) for alias in aliases]
+
+    @staticmethod
+    def _contains_any_alias(text: str, aliases: list[str]) -> bool:
+        return any(alias and alias in text for alias in aliases)
+
+    @classmethod
+    def _question_variants(cls, question: str, question_profile: dict) -> list[str]:
+        variants = [question]
+        subject_text = question_profile["subject_text"]
+        normalized_question = cls._normalize_text(question)
+        for alias in question_profile["subject_aliases"]:
+            if not alias or alias == cls._normalize_text(subject_text):
+                continue
+            if subject_text and cls._normalize_text(subject_text) in normalized_question:
+                candidate = re.sub(
+                    re.escape(subject_text),
+                    alias,
+                    normalized_question,
+                    count=1,
+                )
+                candidate = " ".join(candidate.split())
+                if candidate and candidate not in variants:
+                    variants.append(candidate)
+        return variants[:4]
+
     @staticmethod
     def _normalize_text(text: str) -> str:
         lowered = text.casefold()
@@ -579,6 +756,9 @@ class QAService:
             " hazirlayan",
             " talep eden",
             " sekil-",
+            " test hazirligi",
+            " test bilgisi",
+            " sonuc",
             " test kosullari",
             " test kosullar",
         )
@@ -589,4 +769,5 @@ class QAService:
                 cut_positions.append(pos)
         if cut_positions:
             trimmed = trimmed[: min(cut_positions)].strip(" ;:.")
+        trimmed = re.sub(r"\s+\d+[.)-]?$", "", trimmed).strip(" ;:.")
         return trimmed

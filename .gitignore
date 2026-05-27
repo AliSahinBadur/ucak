@@ -7,12 +7,24 @@ __pycache__/
 data/
 models/
 output/
+exports/
+tmp_*.js
+tmp_*.py
 
 *.db
 *.sqlite3
 *.pyc
 *.pyo
 *.pyd
+*.log
+
+# Do not commit company reports, catalog exports, or generated documents.
+*.pdf
+*.docx
+*.xlsx
+*.xls
+*.csv
+*.tsv
 
 .env
 .env.*

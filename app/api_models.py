@@ -77,6 +77,7 @@ class AskRequest(BaseModel):
     question: str = Field(min_length=3)
     mode: Literal["keyword", "semantic", "hybrid"] = "hybrid"
     limit: int = Field(default=5, ge=1, le=10)
+    document_id: int | None = Field(default=None, ge=1)
 
 
 class AnswerSourceResponse(BaseModel):
@@ -103,6 +104,28 @@ class AskResponse(BaseModel):
     sources: list[AnswerSourceResponse]
 
 
+class DraftReportRequest(BaseModel):
+    title: str = Field(min_length=3, max_length=200)
+    report_type: str = Field(default="Genel Teknik Rapor", min_length=3, max_length=120)
+    objective: str = Field(default="", max_length=400)
+    keywords: str = Field(default="", max_length=400)
+    raw_notes: str = Field(default="", max_length=4000)
+    detail_level: Literal["quick", "detailed"] = "detailed"
+    mode: Literal["keyword", "semantic", "hybrid"] = "hybrid"
+    limit: int = Field(default=5, ge=1, le=10)
+
+
+class DraftReportResponse(BaseModel):
+    title: str
+    report_type: str
+    detail_level: Literal["quick", "detailed"]
+    draft: str
+    refined_keywords: list[str]
+    cleaned_notes: list[str]
+    embedding_provider: str
+    sources: list[AnswerSourceResponse]
+
+
 class ReindexEmbeddingsResponse(BaseModel):
     embedding_provider: str
     chunks_seen: int
@@ -121,3 +144,42 @@ class StorageCheckResponse(BaseModel):
     healthy_documents: int
     missing_file_count: int
     issues: list[StorageIssueResponse]
+
+
+class CatalogImportResponse(BaseModel):
+    file_name: str
+    rows_seen: int
+    created_count: int
+    duplicate_count: int
+    error_count: int
+    errors: list[str]
+
+
+class CatalogEntryResponse(BaseModel):
+    id: int
+    report_code: str
+    vehicle_name: str
+    report_title: str
+    discipline: str
+    report_date: str | None = None
+    authors: str | None = None
+    source_path: str | None = None
+    matched_document_id: int | None = None
+
+
+class CatalogSearchResponse(BaseModel):
+    results: list[CatalogEntryResponse]
+
+
+class CatalogAskRequest(BaseModel):
+    question: str = Field(min_length=3)
+    limit: int = Field(default=30, ge=1, le=100)
+
+
+class CatalogAskResponse(BaseModel):
+    question: str
+    answer: str
+    answer_found: bool
+    match_count: int
+    filters: dict
+    catalog_matches: list[CatalogEntryResponse]

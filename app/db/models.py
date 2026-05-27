@@ -73,3 +73,18 @@ class ChunkEmbedding(Base):
     embedding: Mapped[str] = mapped_column(Text, nullable=False)
 
     chunk: Mapped["DocumentChunk"] = relationship(back_populates="embedding")
+
+
+class ReportCatalogEntry(Base):
+    __tablename__ = "report_catalog_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    report_code: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    vehicle_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    report_title: Mapped[str] = mapped_column(String(512), nullable=False)
+    discipline: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    report_date: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    authors: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    source_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    row_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
