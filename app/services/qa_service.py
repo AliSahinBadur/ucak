@@ -46,9 +46,17 @@ class QAService:
         mode: str = "hybrid",
         limit: int = 5,
         document_id: int | None = None,
+        document_ids: list[int] | None = None,
     ) -> dict:
         cleaned_question = " ".join(question.split())
-        results = self._run_search(cleaned_question, mode=mode, limit=limit, document_id=document_id)
+        scoped_document_ids = self._resolve_document_scope(document_id=document_id, document_ids=document_ids)
+        results = self._run_search(
+            cleaned_question,
+            mode=mode,
+            limit=limit,
+            document_id=document_id,
+            document_ids=scoped_document_ids,
+        )
         if not results:
             return {
                 "question": cleaned_question,
@@ -72,30 +80,51 @@ class QAService:
             "sources": results[:3],
         }
 
-    def _run_search(self, question: str, mode: str, limit: int, document_id: int | None = None) -> list[dict]:
+    def _run_search(
+        self,
+        question: str,
+        mode: str,
+        limit: int,
+        document_id: int | None = None,
+        document_ids: list[int] | None = None,
+    ) -> list[dict]:
         candidate_limit = max(limit * self.QA_CANDIDATE_MULTIPLIER, limit)
         question_profile = self._question_profile(question)
+        scoped_document_ids = self._resolve_document_scope(document_id=document_id, document_ids=document_ids)
         base_results: list[dict] = []
         for query_variant in self._question_variants(question, question_profile):
             if mode == "keyword":
-                variant_results = self.search_service.keyword_search(query_variant, limit=candidate_limit)
+                variant_results = self.search_service.keyword_search(
+                    query_variant,
+                    limit=candidate_limit,
+                    document_ids=scoped_document_ids,
+                )
             elif mode == "semantic":
-                variant_results = self.search_service.semantic_search(query_variant, limit=candidate_limit)
+                variant_results = self.search_service.semantic_search(
+                    query_variant,
+                    limit=candidate_limit,
+                    document_ids=scoped_document_ids,
+                )
             else:
-                variant_results = self.search_service.hybrid_search(query_variant, limit=candidate_limit)
+                variant_results = self.search_service.hybrid_search(
+                    query_variant,
+                    limit=candidate_limit,
+                    document_ids=scoped_document_ids,
+                )
             base_results = self._merge_result_lists(base_results, variant_results)
-        supplemental_results = self._supplemental_chunk_candidates(question_profile, document_id=document_id)
+        supplemental_results = self._supplemental_chunk_candidates(
+            question_profile,
+            document_id=document_id,
+            document_ids=scoped_document_ids,
+        )
         merged_results = self._merge_result_lists(base_results, supplemental_results)
-        if document_id is None:
+        if not scoped_document_ids:
             return merged_results
-
-        scoped_results = [
-            result for result in merged_results
-            if int(result.get("document_id", 0) or 0) == document_id
-        ]
-        if scoped_results:
-            return scoped_results
-        return self._document_chunk_candidates(question_profile, document_id=document_id)
+        if merged_results:
+            return merged_results
+        if len(scoped_document_ids) == 1:
+            return self._document_chunk_candidates(question_profile, document_id=scoped_document_ids[0])
+        return self._documents_chunk_candidates(question_profile, document_ids=scoped_document_ids)
 
     def _build_answer(self, question: str, results: list[dict]) -> tuple[str, float]:
         question_tokens = self.search_service.embedding_service.tokenize(question)
@@ -280,7 +309,12 @@ class QAService:
         answer = "\n".join(f"{index + 1}. {item}" for index, item in enumerate(best_items[:8]))
         return answer, best_score
 
-    def _supplemental_chunk_candidates(self, question_profile: dict, document_id: int | None = None) -> list[dict]:
+    def _supplemental_chunk_candidates(
+        self,
+        question_profile: dict,
+        document_id: int | None = None,
+        document_ids: list[int] | None = None,
+    ) -> list[dict]:
         subject_search_terms = question_profile["subject_search_terms"]
         if not subject_search_terms:
             return []
@@ -288,8 +322,11 @@ class QAService:
         token_conditions = [DocumentChunk.chunk_text.ilike(f"%{token}%") for token in subject_search_terms]
         token_conditions.extend(DocumentChunk.section_title.ilike(f"%{token}%") for token in subject_search_terms)
         statement = self.search_service._base_chunk_query().where(or_(*token_conditions))
-        if document_id is not None:
-            statement = statement.where(DocumentChunk.document_id == document_id)
+        scoped_document_ids = self._resolve_document_scope(document_id=document_id, document_ids=document_ids)
+        if len(scoped_document_ids) == 1:
+            statement = statement.where(DocumentChunk.document_id == scoped_document_ids[0])
+        elif scoped_document_ids:
+            statement = statement.where(DocumentChunk.document_id.in_(scoped_document_ids))
         rows = self.session.execute(statement.limit(self.SUPPLEMENTAL_CANDIDATE_LIMIT * 4)).all()
 
         return self._score_candidate_rows(rows, question_profile)
@@ -299,6 +336,14 @@ class QAService:
             self.search_service._base_chunk_query()
             .where(DocumentChunk.document_id == document_id)
             .limit(self.SUPPLEMENTAL_CANDIDATE_LIMIT * 8)
+        ).all()
+        return self._score_candidate_rows(rows, question_profile)
+
+    def _documents_chunk_candidates(self, question_profile: dict, document_ids: list[int]) -> list[dict]:
+        rows = self.session.execute(
+            self.search_service._base_chunk_query()
+            .where(DocumentChunk.document_id.in_(document_ids))
+            .limit(self.SUPPLEMENTAL_CANDIDATE_LIMIT * 12)
         ).all()
         return self._score_candidate_rows(rows, question_profile)
 
@@ -365,6 +410,15 @@ class QAService:
             else:
                 merged[item_id] = dict(item)
         return list(merged.values())
+
+    @staticmethod
+    def _resolve_document_scope(document_id: int | None = None, document_ids: list[int] | None = None) -> list[int]:
+        combined: list[int] = []
+        if document_ids:
+            combined.extend(document_ids)
+        if document_id is not None:
+            combined.append(document_id)
+        return SearchService._normalize_document_ids(combined)
 
     @staticmethod
     def _looks_like_list_block(text: str) -> bool:

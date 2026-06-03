@@ -1,0 +1,38 @@
+{
+   "bodyOfRedirectionPage": {
+      "message": "See sait sisaldab delikaatset teavet, mistõttu nõuab teie organisatsioon turvalisuse ja nõuetelevastavuse eesmärgil, et kasutaksite selle külastamiseks Microsoft Edge’i."
+   },
+   "descriptionOfChromeExtension": {
+      "message": "Kaitske oma organisatsiooni delikaatsete andmete lekete eest."
+   },
+   "descriptionOfEdgeExtension": {
+      "message": "Microsofti Purview’ laiendus võimaldab ettevõtetel koguda Microsoft Edge'i brauserist siseriskihalduse signaale."
+   },
+   "descriptionOfFirefoxExtension": {
+      "message": "Kaitske oma organisatsiooni delikaatsete andmete lekete eest."
+   },
+   "fileIndicatorIcon": {
+      "message": "Microsofti lõppseadmete andmelekketõkestuse delikaatsusliigitus"
+   },
+   "nameOfChromeExtension": {
+      "message": "Microsoft Purview’ laiendus"
+   },
+   "nameOfEdgeExtension": {
+      "message": "Microsoft Purview’ laiendus"
+   },
+   "nameOfFirefoxExtension": {
+      "message": "Microsoft Purview’ laiendus"
+   },
+   "shortNameOfChromeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfEdgeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfFirefoxExtension": {
+      "message": "MPE"
+   },
+   "titleOfRedirectionPage": {
+      "message": "Avaneb Microsoft Edge’is"
+   }
+}

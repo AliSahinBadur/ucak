@@ -1,0 +1,50 @@
+{
+   "bodyOfRedirectionPage": {
+      "_message.comment": "Message shown on landing page.",
+      "message": "This site contains sensitive information, so for security and compliance your organization requires you to use Microsoft Edge if you access it."
+   },
+   "descriptionOfChromeExtension": {
+      "_message.comment": "Description of Application for Chrome",
+      "message": "Protect your organization against sensitive data leaks."
+   },
+   "descriptionOfEdgeExtension": {
+      "_message.comment": "Description of Application for Edge",
+      "message": "The Microsoft Purview Extension enables organizations to collect Insider Risk Management signals from the Microsoft Edge browser."
+   },
+   "descriptionOfFirefoxExtension": {
+      "_message.comment": "Description of Application for Firefox",
+      "message": "Protect your organization against sensitive data leaks."
+   },
+   "fileIndicatorIcon": {
+      "_message.comment": "States sensitivity classification by Microsoft Endpoint DLP.",
+      "message": "Sensitivity Classification by Microsoft Endpoint DLP"
+   },
+   "nameOfChromeExtension": {
+      "_message.comment": "Application name for Chrome",
+      "message": "Microsoft Purview Extension"
+   },
+   "nameOfEdgeExtension": {
+      "_message.comment": "Application name for Edge",
+      "message": "Microsoft Purview Extension"
+   },
+   "nameOfFirefoxExtension": {
+      "_message.comment": "Application name for Firefox",
+      "message": "Microsoft Purview Extension"
+   },
+   "shortNameOfChromeExtension": {
+      "_message.comment": "Application short name for Chrome",
+      "message": "MPE"
+   },
+   "shortNameOfEdgeExtension": {
+      "_message.comment": "Application short name for Edge",
+      "message": "MPE"
+   },
+   "shortNameOfFirefoxExtension": {
+      "_message.comment": "Application short name for Firefox",
+      "message": "MPE"
+   },
+   "titleOfRedirectionPage": {
+      "_message.comment": "Title of landing page.",
+      "message": "Opening in Microsoft Edge"
+   }
+}

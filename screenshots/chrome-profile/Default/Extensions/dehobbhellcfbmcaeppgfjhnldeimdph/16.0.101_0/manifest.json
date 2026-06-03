@@ -1,0 +1,23 @@
+{
+   "background": {
+      "service_worker": "background.js"
+   },
+   "content_scripts": [ {
+      "all_frames": true,
+      "js": [ "ContentScript.js" ],
+      "matches": [ "\u003Call_urls>" ]
+   } ],
+   "description": "Works along with a Symantec Information Security product to secure sensitive information based on company policy.",
+   "host_permissions": [ "\u003Call_urls>" ],
+   "icons": {
+      "128": "icons/symantec_logo_128.png",
+      "16": "icons/symantec_logo_16.png",
+      "48": "icons/symantec_logo_48.png"
+   },
+   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsKxgn8ROQLNUGi/M6GEclIxHHblCbra4CX32wjg/l6hzUlMrddcvjR8I7dB6vdmSaIMvMdA/FMoe/v84RpkTAwwyOmfJVrqKB9lan3v412br8OXUYO2HIrkxCfqxMCGmHb0dx1zKLQr8RX0s+JedyIV6xvWDWnUW2eVw0JZwpyBUdjII/5+Hpjl9I2+yk+AYjZ+aYIu54esXfkTnsZ+wPj/ihYJq2F3qhPVHvQ7E/oCmKF3US/GP/Bzk4n14Pm7a4RijgDEaC1L7P/A0wEu8k5fJnj0+QzfBb6qQ9F4Jmeug5Slx5/RwZm+t219tU7N2opNynac8Lja4GUHF3iBAAwIDAQAB",
+   "manifest_version": 3,
+   "name": "Symantec Extension",
+   "permissions": [ "nativeMessaging", "tabs", "scripting" ],
+   "update_url": "https://clients2.google.com/service/update2/crx",
+   "version": "16.0.101"
+}

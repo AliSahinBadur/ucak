@@ -39,10 +39,13 @@ class SearchService:
         self.session = session
         self.embedding_service = embedding_service or build_embedding_service()
 
-    def keyword_search(self, query: str, limit: int = 5) -> list[dict]:
+    def keyword_search(self, query: str, limit: int = 5, document_ids: list[int] | None = None) -> list[dict]:
         raw_query = query.strip()
         tokens = self.embedding_service.tokenize(raw_query)
         if not raw_query:
+            return []
+        scoped_document_ids = self._normalize_document_ids(document_ids)
+        if document_ids is not None and not scoped_document_ids:
             return []
 
         candidate_limit = max(limit * 12, 30)
@@ -57,11 +60,16 @@ class SearchService:
                     Document.file_name.ilike(f"%{term}%"),
                 )
             )
+        exact_query = self._base_chunk_query()
+        fuzzy_query = self._base_chunk_query()
+        if scoped_document_ids:
+            exact_query = exact_query.where(DocumentChunk.document_id.in_(scoped_document_ids))
+            fuzzy_query = fuzzy_query.where(DocumentChunk.document_id.in_(scoped_document_ids))
         exact_rows = self.session.execute(
-            self._base_chunk_query().where(or_(*conditions)).limit(candidate_limit)
+            exact_query.where(or_(*conditions)).limit(candidate_limit)
         ).all()
         fuzzy_rows = self.session.execute(
-            self._base_chunk_query().limit(self.MAX_FUZZY_SCAN_ROWS)
+            fuzzy_query.limit(self.MAX_FUZZY_SCAN_ROWS)
         ).all()
 
         rows_by_id = {int(row.id): row for row in exact_rows}
@@ -100,10 +108,13 @@ class SearchService:
         results.sort(key=lambda item: item["keyword_score"], reverse=True)
         return results[:limit]
 
-    def semantic_search(self, query: str, limit: int = 5) -> list[dict]:
+    def semantic_search(self, query: str, limit: int = 5, document_ids: list[int] | None = None) -> list[dict]:
         query_tokens = self.embedding_service.tokenize(query.strip())
         query_vector = self.embedding_service.embed_text(query)
         if not self.embedding_service.has_signal(query_vector):
+            return []
+        scoped_document_ids = self._normalize_document_ids(document_ids)
+        if document_ids is not None and not scoped_document_ids:
             return []
 
         statement = (
@@ -121,6 +132,8 @@ class SearchService:
             .join(Document, Document.id == DocumentChunk.document_id)
             .outerjoin(ChunkEmbedding, ChunkEmbedding.chunk_id == DocumentChunk.id)
         )
+        if scoped_document_ids:
+            statement = statement.where(DocumentChunk.document_id.in_(scoped_document_ids))
         rows = self.session.execute(statement).all()
 
         results: list[dict] = []
@@ -158,10 +171,10 @@ class SearchService:
         results.sort(key=lambda item: item["semantic_score"], reverse=True)
         return self._limit_results_per_document(results, limit)
 
-    def hybrid_search(self, query: str, limit: int = 5) -> list[dict]:
+    def hybrid_search(self, query: str, limit: int = 5, document_ids: list[int] | None = None) -> list[dict]:
         query_tokens = self.embedding_service.tokenize(query.strip())
-        keyword_results = self.keyword_search(query, limit=max(limit * 4, 12))
-        semantic_results = self.semantic_search(query, limit=max(limit * 3, 10))
+        keyword_results = self.keyword_search(query, limit=max(limit * 4, 12), document_ids=document_ids)
+        semantic_results = self.semantic_search(query, limit=max(limit * 3, 10), document_ids=document_ids)
         if not semantic_results:
             return keyword_results[:limit]
 
@@ -252,6 +265,23 @@ class SearchService:
             excluded_document_ids=source_document_ids,
             limit=limit,
         )
+
+    @staticmethod
+    def _normalize_document_ids(document_ids: list[int] | None) -> list[int]:
+        if not document_ids:
+            return []
+        seen: set[int] = set()
+        normalized: list[int] = []
+        for raw_value in document_ids:
+            try:
+                document_id = int(raw_value)
+            except (TypeError, ValueError):
+                continue
+            if document_id <= 0 or document_id in seen:
+                continue
+            seen.add(document_id)
+            normalized.append(document_id)
+        return normalized
 
     def similar_documents_for_document(self, document_id: int, limit: int = 3) -> list[dict]:
         source_chunks = self.session.execute(

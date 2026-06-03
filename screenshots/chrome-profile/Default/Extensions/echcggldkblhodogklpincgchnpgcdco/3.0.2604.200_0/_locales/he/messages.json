@@ -1,0 +1,38 @@
+{
+   "bodyOfRedirectionPage": {
+      "message": "אתר זה מכיל מידע רגיש, לכן מטעמי אבטחה ותאימות הארגון שלך דורש ממך להשתמש ב- Microsoft Edge אם אתה ניגש לאתר זה."
+   },
+   "descriptionOfChromeExtension": {
+      "message": "הגן על הארגון שלך מפני הדלפות נתונים רגישים."
+   },
+   "descriptionOfEdgeExtension": {
+      "message": "הרחבת Microsoft Purview מאפשרת לארגונים לאסוף אותות של ניהול סיכונים פנימיים מהדפדפן Microsoft Edge."
+   },
+   "descriptionOfFirefoxExtension": {
+      "message": "הגן על הארגון שלך מפני דליפות נתונים רגישים."
+   },
+   "fileIndicatorIcon": {
+      "message": "סיווג רגישות לפי Microsoft Endpoint DLP"
+   },
+   "nameOfChromeExtension": {
+      "message": "הרחבת Microsoft Purview"
+   },
+   "nameOfEdgeExtension": {
+      "message": "הרחבת Microsoft Purview"
+   },
+   "nameOfFirefoxExtension": {
+      "message": "הרחבת Microsoft Purview"
+   },
+   "shortNameOfChromeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfEdgeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfFirefoxExtension": {
+      "message": "MPE"
+   },
+   "titleOfRedirectionPage": {
+      "message": "פתיחה ב- Microsoft Edge"
+   }
+}

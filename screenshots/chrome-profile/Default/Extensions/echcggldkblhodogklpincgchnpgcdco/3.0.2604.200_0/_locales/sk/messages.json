@@ -1,0 +1,38 @@
+{
+   "bodyOfRedirectionPage": {
+      "message": "Táto lokalita obsahuje citlivé informácie, takže vaša organizácia z dôvodu zabezpečenia a zhody s nariadeniami vyžaduje, aby ste ju otvárali cez Microsoft Edge."
+   },
+   "descriptionOfChromeExtension": {
+      "message": "Chráňte svoju organizáciu pred únikom citlivých údajov."
+   },
+   "descriptionOfEdgeExtension": {
+      "message": "Rozšírenie Microsoft Purview umožňuje organizáciám zhromažďovať signály spravovania rizík zvnútra z prehliadača Microsoft Edge."
+   },
+   "descriptionOfFirefoxExtension": {
+      "message": "Chráňte svoju organizáciu pred únikom citlivých údajov."
+   },
+   "fileIndicatorIcon": {
+      "message": "Klasifikácia citlivosti podľa Microsoft Endpoint DLP"
+   },
+   "nameOfChromeExtension": {
+      "message": "Rozšírenie Microsoft Purview"
+   },
+   "nameOfEdgeExtension": {
+      "message": "Rozšírenie Microsoft Purview"
+   },
+   "nameOfFirefoxExtension": {
+      "message": "Rozšírenie Microsoft Purview"
+   },
+   "shortNameOfChromeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfEdgeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfFirefoxExtension": {
+      "message": "MPE"
+   },
+   "titleOfRedirectionPage": {
+      "message": "Otvára sa v Microsoft Edgei"
+   }
+}

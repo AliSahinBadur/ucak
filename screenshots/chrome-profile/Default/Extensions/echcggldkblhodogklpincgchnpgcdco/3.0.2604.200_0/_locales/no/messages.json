@@ -1,0 +1,38 @@
+{
+   "bodyOfRedirectionPage": {
+      "message": "Dette nettstedet inneholder sensitiv informasjon, så for sikkerhet og overholdelse av regler og standarder, krever organisasjonen at du bruker Microsoft Edge hvis du får tilgang til den."
+   },
+   "descriptionOfChromeExtension": {
+      "message": "Beskytt organisasjonen mot lekkasjer av sensitive data."
+   },
+   "descriptionOfEdgeExtension": {
+      "message": "Microsoft Purview-utvidelsen gjør det mulig for organisasjoner å samle inn signaler for administrasjon av intern risiko fra Microsoft Edge-nettleseren."
+   },
+   "descriptionOfFirefoxExtension": {
+      "message": "Beskytt organisasjonen mot lekkasjer av sensitive data."
+   },
+   "fileIndicatorIcon": {
+      "message": "Følsomhetsklassifisering etter DLP for Microsoft-endepunkt"
+   },
+   "nameOfChromeExtension": {
+      "message": "Microsoft Purview-utvidelse"
+   },
+   "nameOfEdgeExtension": {
+      "message": "Microsoft Purview-utvidelse"
+   },
+   "nameOfFirefoxExtension": {
+      "message": "Microsoft Purview-utvidelse"
+   },
+   "shortNameOfChromeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfEdgeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfFirefoxExtension": {
+      "message": "MPE"
+   },
+   "titleOfRedirectionPage": {
+      "message": "Åpner i Microsoft Edge"
+   }
+}

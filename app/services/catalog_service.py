@@ -521,17 +521,46 @@ class CatalogService:
         documents = self.session.execute(select(Document.id, Document.title, Document.file_name)).all()
         matches: dict[int, int] = {}
         for entry in entries:
-            entry_keys = {
-                self._normalize_text(entry.report_code),
-                self._normalize_text(Path(entry.report_code).name),
-                self._normalize_text(entry.report_title),
-            }
+            entry_keys = self._document_match_keys(entry)
             for document in documents:
                 document_text = self._normalize_text(f"{document.title} {document.file_name}")
+                compact_document_text = self._compact_key(document_text)
                 if any(key and key in document_text for key in entry_keys):
                     matches[entry.id] = int(document.id)
                     break
+                if any(key and key in compact_document_text for key in entry_keys):
+                    matches[entry.id] = int(document.id)
+                    break
         return matches
+
+    def _document_match_keys(self, entry: ReportCatalogEntry) -> set[str]:
+        raw_code = entry.report_code or ""
+        path_name = Path(raw_code).name
+        normalized_code = self._normalize_text(raw_code)
+        normalized_path_name = self._normalize_text(path_name)
+        normalized_title = self._normalize_text(entry.report_title or "")
+        keys = {
+            normalized_code,
+            normalized_path_name,
+            normalized_title,
+            self._compact_key(normalized_code),
+            self._compact_key(normalized_path_name),
+            self._compact_key(normalized_title),
+        }
+
+        code_parts = [
+            part for part in re.split(r"[^a-z0-9]+", normalized_path_name)
+            if len(part) >= 2 and part not in {"rev", "pdf", "docx"}
+        ]
+        if len(code_parts) >= 3:
+            keys.add(self._compact_key(" ".join(code_parts[:4])))
+            keys.add(self._compact_key(" ".join(code_parts)))
+
+        return {key for key in keys if len(key) >= 5}
+
+    @staticmethod
+    def _compact_key(text: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", text)
 
     def _parse_xlsx(self, content: bytes) -> list[CatalogRow]:
         try:

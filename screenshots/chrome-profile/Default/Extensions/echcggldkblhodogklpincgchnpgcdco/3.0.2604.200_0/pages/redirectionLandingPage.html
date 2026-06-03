@@ -1,0 +1,66 @@
+﻿<!DOCTYPE html>
+<html>
+<head runat="server">
+    <title></title>
+    <script src="../oss/dompurify/dist/purify.min.js" type="text/javascript"></script>
+    <script src="../js/redirectionLandingPage.js" type="text/javascript"></script>
+
+    <style type="text/css">
+        body {
+            background: #F6F6F6;
+        }
+
+        .page_main_div {
+            padding-top: 5%;
+            margin: auto;
+            width: 100%;
+            max-width: 45%;
+        }
+
+        .page_main_form {
+            box-sizing: border-box;
+            width: 100%;
+        }
+
+        .page_content_header {
+            font-size: 24px;
+            font-weight: bold;
+            vertical-align: central;
+            line-height: 32px;
+            margin-top: 40px;
+            color: #000;
+            font-family: 'Segoe UI';
+        }
+
+        .page_content {
+            font-size: 14px;
+            line-height: 20px;
+            margin-top: 22px;
+            color: #000;
+            font-family: 'Segoe UI';
+        }
+
+        .page_img {
+            width: 72px;
+            height: 72px;
+        }
+    </style>
+</head>
+<body>
+    <div class="page_main_div">
+        <form id="frmMain" runat="server" class="page_main_form">
+            <div>
+                <img class="page_img" src="../assets/defender_icon.png" />
+
+                <div class="page_content_header">
+                    <p id="title" class="localize">__MSG_titleOfRedirectionPage__</p>
+                </div>
+
+                <div class="page_content">
+                    <p id="body" class="localize">__MSG_bodyOfRedirectionPage__</p>
+                </div>
+            </div>
+        </form>
+    </div>
+</body>
+</html>

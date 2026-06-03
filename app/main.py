@@ -22,11 +22,17 @@ from .api_models import (
     CatalogAskRequest,
     CatalogAskResponse,
     CatalogImportResponse,
+    CatalogSampleIngestResponse,
     CatalogSearchResponse,
+    CatalogSelectedIngestRequest,
+    CatalogSelectedIngestResponse,
+    CatalogTableResponse,
     DraftReportRequest,
     DraftReportResponse,
     HealthResponse,
     IngestResponse,
+    MultiDocumentAskRequest,
+    MultiDocumentAskResponse,
     ReindexEmbeddingsResponse,
     SearchResponse,
     StorageCheckResponse,
@@ -35,8 +41,10 @@ from .db.session import SessionLocal, get_session, init_db
 from .db.models import Document, DocumentPage
 from .services.embedding_reindex_service import EmbeddingReindexService
 from .services.embedding_service import build_embedding_service
+from .services.catalog_ingest_service import CatalogIngestService
 from .services.catalog_service import CatalogService
 from .services.ingest_service import IngestService
+from .services.multi_document_qa_service import MultiDocumentQAService
 from .services.qa_service import QAService
 from .services.report_writer_service import ReportWriterService
 from .services.search_service import SearchService
@@ -220,6 +228,7 @@ def upload_page() -> HTMLResponse:
     }
     .section {
       padding: 24px 28px 28px;
+      position: relative;
     }
     .section + .section {
       border-top: 1px solid var(--line);
@@ -253,6 +262,90 @@ def upload_page() -> HTMLResponse:
       margin: 0;
       color: var(--muted);
       line-height: 1.55;
+    }
+    .section-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+    .section-head h2 {
+      margin-bottom: 8px;
+    }
+    .section-head p {
+      max-width: 820px;
+    }
+    .expand-button {
+      flex: 0 0 auto;
+      border: 1px solid #f0c6cd;
+      background: #fff6f8;
+      color: var(--accent-strong);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .expand-button:hover {
+      background: #ffe9ed;
+    }
+    .module-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      background: rgba(42, 16, 20, 0.54);
+      backdrop-filter: blur(4px);
+      padding: 22px;
+    }
+    .module-modal.open {
+      display: block;
+    }
+    .module-modal-shell {
+      height: min(94vh, 980px);
+      max-width: 1480px;
+      margin: 0 auto;
+      background: var(--panel);
+      border: 1px solid #efc0c8;
+      border-radius: 22px;
+      box-shadow: 0 24px 80px rgba(42, 16, 20, 0.32);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .module-modal-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(90deg, #fff6f8, #ffffff);
+    }
+    .module-modal-title {
+      font-size: 18px;
+      font-weight: 900;
+    }
+    .module-modal-close {
+      border: 0;
+      background: var(--accent);
+      color: white;
+      border-radius: 999px;
+      padding: 9px 14px;
+      cursor: pointer;
+      font-weight: 800;
+    }
+    .module-modal-body {
+      overflow: auto;
+      padding: 0;
+    }
+    .module-modal-body .section {
+      border-top: 0;
+      padding: 28px;
+    }
+    body.modal-open {
+      overflow: hidden;
     }
     .actions {
       display: flex;
@@ -407,6 +500,186 @@ def upload_page() -> HTMLResponse:
       grid-template-columns: minmax(0, 1.2fr) minmax(300px, 1fr);
       gap: 18px;
     }
+    .stats-grid {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .stat-card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: white;
+      padding: 14px 16px;
+    }
+    .stat-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .stat-value {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--accent-strong);
+    }
+    .catalog-workspace {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: minmax(320px, 0.95fr) minmax(0, 1.35fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .table-box {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: white;
+    }
+    .table-box table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 520px;
+    }
+    .table-box th,
+    .table-box td {
+      padding: 12px 14px;
+      border-bottom: 1px solid #f1d9dd;
+      text-align: left;
+      vertical-align: top;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .table-box th {
+      background: #fff5f7;
+      color: var(--accent-strong);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .catalog-board {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 14px;
+    }
+    .catalog-pane {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: white;
+      overflow: hidden;
+      min-height: 320px;
+    }
+    .catalog-pane.ingested {
+      border-color: #a8dfbd;
+      background: #f8fffb;
+    }
+    .catalog-pane.pending {
+      border-color: #efb3bd;
+      background: #fff7f8;
+    }
+    .catalog-pane-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      font-weight: 800;
+    }
+    .catalog-pane.ingested .catalog-pane-head {
+      color: #17653b;
+      background: #effaf3;
+    }
+    .catalog-pane.pending .catalog-pane-head {
+      color: var(--accent-strong);
+      background: #fff0f2;
+    }
+    .catalog-pane.embedded {
+      border-color: #9fd4f2;
+      background: #f6fcff;
+    }
+    .catalog-pane.embedding-pending {
+      border-color: #f0cf8f;
+      background: #fffaf0;
+    }
+    .catalog-pane.embedded .catalog-pane-head {
+      color: #0e5d83;
+      background: #edf8ff;
+    }
+    .catalog-pane.embedding-pending .catalog-pane-head {
+      color: #8a5a00;
+      background: #fff4d8;
+    }
+    .catalog-count {
+      border-radius: 999px;
+      padding: 4px 9px;
+      background: white;
+      font-size: 12px;
+    }
+    .catalog-table-scroll {
+      overflow: auto;
+      max-height: 430px;
+    }
+    .catalog-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 760px;
+    }
+    .catalog-table th,
+    .catalog-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #f1d9dd;
+      text-align: left;
+      vertical-align: top;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .catalog-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #fffafa;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+    .catalog-table a {
+      color: var(--accent-strong);
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .catalog-table a:hover {
+      text-decoration: underline;
+    }
+    .catalog-select {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .status-pill.complete {
+      color: #0e5d83;
+      background: #e5f5ff;
+    }
+    .status-pill.partial,
+    .status-pill.missing {
+      color: #8a5a00;
+      background: #fff0c2;
+    }
+    .status-pill.not_ingested {
+      color: var(--accent-strong);
+      background: #ffe7eb;
+    }
     .draft-grid {
       margin-top: 18px;
       display: grid;
@@ -520,8 +793,19 @@ def upload_page() -> HTMLResponse:
       .search-grid,
       .ask-grid,
       .qa-layout,
+      .catalog-workspace,
+      .catalog-board,
       .split {
         grid-template-columns: 1fr;
+      }
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+      .module-modal {
+        padding: 10px;
+      }
+      .section-head {
+        flex-direction: column;
       }
     }
   </style>
@@ -543,7 +827,14 @@ def upload_page() -> HTMLResponse:
             <span class="hero-pill">Similar Reports</span>
           </div>
         </div>
-        <div class="section">
+        <div class="section" data-module-title="Rapor Yukleme">
+          <div class="section-head">
+            <div>
+              <h2>Rapor Yukleme</h2>
+              <p>Tekli veya toplu PDF/DOCX raporlarini sisteme ekle.</p>
+            </div>
+            <button class="expand-button" type="button" data-expand-module>Buyut</button>
+          </div>
           <div class="upload-grid">
             <div class="upload-card">
               <h2>Tekli Rapor Yukleme</h2>
@@ -579,9 +870,14 @@ def upload_page() -> HTMLResponse:
             </div>
           </div>
         </div>
-        <div class="section">
-          <h2>Arama</h2>
-          <p>Bir ifade gir, modu sec ve sonuc kartlariyla benzer raporlari ayni ekranda gor.</p>
+        <div class="section" data-module-title="Arama">
+          <div class="section-head">
+            <div>
+              <h2>Arama</h2>
+              <p>Bir ifade gir, modu sec ve sonuc kartlariyla benzer raporlari ayni ekranda gor.</p>
+            </div>
+            <button class="expand-button" type="button" data-expand-module>Buyut</button>
+          </div>
           <div class="search-grid">
             <div class="field">
               <label for="searchQuery">Sorgu</label>
@@ -616,9 +912,14 @@ def upload_page() -> HTMLResponse:
             </div>
           </div>
         </div>
-        <div class="section">
-          <h2>Rapor Katalogu ve Coklu Belge QA</h2>
-          <p>Surekli guncellenen Excel/CSV katalogunu yukle. Sonra arac, disiplin veya test tipi uzerinden katalog seviyesinde soru sor.</p>
+        <div class="section" data-module-title="Rapor Katalogu ve Coklu Belge QA">
+          <div class="section-head">
+            <div>
+              <h2>Rapor Katalogu ve Coklu Belge QA</h2>
+              <p>Surekli guncellenen Excel/CSV katalogunu yukle. Sonra arac, disiplin veya test tipi uzerinden katalog seviyesinde soru sor.</p>
+            </div>
+            <button class="expand-button" type="button" data-expand-module>Buyut</button>
+          </div>
           <div class="upload-grid">
             <div class="upload-card">
               <h2>Katalog Yukleme</h2>
@@ -628,15 +929,104 @@ def upload_page() -> HTMLResponse:
                 <button class="button primary" id="catalogImportButton" type="button">Katalogu Yukle</button>
                 <input id="catalogPicker" type="file" accept=".xlsx,.csv,.tsv,.txt" />
               </div>
+              <div class="actions">
+                <button class="button secondary" id="catalogTableRefreshButton" type="button">Katalog Tablosunu Yenile</button>
+                <button class="button primary" id="catalogSelectedIngestButton" type="button">Secilenleri Ice Al</button>
+              </div>
               <div class="meta" id="catalogSummary">Henuz katalog dosyasi secilmedi.</div>
               <div class="status" id="catalogStatusBox"></div>
+              <div class="catalog-board">
+                <div class="catalog-pane ingested">
+                  <div class="catalog-pane-head">
+                    <span>Ingest Edilmis</span>
+                    <span class="catalog-count" id="catalogIngestedCount">0</span>
+                  </div>
+                  <div class="catalog-table-scroll">
+                    <table class="catalog-table">
+                      <thead>
+                        <tr>
+                          <th>Rapor</th>
+                          <th>Arac</th>
+                          <th>Tip</th>
+                          <th>Link</th>
+                        </tr>
+                      </thead>
+                      <tbody id="catalogIngestedTable">
+                        <tr><td colspan="4" class="small">Katalog tablosu henuz yuklenmedi.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div class="catalog-pane embedded">
+                  <div class="catalog-pane-head">
+                    <span>Embedding Tamam</span>
+                    <span class="catalog-count" id="catalogEmbeddedCount">0</span>
+                  </div>
+                  <div class="catalog-table-scroll">
+                    <table class="catalog-table">
+                      <thead>
+                        <tr>
+                          <th>Rapor</th>
+                          <th>Tip</th>
+                          <th>Embedding</th>
+                        </tr>
+                      </thead>
+                      <tbody id="catalogEmbeddedTable">
+                        <tr><td colspan="3" class="small">Katalog tablosu henuz yuklenmedi.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div class="catalog-pane pending">
+                  <div class="catalog-pane-head">
+                    <span>Ingest Edilmemis</span>
+                    <span class="catalog-count" id="catalogPendingCount">0</span>
+                  </div>
+                  <div class="catalog-table-scroll">
+                    <table class="catalog-table">
+                      <thead>
+                        <tr>
+                          <th>Sec</th>
+                          <th>Rapor</th>
+                          <th>Arac</th>
+                          <th>Tip</th>
+                          <th>Link</th>
+                        </tr>
+                      </thead>
+                      <tbody id="catalogPendingTable">
+                        <tr><td colspan="5" class="small">Katalog tablosu henuz yuklenmedi.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div class="catalog-pane embedding-pending">
+                  <div class="catalog-pane-head">
+                    <span>Embedding Eksik</span>
+                    <span class="catalog-count" id="catalogEmbeddingPendingCount">0</span>
+                  </div>
+                  <div class="catalog-table-scroll">
+                    <table class="catalog-table">
+                      <thead>
+                        <tr>
+                          <th>Rapor</th>
+                          <th>Tip</th>
+                          <th>Embedding</th>
+                        </tr>
+                      </thead>
+                      <tbody id="catalogEmbeddingPendingTable">
+                        <tr><td colspan="3" class="small">Katalog tablosu henuz yuklenmedi.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
               <div class="result">
                 <pre id="catalogResultBox">{}</pre>
               </div>
             </div>
             <div class="upload-card">
-              <h2>Coklu Belge Sorusu</h2>
-              <p>Ornek: Novocitivolt araci ile kac tane NVH testi yapildi?</p>
+              <h2>Coklu Belge Calisma Alani</h2>
+              <p>1. Katalogdan ilgili rapor grubunu bul. 2. Yalnizca bu grubun yuklenmis PDF/DOCX icerigi uzerinden ikinci soruyu sor.</p>
               <div class="field">
                 <label for="catalogQuestion">Katalog Sorusu</label>
                 <input id="catalogQuestion" type="text" placeholder="Ornek: Novocitivolt araci ile kac tane NVH testi yapildi?" />
@@ -648,15 +1038,98 @@ def upload_page() -> HTMLResponse:
               <div class="answer-box">
                 <div id="catalogAnswer" class="answer-text">Katalog cevabi burada gorunecek.</div>
               </div>
-              <div id="catalogMatches" class="cards" style="margin-top:12px;">
-                <div class="empty">Eslesen katalog kayitlari burada listelenecek.</div>
+              <div class="stats-grid">
+                <div class="stat-card">
+                  <div class="stat-label">Katalog Kaydi</div>
+                  <div class="stat-value" id="catalogMatchCount">0</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Yuklu Belge</div>
+                  <div class="stat-value" id="catalogDocumentCount">0</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Hazir Kapsam</div>
+                  <div class="stat-value" id="catalogScopeReady">Hayir</div>
+                </div>
+              </div>
+              <div class="field" style="margin-top:16px;">
+                <label for="multiDocumentQuestion">Bu Raporlar Uzerinden Soru</label>
+                <input id="multiDocumentQuestion" type="text" placeholder="Ornek: Bu raporlarda ortak test kosullari nelerdir?" />
+              </div>
+              <div class="search-grid" style="margin-top:12px; grid-template-columns:minmax(0,2fr) 210px 160px;">
+                <div class="field">
+                  <label for="multiDocumentMode">Mod</label>
+                  <select id="multiDocumentMode">
+                    <option value="hybrid">hybrid</option>
+                    <option value="semantic">semantic</option>
+                    <option value="keyword">keyword</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="multiDocumentLimit">Kaynak Limiti</label>
+                  <select id="multiDocumentLimit">
+                    <option value="4">4</option>
+                    <option value="6" selected>6</option>
+                    <option value="8">8</option>
+                    <option value="10">10</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>&nbsp;</label>
+                  <button class="button primary" id="multiDocumentAskButton" type="button" style="width:100%;">Icerikten Sor</button>
+                </div>
+              </div>
+              <div class="note" id="multiDocumentMeta">Ikinci asama soru sorulmadi.</div>
+              <div class="catalog-workspace">
+                <div class="panel">
+                  <div class="panel-title">Icerik Cevabi</div>
+                  <div class="answer-box">
+                    <div id="multiDocumentAnswer" class="answer-text">Secilen rapor grubunun icerik cevabi burada gorunecek.</div>
+                  </div>
+                  <div class="panel-title" style="margin-top:16px;">Kullanilan Belgeler</div>
+                  <div id="multiDocumentDocuments" class="cards">
+                    <div class="empty">Yuklu ve eslesen belgeler burada listelenecek.</div>
+                  </div>
+                </div>
+                <div class="panel">
+                  <div class="panel-title">Belge Karsilastirma Tablosu</div>
+                  <div class="table-box" id="multiDocumentComparison">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Belge</th>
+                          <th>Cevap</th>
+                          <th>Guven</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colspan="3" class="small">Karsilastirma sonuclari burada yer alacak.</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="panel-title" style="margin-top:16px;">Eslesen Katalog Kayitlari</div>
+                  <div id="catalogMatches" class="cards">
+                    <div class="empty">Eslesen katalog kayitlari burada listelenecek.</div>
+                  </div>
+                  <div class="panel-title" style="margin-top:16px;">Kaynak Pasajlar</div>
+                  <div id="multiDocumentSources" class="cards">
+                    <div class="empty">Kaynak pasajlar burada listelenecek.</div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
-        <div class="section">
-          <h2>Soru-Cevap</h2>
-          <p>Rapora dogal dilde soru sor. Sistem ilgili chunk'lari bulup metne dayali kisa bir cevap dondursun.</p>
+        <div class="section" data-module-title="Soru-Cevap">
+          <div class="section-head">
+            <div>
+              <h2>Soru-Cevap</h2>
+              <p>Rapora dogal dilde soru sor. Sistem ilgili chunk'lari bulup metne dayali kisa bir cevap dondursun.</p>
+            </div>
+            <button class="expand-button" type="button" data-expand-module>Buyut</button>
+          </div>
           <div class="ask-grid">
             <div class="field">
               <label for="askQuestion">Soru</label>
@@ -695,9 +1168,14 @@ def upload_page() -> HTMLResponse:
             </div>
           </div>
         </div>
-        <div class="section">
-          <h2>Rapor Yazma Destegi</h2>
-          <p>Baslik, amac, anahtar kelimeler ve ham notlar ver. Sistem bunlari daha duzgun bir rapor taslagina cevirsin ve benzer raporlardan ornek pasajlar getirsin.</p>
+        <div class="section" data-module-title="Rapor Yazma Destegi">
+          <div class="section-head">
+            <div>
+              <h2>Rapor Yazma Destegi</h2>
+              <p>Baslik, amac, anahtar kelimeler ve ham notlar ver. Sistem bunlari daha duzgun bir rapor taslagina cevirsin ve benzer raporlardan ornek pasajlar getirsin.</p>
+            </div>
+            <button class="expand-button" type="button" data-expand-module>Buyut</button>
+          </div>
           <div class="draft-grid">
             <div class="panel">
               <div class="field">
@@ -751,6 +1229,15 @@ def upload_page() -> HTMLResponse:
       </div>
     </div>
   </div>
+  <div class="module-modal" id="moduleModal" aria-hidden="true">
+    <div class="module-modal-shell">
+      <div class="module-modal-bar">
+        <div class="module-modal-title" id="moduleModalTitle">Modul</div>
+        <button class="module-modal-close" id="moduleModalClose" type="button">Kapat</button>
+      </div>
+      <div class="module-modal-body" id="moduleModalBody"></div>
+    </div>
+  </div>
 
   <script>
     const picker = document.getElementById("folderPicker");
@@ -769,11 +1256,33 @@ def upload_page() -> HTMLResponse:
     const catalogSummary = document.getElementById("catalogSummary");
     const catalogStatusBox = document.getElementById("catalogStatusBox");
     const catalogResultBox = document.getElementById("catalogResultBox");
+    const catalogTableRefreshButton = document.getElementById("catalogTableRefreshButton");
+    const catalogSelectedIngestButton = document.getElementById("catalogSelectedIngestButton");
+    const catalogIngestedCount = document.getElementById("catalogIngestedCount");
+    const catalogPendingCount = document.getElementById("catalogPendingCount");
+    const catalogEmbeddedCount = document.getElementById("catalogEmbeddedCount");
+    const catalogEmbeddingPendingCount = document.getElementById("catalogEmbeddingPendingCount");
+    const catalogIngestedTable = document.getElementById("catalogIngestedTable");
+    const catalogPendingTable = document.getElementById("catalogPendingTable");
+    const catalogEmbeddedTable = document.getElementById("catalogEmbeddedTable");
+    const catalogEmbeddingPendingTable = document.getElementById("catalogEmbeddingPendingTable");
     const catalogQuestion = document.getElementById("catalogQuestion");
     const catalogAskButton = document.getElementById("catalogAskButton");
     const catalogAskMeta = document.getElementById("catalogAskMeta");
     const catalogAnswer = document.getElementById("catalogAnswer");
     const catalogMatches = document.getElementById("catalogMatches");
+    const catalogMatchCount = document.getElementById("catalogMatchCount");
+    const catalogDocumentCount = document.getElementById("catalogDocumentCount");
+    const catalogScopeReady = document.getElementById("catalogScopeReady");
+    const multiDocumentQuestion = document.getElementById("multiDocumentQuestion");
+    const multiDocumentMode = document.getElementById("multiDocumentMode");
+    const multiDocumentLimit = document.getElementById("multiDocumentLimit");
+    const multiDocumentAskButton = document.getElementById("multiDocumentAskButton");
+    const multiDocumentMeta = document.getElementById("multiDocumentMeta");
+    const multiDocumentAnswer = document.getElementById("multiDocumentAnswer");
+    const multiDocumentDocuments = document.getElementById("multiDocumentDocuments");
+    const multiDocumentComparison = document.getElementById("multiDocumentComparison");
+    const multiDocumentSources = document.getElementById("multiDocumentSources");
     const searchQuery = document.getElementById("searchQuery");
     const searchMode = document.getElementById("searchMode");
     const searchButton = document.getElementById("searchButton");
@@ -798,11 +1307,19 @@ def upload_page() -> HTMLResponse:
     const draftMeta = document.getElementById("draftMeta");
     const draftOutput = document.getElementById("draftOutput");
     const draftSources = document.getElementById("draftSources");
+    const moduleModal = document.getElementById("moduleModal");
+    const moduleModalTitle = document.getElementById("moduleModalTitle");
+    const moduleModalBody = document.getElementById("moduleModalBody");
+    const moduleModalClose = document.getElementById("moduleModalClose");
 
     let selectedFiles = [];
     let selectedSingleFile = null;
     let selectedCatalogFile = null;
+    let lastCatalogQuestion = "";
+    let lastCatalogMatches = [];
     let activeTimerId = null;
+    let activeModule = null;
+    let activeModulePlaceholder = null;
 
     function formatElapsed(milliseconds) {
       const seconds = milliseconds / 1000;
@@ -828,6 +1345,31 @@ def upload_page() -> HTMLResponse:
         activeTimerId = null;
       }
       setMessage(`${finalMessage} | Sure: ${formatElapsed(performance.now() - startedAt)}`);
+    }
+
+    function openModule(section) {
+      closeModule();
+      activeModule = section;
+      activeModulePlaceholder = document.createComment("module-placeholder");
+      section.parentNode.insertBefore(activeModulePlaceholder, section);
+      moduleModalTitle.textContent = section.dataset.moduleTitle || "Modul";
+      moduleModalBody.appendChild(section);
+      moduleModal.classList.add("open");
+      moduleModal.setAttribute("aria-hidden", "false");
+      document.body.classList.add("modal-open");
+    }
+
+    function closeModule() {
+      if (!activeModule || !activeModulePlaceholder) {
+        return;
+      }
+      activeModulePlaceholder.parentNode.insertBefore(activeModule, activeModulePlaceholder);
+      activeModulePlaceholder.remove();
+      activeModule = null;
+      activeModulePlaceholder = null;
+      moduleModal.classList.remove("open");
+      moduleModal.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("modal-open");
     }
 
     function renderFiles() {
@@ -1046,6 +1588,100 @@ def upload_page() -> HTMLResponse:
       }).join("");
     }
 
+    function updateCatalogScope(items, question = "") {
+      const matches = Array.isArray(items) ? items : [];
+      const matchedDocumentIds = [...new Set(matches
+        .map(item => Number(item.matched_document_id))
+        .filter(value => Number.isInteger(value) && value > 0)
+      )];
+      catalogMatchCount.textContent = String(matches.length);
+      catalogDocumentCount.textContent = String(matchedDocumentIds.length);
+      catalogScopeReady.textContent = matchedDocumentIds.length > 0 ? "Evet" : "Hayir";
+      lastCatalogMatches = matches;
+      lastCatalogQuestion = question || "";
+    }
+
+    function renderMultiDocumentDocuments(items) {
+      if (!items || items.length === 0) {
+        multiDocumentDocuments.innerHTML = '<div class="empty">Yuklu ve eslesen belge bulunamadi.</div>';
+        return;
+      }
+
+      multiDocumentDocuments.innerHTML = items.map(item => `
+        <article class="source-card" onclick="openDocumentFile(${item.document_id})" style="cursor:pointer;">
+          <div class="title">${escapeHtml(item.document_title)}</div>
+          <div class="small">Belge ID: ${item.document_id} | ${escapeHtml(item.file_name || "")}</div>
+        </article>
+      `).join("");
+    }
+
+    function renderMultiDocumentSources(items) {
+      if (!items || items.length === 0) {
+        multiDocumentSources.innerHTML = '<div class="empty">Kaynak pasaj bulunamadi.</div>';
+        return;
+      }
+
+      multiDocumentSources.innerHTML = items.map(item => `
+        <article class="source-card" onclick="openDocumentFile(${item.document_id})" style="cursor:pointer;">
+          <div class="title">${escapeHtml(item.document_title)}</div>
+          <div class="small">Belge ID: ${item.document_id} | Sayfa ${item.page_start}-${item.page_end}${item.section_title ? " | " + escapeHtml(item.section_title) : ""}</div>
+          <div class="small">match: ${escapeHtml(item.match_type)} | combined: ${formatScore(item.combined_score)}</div>
+          <div class="excerpt">${escapeHtml(item.chunk_text)}</div>
+        </article>
+      `).join("");
+    }
+
+    function renderMultiDocumentComparison(rows) {
+      if (!rows || rows.length === 0) {
+        multiDocumentComparison.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Belge</th>
+                <th>Cevap</th>
+                <th>Guven</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colspan="3" class="small">Karsilastirma sonuclari burada yer alacak.</td>
+              </tr>
+            </tbody>
+          </table>
+        `;
+        return;
+      }
+
+      multiDocumentComparison.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Belge</th>
+              <th>Cevap</th>
+              <th>Guven</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(row => `
+              <tr>
+                <td>${escapeHtml(row.document_title)}</td>
+                <td>${escapeHtml(row.answer)}</td>
+                <td>${formatScore(row.confidence)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function resetMultiDocumentWorkspace() {
+      multiDocumentAnswer.textContent = "Secilen rapor grubunun icerik cevabi burada gorunecek.";
+      multiDocumentMeta.textContent = "Ikinci asama soru sorulmadi.";
+      renderMultiDocumentDocuments([]);
+      renderMultiDocumentSources([]);
+      renderMultiDocumentComparison([]);
+    }
+
     async function runCatalogAsk() {
       const question = catalogQuestion.value.trim();
       if (!question) {
@@ -1077,11 +1713,228 @@ def upload_page() -> HTMLResponse:
           `Eslesen katalog kaydi: ${data.match_count}`
         );
         catalogAnswer.textContent = data.answer;
+        updateCatalogScope(data.catalog_matches, question);
         renderCatalogMatches(data.catalog_matches);
+        resetMultiDocumentWorkspace();
       } catch (error) {
         stopTimer(startedAt, message => { catalogAskMeta.textContent = message; }, `Katalog sorusu basarisiz oldu: ${error}`);
       } finally {
         catalogAskButton.disabled = false;
+      }
+    }
+
+    async function runMultiDocumentAsk() {
+      const question = multiDocumentQuestion.value.trim();
+      if (!question) {
+        multiDocumentMeta.textContent = "Icerik sorusu icin once bir soru gir.";
+        return;
+      }
+
+      const documentIds = [...new Set((lastCatalogMatches || [])
+        .map(item => Number(item.matched_document_id))
+        .filter(value => Number.isInteger(value) && value > 0)
+      )];
+      const catalogScopeQuestion = lastCatalogQuestion || catalogQuestion.value.trim();
+      if (documentIds.length === 0 && !catalogScopeQuestion) {
+        multiDocumentMeta.textContent = "Once katalog sorusu sorup eslesen rapor grubunu olustur.";
+        return;
+      }
+
+      multiDocumentAskButton.disabled = true;
+      const startedAt = startTimer(
+        message => { multiDocumentMeta.textContent = message; },
+        "Coklu belge icerigi taraniyor..."
+      );
+      try {
+        const response = await fetch("/ask/multi-document", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            question,
+            catalog_question: catalogScopeQuestion || null,
+            mode: multiDocumentMode.value,
+            limit: Number(multiDocumentLimit.value) || 6,
+            document_ids: documentIds,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          stopTimer(startedAt, message => { multiDocumentMeta.textContent = message; }, data.detail || "Coklu belge QA basarisiz oldu.");
+          return;
+        }
+        stopTimer(
+          startedAt,
+          message => { multiDocumentMeta.textContent = message; },
+          `Yuklu belge: ${data.matched_document_count} | Katalog kaydi: ${data.matched_catalog_count} | Guven: ${formatScore(data.confidence)}`
+        );
+        multiDocumentAnswer.textContent = data.answer;
+        renderMultiDocumentDocuments(data.documents);
+        renderMultiDocumentComparison(data.comparison_rows);
+        renderMultiDocumentSources(data.sources);
+      } catch (error) {
+        stopTimer(startedAt, message => { multiDocumentMeta.textContent = message; }, `Coklu belge QA basarisiz oldu: ${error}`);
+      } finally {
+        multiDocumentAskButton.disabled = false;
+      }
+    }
+
+    function catalogLinkHtml(item) {
+      const rawPath = item.source_path || item.report_code || "";
+      if (!rawPath) {
+        return "";
+      }
+      const label = rawPath.length > 42 ? `${rawPath.slice(0, 39)}...` : rawPath;
+      const backslash = String.fromCharCode(92);
+      const href = rawPath.includes(backslash) || rawPath.includes("/")
+        ? `file:///${rawPath.split(backslash).join("/")}`
+        : "";
+      if (!href) {
+        return `<span title="${escapeHtml(rawPath)}">${escapeHtml(label)}</span>`;
+      }
+      return `<a href="${escapeHtml(href)}" title="${escapeHtml(rawPath)}" target="_blank">${escapeHtml(label)}</a>`;
+    }
+
+    function renderCatalogTableRows(target, items, options = {}) {
+      const selectable = Boolean(options.selectable);
+      const compact = Boolean(options.compact);
+      const columns = compact ? 3 : selectable ? 5 : 4;
+      if (!items || items.length === 0) {
+        target.innerHTML = `<tr><td colspan="${columns}" class="small">Kayit bulunamadi.</td></tr>`;
+        return;
+      }
+
+      target.innerHTML = items.map(item => {
+        if (compact) {
+          return `
+            <tr${item.matched_document_id ? ` onclick="openDocumentFile(${item.matched_document_id})" style="cursor:pointer;"` : ""}>
+              <td>
+                <div class="title">${escapeHtml(item.report_code)}</div>
+                <div class="small">${escapeHtml(item.report_title || "")}</div>
+              </td>
+              <td>${escapeHtml(item.discipline || "")}</td>
+              <td>${embeddingStatusHtml(item)}</td>
+            </tr>
+          `;
+        }
+        const checkbox = selectable
+          ? `<td><input class="catalog-select" type="checkbox" data-catalog-entry-id="${item.id}" /></td>`
+          : "";
+        const openAction = item.matched_document_id
+          ? ` onclick="openDocumentFile(${item.matched_document_id})" style="cursor:pointer;"`
+          : "";
+        const documentText = item.matched_document_id ? ` | Belge ID: ${item.matched_document_id}` : "";
+        return `
+          <tr${openAction}>
+            ${checkbox}
+            <td>
+              <div class="title">${escapeHtml(item.report_code)}</div>
+              <div class="small">${escapeHtml(item.report_title || "")}${documentText}</div>
+              ${item.matched_document_id ? `<div class="small">${embeddingStatusHtml(item)}</div>` : ""}
+            </td>
+            <td>${escapeHtml(item.vehicle_name || "")}</td>
+            <td>${escapeHtml(item.discipline || "")}</td>
+            <td>${catalogLinkHtml(item)}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function embeddingStatusHtml(item) {
+      const status = item.embedding_status || "not_ingested";
+      const labels = {
+        complete: "Embedding tamam",
+        partial: "Embedding eksik",
+        missing: "Embedding yok",
+        not_ingested: "Ingest yok",
+      };
+      const countText = Number(item.chunk_count) > 0
+        ? ` ${Number(item.embedding_count || 0)}/${Number(item.chunk_count || 0)}`
+        : "";
+      return `<span class="status-pill ${escapeHtml(status)}">${escapeHtml(labels[status] || status)}${countText}</span>`;
+    }
+
+    function renderCatalogTable(data) {
+      catalogIngestedCount.textContent = String(data.ingested_count || 0);
+      catalogPendingCount.textContent = String(data.pending_count || 0);
+      catalogEmbeddedCount.textContent = String(data.embedded_count || 0);
+      catalogEmbeddingPendingCount.textContent = String(data.embedding_pending_count || 0);
+      renderCatalogTableRows(catalogIngestedTable, data.ingested || [], { selectable: false });
+      renderCatalogTableRows(catalogPendingTable, data.pending || [], { selectable: true });
+      renderCatalogTableRows(catalogEmbeddedTable, data.embedded || [], { compact: true });
+      renderCatalogTableRows(catalogEmbeddingPendingTable, data.embedding_pending || [], { compact: true });
+    }
+
+    async function refreshCatalogTable() {
+      catalogTableRefreshButton.disabled = true;
+      catalogSelectedIngestButton.disabled = true;
+      const startedAt = startTimer(
+        message => setCatalogStatus("ok", message),
+        "Katalog tablosu yenileniyor..."
+      );
+      try {
+        const response = await fetch("/catalog/table?limit=2000");
+        const data = await response.json();
+        catalogResultBox.textContent = JSON.stringify(data, null, 2);
+        if (!response.ok) {
+          stopTimer(startedAt, message => setCatalogStatus("error", message), data.detail || "Katalog tablosu alinamadi.");
+          return;
+        }
+        renderCatalogTable(data);
+        stopTimer(
+          startedAt,
+          message => setCatalogStatus("ok", message),
+          `Katalog tablosu hazir. Ingest edilmis: ${data.ingested_count}, edilmemis: ${data.pending_count}.`
+        );
+      } catch (error) {
+        stopTimer(startedAt, message => setCatalogStatus("error", message), `Katalog tablosu alinamadi: ${error}`);
+      } finally {
+        catalogTableRefreshButton.disabled = false;
+        catalogSelectedIngestButton.disabled = false;
+      }
+    }
+
+    async function ingestSelectedCatalogRows() {
+      const selectedIds = Array.from(document.querySelectorAll(".catalog-select:checked"))
+        .map(input => Number(input.dataset.catalogEntryId))
+        .filter(value => Number.isInteger(value) && value > 0);
+      if (selectedIds.length === 0) {
+        setCatalogStatus("error", "Ice almak icin once kirmizi tablodan rapor sec.");
+        return;
+      }
+
+      catalogTableRefreshButton.disabled = true;
+      catalogSelectedIngestButton.disabled = true;
+      const startedAt = startTimer(
+        message => setCatalogStatus("ok", message),
+        `${selectedIds.length} katalog kaydi ice aliniyor...`
+      );
+      try {
+        const response = await fetch("/catalog/ingest-selected", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ catalog_entry_ids: selectedIds }),
+        });
+        const data = await response.json();
+        catalogResultBox.textContent = JSON.stringify(data, null, 2);
+        if (!response.ok) {
+          stopTimer(startedAt, message => setCatalogStatus("error", message), data.detail || "Secilen raporlar ice alinamadi.");
+          return;
+        }
+        stopTimer(
+          startedAt,
+          message => setCatalogStatus("ok", message),
+          `Ice alma tamamlandi. Yeni: ${data.ingested_count}, duplicate: ${data.duplicate_count}, hata: ${data.error_count}.`
+        );
+        await refreshCatalogTable();
+      } catch (error) {
+        stopTimer(startedAt, message => setCatalogStatus("error", message), `Secilen raporlar ice alinamadi: ${error}`);
+      } finally {
+        catalogTableRefreshButton.disabled = false;
+        catalogSelectedIngestButton.disabled = false;
       }
     }
 
@@ -1380,6 +2233,7 @@ def upload_page() -> HTMLResponse:
             message => setCatalogStatus("ok", message),
             `Katalog yuklendi. ${data.created_count} yeni kayit, ${data.duplicate_count} duplicate.`
           );
+          await refreshCatalogTable();
         } else {
           stopTimer(startedAt, message => setCatalogStatus("error", message), data.detail || "Katalog yukleme basarisiz oldu.");
         }
@@ -1405,14 +2259,44 @@ def upload_page() -> HTMLResponse:
       }
     });
     catalogAskButton.addEventListener("click", runCatalogAsk);
+    catalogTableRefreshButton.addEventListener("click", refreshCatalogTable);
+    catalogSelectedIngestButton.addEventListener("click", ingestSelectedCatalogRows);
     catalogQuestion.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
         runCatalogAsk();
       }
     });
+    multiDocumentAskButton.addEventListener("click", runMultiDocumentAsk);
+    multiDocumentQuestion.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        runMultiDocumentAsk();
+      }
+    });
+    document.querySelectorAll("[data-expand-module]").forEach(button => {
+      button.addEventListener("click", () => {
+        const section = button.closest(".section");
+        if (section) {
+          openModule(section);
+        }
+      });
+    });
+    moduleModalClose.addEventListener("click", closeModule);
+    moduleModal.addEventListener("click", (event) => {
+      if (event.target === moduleModal) {
+        closeModule();
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && moduleModal.classList.contains("open")) {
+        closeModule();
+      }
+    });
     draftQuickButton.addEventListener("click", () => runDraft("quick"));
     draftDetailedButton.addEventListener("click", () => runDraft("detailed"));
+    updateCatalogScope([], "");
+    resetMultiDocumentWorkspace();
 
     function openDocumentFile(documentId) {
       window.open(`/documents/${documentId}/file`, "_blank");
@@ -1594,6 +2478,58 @@ def ask_catalog(
 ) -> CatalogAskResponse:
     service = CatalogService(session)
     return CatalogAskResponse(**service.answer_catalog_question(payload.question, limit=payload.limit))
+
+
+@app.post("/ask/multi-document", response_model=MultiDocumentAskResponse)
+def ask_multi_document(
+    payload: MultiDocumentAskRequest,
+    session: Session = Depends(get_session),
+) -> MultiDocumentAskResponse:
+    service = MultiDocumentQAService(session)
+    return MultiDocumentAskResponse(
+        **service.answer_question(
+            payload.question,
+            mode=payload.mode,
+            limit=payload.limit,
+            document_ids=payload.document_ids,
+            catalog_question=payload.catalog_question,
+        )
+    )
+
+
+@app.post("/catalog/ingest-sample", response_model=CatalogSampleIngestResponse)
+def ingest_catalog_sample(
+    per_discipline: int = Query(2, ge=1, le=10),
+    dry_run: bool = Query(True),
+    scan_limit_per_discipline: int = Query(25, ge=1, le=500),
+    session: Session = Depends(get_session),
+) -> CatalogSampleIngestResponse:
+    service = CatalogIngestService(session)
+    return CatalogSampleIngestResponse(
+        **service.ingest_sample_per_discipline(
+            per_discipline=per_discipline,
+            dry_run=dry_run,
+            scan_limit_per_discipline=scan_limit_per_discipline,
+        )
+    )
+
+
+@app.get("/catalog/table", response_model=CatalogTableResponse)
+def catalog_table(
+    limit: int = Query(2000, ge=20, le=5000),
+    session: Session = Depends(get_session),
+) -> CatalogTableResponse:
+    service = CatalogIngestService(session)
+    return CatalogTableResponse(**service.catalog_table(limit=limit))
+
+
+@app.post("/catalog/ingest-selected", response_model=CatalogSelectedIngestResponse)
+def ingest_selected_catalog_entries(
+    payload: CatalogSelectedIngestRequest,
+    session: Session = Depends(get_session),
+) -> CatalogSelectedIngestResponse:
+    service = CatalogIngestService(session)
+    return CatalogSelectedIngestResponse(**service.ingest_catalog_entries(payload.catalog_entry_ids))
 
 
 @app.post("/draft-report", response_model=DraftReportResponse)

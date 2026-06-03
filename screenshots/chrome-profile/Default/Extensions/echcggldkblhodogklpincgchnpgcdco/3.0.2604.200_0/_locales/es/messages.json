@@ -1,0 +1,38 @@
+{
+   "bodyOfRedirectionPage": {
+      "message": "Este sitio contiene información confidencial, por lo que, para la seguridad y el cumplimiento, su organización requiere que use Microsoft Edge si accede a él."
+   },
+   "descriptionOfChromeExtension": {
+      "message": "Proteger la organización frente a pérdidas de datos confidenciales."
+   },
+   "descriptionOfEdgeExtension": {
+      "message": "La Extensión de Microsoft Purview permite a las organizaciones recopilar señales de la Administración de riesgos internos de Insider desde el explorador Microsoft Edge."
+   },
+   "descriptionOfFirefoxExtension": {
+      "message": "Proteger la organización frente a pérdidas de datos confidenciales."
+   },
+   "fileIndicatorIcon": {
+      "message": "Clasificación de confidencialidad de DLP de Microsoft Endpoint"
+   },
+   "nameOfChromeExtension": {
+      "message": "Extensión de Microsoft Purview"
+   },
+   "nameOfEdgeExtension": {
+      "message": "Extensión de Microsoft Purview"
+   },
+   "nameOfFirefoxExtension": {
+      "message": "Extensión de Microsoft Purview"
+   },
+   "shortNameOfChromeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfEdgeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfFirefoxExtension": {
+      "message": "MPE"
+   },
+   "titleOfRedirectionPage": {
+      "message": "Abriendo en Microsoft Edge"
+   }
+}

@@ -1,0 +1,38 @@
+{
+   "bodyOfRedirectionPage": {
+      "message": "Situs ini berisi informasi sensitif. Jadi, organisasi mengharuskan Anda menggunakan Microsoft Edge untuk mengaksesnya demi keamanan dan kepatuhan."
+   },
+   "descriptionOfChromeExtension": {
+      "message": "Lindungi organisasi Anda dari kebocoran data sensitif."
+   },
+   "descriptionOfEdgeExtension": {
+      "message": "Ekstensi Microsoft Purview memungkinkan organisasi mengumpulkan sinyal Manajemen Risiko Insider dari browser Microsoft Edge."
+   },
+   "descriptionOfFirefoxExtension": {
+      "message": "Lindungi organisasi Anda dari kebocoran data sensitif."
+   },
+   "fileIndicatorIcon": {
+      "message": "Klasifikasi Sensitivitas oleh DLP Titik Akhir Microsoft"
+   },
+   "nameOfChromeExtension": {
+      "message": "Ekstensi Microsoft Purview"
+   },
+   "nameOfEdgeExtension": {
+      "message": "Ekstensi Microsoft Purview"
+   },
+   "nameOfFirefoxExtension": {
+      "message": "Ekstensi Microsoft Purview"
+   },
+   "shortNameOfChromeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfEdgeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfFirefoxExtension": {
+      "message": "MPE"
+   },
+   "titleOfRedirectionPage": {
+      "message": "Membuka di Microsoft Edge"
+   }
+}

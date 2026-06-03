@@ -1,0 +1,38 @@
+{
+   "bodyOfRedirectionPage": {
+      "message": "يحتوي هذا الموقع على معلومات حساسة لذلك تطالبك مؤسستك لأغراض متعلقة بالأمان والتوافق استخدام Microsoft Edge للوصول إليه."
+   },
+   "descriptionOfChromeExtension": {
+      "message": "قم بتوفير الحماية لمؤسستك من تسرب البيانات الحساسة."
+   },
+   "descriptionOfEdgeExtension": {
+      "message": "يتيح ملحق Microsoft Purview للمؤسسات تجميع إشارات إدارة المخاطر الداخلية من مستعرض Microsoft Edge."
+   },
+   "descriptionOfFirefoxExtension": {
+      "message": "قم بتوفير الحماية لمؤسستك من تسرب البيانات الحساسة."
+   },
+   "fileIndicatorIcon": {
+      "message": "تصنيف مستوى الحساسية بواسطة تفادي فقدان البيانات لنقطة النهاية في Microsoft"
+   },
+   "nameOfChromeExtension": {
+      "message": "ملحق Microsoft Purview"
+   },
+   "nameOfEdgeExtension": {
+      "message": "ملحق Microsoft Purview"
+   },
+   "nameOfFirefoxExtension": {
+      "message": "ملحق Microsoft Purview"
+   },
+   "shortNameOfChromeExtension": {
+      "message": "ملحق MP"
+   },
+   "shortNameOfEdgeExtension": {
+      "message": "ملحق MP"
+   },
+   "shortNameOfFirefoxExtension": {
+      "message": "MPE"
+   },
+   "titleOfRedirectionPage": {
+      "message": "فتح في Microsoft Edge"
+   }
+}

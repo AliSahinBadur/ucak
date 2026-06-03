@@ -183,3 +183,105 @@ class CatalogAskResponse(BaseModel):
     match_count: int
     filters: dict
     catalog_matches: list[CatalogEntryResponse]
+
+
+class MultiDocumentAskRequest(BaseModel):
+    question: str = Field(min_length=3)
+    catalog_question: str | None = Field(default=None, max_length=400)
+    mode: Literal["keyword", "semantic", "hybrid"] = "hybrid"
+    limit: int = Field(default=6, ge=1, le=12)
+    document_ids: list[int] = Field(default_factory=list)
+
+
+class MultiDocumentScopeResponse(BaseModel):
+    document_id: int
+    document_title: str
+    file_name: str
+
+
+class MultiDocumentComparisonRowResponse(BaseModel):
+    document_id: int
+    document_title: str
+    answer: str
+    confidence: float = Field(default=0.0)
+    source_count: int = Field(default=0, ge=0)
+
+
+class MultiDocumentAskResponse(BaseModel):
+    question: str
+    catalog_question: str | None = None
+    mode: Literal["keyword", "semantic", "hybrid"]
+    answer: str
+    answer_found: bool
+    confidence: float = Field(default=0.0)
+    embedding_provider: str
+    matched_catalog_count: int = Field(default=0, ge=0)
+    matched_document_count: int = Field(default=0, ge=0)
+    documents: list[MultiDocumentScopeResponse]
+    comparison_rows: list[MultiDocumentComparisonRowResponse]
+    sources: list[AnswerSourceResponse]
+
+
+class CatalogSampleIngestItemResponse(BaseModel):
+    catalog_entry_id: int
+    discipline: str
+    report_code: str
+    vehicle_name: str
+    report_title: str
+    source_path: str
+    document_id: int | None = None
+    status: Literal["found", "ingested", "duplicate", "error"]
+    error: str | None = None
+
+
+class CatalogSampleIngestResponse(BaseModel):
+    dry_run: bool
+    per_discipline: int
+    disciplines_seen: int
+    files_selected: int
+    ingested_count: int
+    duplicate_count: int
+    found_count: int
+    error_count: int
+    summary: dict
+    items: list[CatalogSampleIngestItemResponse]
+
+
+class CatalogTableRowResponse(BaseModel):
+    id: int
+    report_code: str
+    vehicle_name: str
+    report_title: str
+    discipline: str
+    report_date: str | None = None
+    authors: str | None = None
+    source_path: str | None = None
+    matched_document_id: int | None = None
+    status: Literal["ingested", "pending"]
+    chunk_count: int = Field(default=0, ge=0)
+    embedding_count: int = Field(default=0, ge=0)
+    embedding_status: Literal["complete", "partial", "missing", "not_ingested"] = "not_ingested"
+
+
+class CatalogTableResponse(BaseModel):
+    total_seen: int
+    ingested_count: int
+    pending_count: int
+    embedded_count: int
+    embedding_pending_count: int
+    ingested: list[CatalogTableRowResponse]
+    pending: list[CatalogTableRowResponse]
+    embedded: list[CatalogTableRowResponse]
+    embedding_pending: list[CatalogTableRowResponse]
+
+
+class CatalogSelectedIngestRequest(BaseModel):
+    catalog_entry_ids: list[int] = Field(default_factory=list)
+
+
+class CatalogSelectedIngestResponse(BaseModel):
+    requested_count: int
+    ingested_count: int
+    duplicate_count: int
+    error_count: int
+    items: list[CatalogSampleIngestItemResponse]

@@ -1,0 +1,38 @@
+{
+   "bodyOfRedirectionPage": {
+      "message": "此網站包含敏感性資訊，因此為了安全性與合規性，貴組織要求您使用 Microsoft Edge 來存取此網站。"
+   },
+   "descriptionOfChromeExtension": {
+      "message": "保護您的組織免于流失敏感性資料。"
+   },
+   "descriptionOfEdgeExtension": {
+      "message": "Microsoft Purview 延伸模組能讓組織從 Microsoft Edge 瀏覽器收集測試人員風險管理訊號。"
+   },
+   "descriptionOfFirefoxExtension": {
+      "message": "保護您的組織免於流失敏感性資料。"
+   },
+   "fileIndicatorIcon": {
+      "message": "Microsoft 端點 DLP 敏感度分類"
+   },
+   "nameOfChromeExtension": {
+      "message": "Microsoft Purview 延伸模組"
+   },
+   "nameOfEdgeExtension": {
+      "message": "Microsoft Purview 延伸模組"
+   },
+   "nameOfFirefoxExtension": {
+      "message": "Microsoft Purview 延伸模組"
+   },
+   "shortNameOfChromeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfEdgeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfFirefoxExtension": {
+      "message": "MPE"
+   },
+   "titleOfRedirectionPage": {
+      "message": "正在 Microsoft Edge 中開啟"
+   }
+}

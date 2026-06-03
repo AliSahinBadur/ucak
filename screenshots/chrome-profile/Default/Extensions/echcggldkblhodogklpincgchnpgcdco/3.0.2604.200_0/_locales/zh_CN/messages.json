@@ -1,0 +1,38 @@
+{
+   "bodyOfRedirectionPage": {
+      "message": "此网站包含敏感信息，因此为了确保安全性和合规性，你的组织要求你在访问该网站时使用 Microsoft Edge。"
+   },
+   "descriptionOfChromeExtension": {
+      "message": "保护你的组织免受敏感数据泄漏损害。"
+   },
+   "descriptionOfEdgeExtension": {
+      "message": "Microsoft Purview 扩展支持组织从 Microsoft Edge 浏览器收集内部风险管理信号。"
+   },
+   "descriptionOfFirefoxExtension": {
+      "message": "保护你的组织免受敏感数据泄漏损害。"
+   },
+   "fileIndicatorIcon": {
+      "message": "Microsoft 终结点 DLP 的敏感度分类"
+   },
+   "nameOfChromeExtension": {
+      "message": "Microsoft Purview 扩展"
+   },
+   "nameOfEdgeExtension": {
+      "message": "Microsoft Purview 扩展"
+   },
+   "nameOfFirefoxExtension": {
+      "message": "Microsoft Purview 扩展"
+   },
+   "shortNameOfChromeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfEdgeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfFirefoxExtension": {
+      "message": "MPE"
+   },
+   "titleOfRedirectionPage": {
+      "message": "正在 Microsoft Edge 中打开"
+   }
+}

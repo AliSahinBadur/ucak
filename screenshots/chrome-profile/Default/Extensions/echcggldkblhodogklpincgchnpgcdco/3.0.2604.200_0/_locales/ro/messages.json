@@ -1,0 +1,38 @@
+{
+   "bodyOfRedirectionPage": {
+      "message": "Acest site conține informații confidențiale, prin urmare, pentru securitate și conformitate, organizația dvs. vă solicită să utilizați Microsoft Edge dacă le accesați."
+   },
+   "descriptionOfChromeExtension": {
+      "message": "Protejați-vă organizația împotriva scurgerilor de date confidențiale."
+   },
+   "descriptionOfEdgeExtension": {
+      "message": "Extensia Microsoft Purview le permite organizațiilor să colecteze semnale de gestionare a riscurilor interne din browserul Microsoft Edge."
+   },
+   "descriptionOfFirefoxExtension": {
+      "message": "Protejați-vă organizația împotriva scurgerilor de date confidențiale."
+   },
+   "fileIndicatorIcon": {
+      "message": "Clasificarea confidențialității de către Microsoft Endpoint DLP"
+   },
+   "nameOfChromeExtension": {
+      "message": "Extensie Microsoft Purview"
+   },
+   "nameOfEdgeExtension": {
+      "message": "Extensie Microsoft Purview"
+   },
+   "nameOfFirefoxExtension": {
+      "message": "Extensie Microsoft Purview"
+   },
+   "shortNameOfChromeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfEdgeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfFirefoxExtension": {
+      "message": "MPE"
+   },
+   "titleOfRedirectionPage": {
+      "message": "Se deschide în Microsoft Edge"
+   }
+}

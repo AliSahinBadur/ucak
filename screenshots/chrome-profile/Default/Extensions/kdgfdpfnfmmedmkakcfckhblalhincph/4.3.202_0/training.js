@@ -1,0 +1,1 @@
+chrome.storage.local.get(["base_url"],e=>{const r=`${e.base_url}/endpoints/surveys?instance_id=${new URL(window.location.href).searchParams.get("instance_id")}&ext_id=${chrome.runtime.id}`;document.querySelector("iframe").src=r});

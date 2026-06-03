@@ -1,0 +1,38 @@
+{
+   "bodyOfRedirectionPage": {
+      "message": "Deze site bevat gevoelige gegevens. Uit beveiligings- en compliance-overwegingen vereist uw organisatie dat u Microsoft Edge gebruikt als u deze site opent."
+   },
+   "descriptionOfChromeExtension": {
+      "message": "Bescherm uw organisatie tegen gevoelige gegevenslekken."
+   },
+   "descriptionOfEdgeExtension": {
+      "message": "Met de Microsoft Purview-uitbreiding kunnen organisaties Insider Risk Management-signalen verzamelen vanuit de Microsoft Edge-browser."
+   },
+   "descriptionOfFirefoxExtension": {
+      "message": "Bescherm uw organisatie tegen het lekken van gevoelige gegevens."
+   },
+   "fileIndicatorIcon": {
+      "message": "Vertrouwelijkheidsclassificatie door Microsoft Endpoint DLP"
+   },
+   "nameOfChromeExtension": {
+      "message": "Microsoft Purview-uitbreiding"
+   },
+   "nameOfEdgeExtension": {
+      "message": "Microsoft Purview-uitbreiding"
+   },
+   "nameOfFirefoxExtension": {
+      "message": "Microsoft Purview Extension"
+   },
+   "shortNameOfChromeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfEdgeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfFirefoxExtension": {
+      "message": "MPE"
+   },
+   "titleOfRedirectionPage": {
+      "message": "Openen in Microsoft Edge"
+   }
+}

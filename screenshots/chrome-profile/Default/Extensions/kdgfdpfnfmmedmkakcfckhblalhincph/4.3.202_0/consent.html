@@ -1,0 +1,102 @@
+<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,user-scalable=no,initial-scale=1,maximum-scale=1,minimum-scale=1"><meta http-equiv="X-UA-Compatible" content="ie=edge"><title>DefensX Permissions</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@400;700&display=swap" rel="stylesheet"><style>*, :after, :before {
+            box-sizing: border-box;
+            border: 0 solid #e5e7eb;
+        }
+
+        a {
+            text-decoration: none;
+            color: #0078d4;
+        }
+
+        html, body, .container {
+            height: 100%;
+        }
+
+        body {
+            font-family: 'Titillium Web', sans-serif;
+            padding: 0;
+            margin: 0;
+            background: #f1f1f1;
+            font-size: 1rem;
+            color: #242424;
+        }
+
+        .container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .header {
+            display: flex;
+            justify-content: center;
+        }
+
+        .header img {
+            width: 160px;
+        }
+        .consent {
+            width: 840px;
+            margin: 0 auto;
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px -2px rgba(0,0,0,0.2);
+        }
+        .consent h1 {
+            margin-top: 0;
+            margin-bottom: 0;
+        }
+
+        .consent h2 {
+            margin:0;
+            text-align: center;
+        }
+
+        .footer {
+            margin-top: 1rem;
+        }
+
+        .sections > div {
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #f1f1f1;
+            margin-bottom: 1rem;
+        }
+
+        .btn {
+            line-height: 1.5;
+            text-align: center;
+            text-decoration: none;
+            vertical-align: middle;
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 6px;
+            box-shadow: 0 4px 8px -2px rgba(0,0,0,0.4);
+            user-select: none;
+        }
+
+        .btn:disabled {
+            opacity: 0.3;
+            pointer-events: none;
+        }
+
+        .btn-accept {
+            background: #0078d4;
+            color: #fff;
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
+
+        .btn-decline {
+            background: #fff;
+            font-weight: bold;
+            font-size: 1.5rem;
+            margin-left: .5rem;
+            box-shadow: 0 2px 8px -2px rgba(0,0,0,0.1);
+        }
+
+        .footer {
+            display: flex;
+            justify-content: center;
+        }</style><script defer="defer" src="consent.js"></script></head><body><div class="container"><div><div class="header"><a href="https://www.defensx.com"><img src="defensx_horizontal_colored_gray.png"></a></div><div class="consent"><div class="sections"><div><h2>PRIVACY</h2><div class="section-flex" style="border-bottom: 1px solid #f1f1f1;  margin-bottom: 1rem;"><div class="desc"><p>The DefensX browser extension for Mozilla requires your permission to store and maintain information about the web addresses (URLs) you visit. We also collect limited aggregated statistical data about how you use the DefensX extension. The information we collect and maintain is used to help us improve and optimize DefensX so that we can continue to provide you with the best possible secure browsing experience.</p></div></div><div class="section-flex"><div class="desc" style="background: #f9f9f9; padding: 1rem;"><div>Can we collect the following <b>data that personally identifies you:</b></div><div style="display: flex; align-items: flex-start; padding-top: 1rem"><div style="width: 80%"><div style="margin-bottom: .5rem; padding-left: .5rem; font-size: 13px;">- Collect and store websites you visit</div><div style="margin-bottom: .5rem; padding-left: .5rem; font-size: 13px;">- Websites from which you have uploaded or downloaded files</div><div style="margin-bottom: .5rem; padding-left: .5rem; font-size: 13px;">- Websites where you have used a password that was previously exposed in a data breach</div><div style="font-weight: bold; color:#b45a5a; font-size: 12px;">Without this permission, you will not able to use the DefensX extension.</div></div><div style="width: 20%"><input type="checkbox" style="width: 32px; height: 32px;" id="personal"></div></div></div></div><div class="section-flex" style="padding-top: 1rem"><div class="desc" style="background: #f9f9f9; padding: 1rem;"><div>Can we collect the following <b>anonymous data about your use of DefensX Mozilla Extension:</b></div><div style="display: flex; align-items: flex-start; padding-top: 1rem"><div style="width: 80%"><div style="margin-bottom: .5rem; padding-left: .5rem; font-size: 13px;">- Collecting data on blocked trackers and ads to help improve our adblocker engine</div></div><div style="width: 20%"><input type="checkbox" style="width: 32px; height: 32px;" checked="checked" id="technical"></div></div></div></div></div></div><div class="pp">For details, see our <a href="https://www.defensx.com/terms-conditions/" target="_blank">privacy policy</a></div></div><div class="footer"><button class="btn btn-accept" disabled="disabled">ACCEPT</button> <button class="btn btn-decline">DECLINE</button></div></div></div></body></html>

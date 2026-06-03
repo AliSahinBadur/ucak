@@ -1,0 +1,38 @@
+{
+   "bodyOfRedirectionPage": {
+      "message": "Šajā vietnē ir ietverta sensitīva informācija, tāpēc, lai nodrošinātu drošību un atbilstību, jūsu organizācija pieprasa izmantot Microsoft Edge, ja tai piekļūstat."
+   },
+   "descriptionOfChromeExtension": {
+      "message": "Aizsargājiet savu organizāciju pret sensitīvo datu noplūdēm."
+   },
+   "descriptionOfEdgeExtension": {
+      "message": "Izmantojot Microsoft Purview paplašinājumu, organizācijas var apkopot iekšējā riska pārvaldības signālus no pārlūkprogrammas Microsoft Edge."
+   },
+   "descriptionOfFirefoxExtension": {
+      "message": "Aizsargājiet savu organizāciju pret sensitīvo datu noplūdēm."
+   },
+   "fileIndicatorIcon": {
+      "message": "Jutības klasifikācija pēc Microsoft galapunkta DLP"
+   },
+   "nameOfChromeExtension": {
+      "message": "Microsoft Purview paplašinājums"
+   },
+   "nameOfEdgeExtension": {
+      "message": "Microsoft Purview paplašinājums"
+   },
+   "nameOfFirefoxExtension": {
+      "message": "Microsoft Purview paplašinājums"
+   },
+   "shortNameOfChromeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfEdgeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfFirefoxExtension": {
+      "message": "MPE"
+   },
+   "titleOfRedirectionPage": {
+      "message": "Atver pārlūkā Microsoft Edge"
+   }
+}

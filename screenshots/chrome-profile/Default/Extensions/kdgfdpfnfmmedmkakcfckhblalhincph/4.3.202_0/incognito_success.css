@@ -1,0 +1,58 @@
+body, html {
+    height: 100%;
+}
+
+body {
+    background-color: rgb(247, 247, 247);
+    color: #242424;
+    font-family: "system-ui", sans-serif;
+}
+
+#core {
+    width: 785px;
+    padding-inline: 1rem;
+    margin-left: auto;
+    margin-right: auto;
+    border-left: 2px solid #f1f1f1;
+    border-right: 2px solid #f1f1f1;
+    background: #fff;
+    height: 100%;
+}
+
+.success-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    height: 100%;
+    margin-top: -2rem;
+}
+
+.success-container .icon {
+    font-size: 3rem;
+}
+
+.success-container .icon svg {
+    width: 64px;
+    height: 64px;
+    fill: #13c613;
+}
+
+.success-container h1 {
+    font-size: 2.4rem;
+    margin-bottom: 1rem;
+    margin-top: 0;
+}
+
+.success-container .desc {
+    margin-bottom: 2rem;
+    font-size: 1.5rem;
+}
+
+.success-container .logo {
+    margin-bottom: 2rem;
+}
+
+.success-container .logo img {
+    width: 120px;
+}

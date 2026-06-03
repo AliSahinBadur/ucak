@@ -1,0 +1,38 @@
+{
+   "bodyOfRedirectionPage": {
+      "message": "Trang web này chứa thông tin nhạy cảm, vì vậy, để bảo mật và tuân thủ, tổ chức của bạn yêu cầu bạn sử dụng Microsoft Edge nếu bạn truy cập."
+   },
+   "descriptionOfChromeExtension": {
+      "message": "Bảo vệ tổ chức của bạn khỏi rò rỉ dữ liệu nhạy cảm."
+   },
+   "descriptionOfEdgeExtension": {
+      "message": "Tiện ích bổ sung Microsoft Purview cho phép các tổ chức thu thập các tín hiệu Quản lý rủi ro nội bộ từ trình duyệt Microsoft Edge."
+   },
+   "descriptionOfFirefoxExtension": {
+      "message": "Bảo vệ tổ chức của bạn khỏi rò rỉ dữ liệu nhạy cảm."
+   },
+   "fileIndicatorIcon": {
+      "message": "Phân loại Mức nhạy cảm theo DLP Điểm cuối của Microsoft"
+   },
+   "nameOfChromeExtension": {
+      "message": "Tiện ích bổ sung Microsoft Purview"
+   },
+   "nameOfEdgeExtension": {
+      "message": "Tiện ích bổ sung Microsoft Purview"
+   },
+   "nameOfFirefoxExtension": {
+      "message": "Tiện ích bổ sung Microsoft Purview"
+   },
+   "shortNameOfChromeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfEdgeExtension": {
+      "message": "MPE"
+   },
+   "shortNameOfFirefoxExtension": {
+      "message": "MPE"
+   },
+   "titleOfRedirectionPage": {
+      "message": "Mở trong Microsoft Edge"
+   }
+}

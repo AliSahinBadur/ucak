@@ -1,0 +1,1 @@
+(()=>{async function e(){chrome.runtime.sendMessage({message:"GET_POLICIES",payload:{hostname:window.location.hostname}})}document.prerendering?document.addEventListener("prerenderingchange",e,{once:!0}):e()})();
