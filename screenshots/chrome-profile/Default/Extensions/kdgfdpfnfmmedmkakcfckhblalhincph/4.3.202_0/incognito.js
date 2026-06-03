@@ -1,1 +1,0 @@
-document.addEventListener("DOMContentLoaded",e=>{const n=new URL(window.location.href).searchParams.get("variant"),t=n&&["edge","chrome","firefox"].includes(n)?n:"chrome",o=document.createElement("iframe");o.src=chrome.runtime.getURL(`incognito_${t}.html`),o.frameborder="no",o.classList.add(t),document.querySelector("#yield").append(o)});

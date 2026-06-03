@@ -1,1 +1,0 @@
-(()=>{const e=document.createElement("script");e.id="isoolate_t",e.src=chrome.runtime.getURL("token.js"),(document.head||document.documentElement).appendChild(e)})();

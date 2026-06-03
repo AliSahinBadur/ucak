@@ -11,6 +11,9 @@ exports/
 tmp_*.js
 tmp_*.py
 
+# Browser automation profiles generated during UI checks.
+screenshots/chrome-profile*/
+
 *.db
 *.sqlite3
 *.pyc
