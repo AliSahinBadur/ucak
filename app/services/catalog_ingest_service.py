@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
+import re
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..db.models import ChunkEmbedding, DocumentChunk, ReportCatalogEntry
+from ..db.models import CatalogDocumentLink, ChunkEmbedding, DocumentChunk, ReportCatalogEntry
 from .catalog_service import CatalogService
 from .ingest_service import IngestService, SUPPORTED_EXTENSIONS
 
@@ -14,11 +15,12 @@ from .ingest_service import IngestService, SUPPORTED_EXTENSIONS
 class CatalogIngestService:
     IGNORED_DISCIPLINES = {"", "ANALYSIS TYPE"}
     DEFAULT_SEARCH_ROOTS = (Path("V:/RAPORLAR"), Path("V:/"))
+    MAX_DIRECTORY_FILES = 150
+    MAX_DIRECTORY_DEPTH = 2
 
     def __init__(self, session: Session) -> None:
         self.session = session
         self.catalog_service = CatalogService(session)
-        self._file_index: dict[str, Path] | None = None
 
     def ingest_sample_per_discipline(
         self,
@@ -150,7 +152,7 @@ class CatalogIngestService:
                         "source_path": entry.source_path or entry.report_code,
                         "document_id": None,
                         "status": "error",
-                        "error": "PDF/DOCX file could not be found from catalog path.",
+                        "error": "PDF/DOCX/PPTX file could not be found from the direct catalog path.",
                     }
                 )
                 continue
@@ -165,7 +167,53 @@ class CatalogIngestService:
             "items": items,
         }
 
-    def _ingest_or_preview(self, entry: ReportCatalogEntry, source_path: Path, dry_run: bool) -> dict:
+    def ingest_catalog_candidate(self, catalog_entry_id: int, file_path: str) -> dict:
+        entry = self.session.get(ReportCatalogEntry, catalog_entry_id)
+        if entry is None:
+            return {
+                "catalog_entry_id": catalog_entry_id,
+                "discipline": "",
+                "report_code": "",
+                "vehicle_name": "",
+                "report_title": "",
+                "source_path": file_path,
+                "document_id": None,
+                "status": "error",
+                "error": "Catalog entry not found.",
+            }
+
+        candidate_map = {
+            item["path"].casefold(): item
+            for item in self._entry_file_candidates(entry)
+        }
+        selected = candidate_map.get(str(Path(file_path)).casefold()) or candidate_map.get(file_path.casefold())
+        if selected is None:
+            return {
+                "catalog_entry_id": entry.id,
+                "discipline": entry.discipline,
+                "report_code": entry.report_code,
+                "vehicle_name": entry.vehicle_name,
+                "report_title": entry.report_title,
+                "source_path": file_path,
+                "document_id": None,
+                "status": "error",
+                "error": "Selected file is not a valid candidate for this catalog entry.",
+            }
+
+        return self._ingest_or_preview(
+            entry,
+            Path(selected["path"]),
+            dry_run=False,
+            match_method="catalog_candidate",
+        )
+
+    def _ingest_or_preview(
+        self,
+        entry: ReportCatalogEntry,
+        source_path: Path,
+        dry_run: bool,
+        match_method: str = "catalog_ingest",
+    ) -> dict:
         base_payload = {
             "catalog_entry_id": entry.id,
             "discipline": entry.discipline,
@@ -182,9 +230,17 @@ class CatalogIngestService:
 
         try:
             result = IngestService(self.session).ingest(source_path, original_file_name=source_path.name)
+            document_id = result.get("document_id")
+            if document_id:
+                self._link_catalog_document(
+                    catalog_entry_id=entry.id,
+                    document_id=int(document_id),
+                    source_path=str(source_path),
+                    match_method=match_method,
+                )
             return {
                 **base_payload,
-                "document_id": result.get("document_id"),
+                "document_id": document_id,
                 "status": result.get("status", "ingested"),
                 "error": None,
             }
@@ -293,36 +349,205 @@ class CatalogIngestService:
         ).scalars().all()
 
     def _resolve_entry_file(self, entry: ReportCatalogEntry) -> Path | None:
+        candidates = self._entry_file_candidates(entry)
+        if candidates:
+            return Path(candidates[0]["path"])
+        return None
+
+    def file_candidates_for_entry(self, catalog_entry_id: int) -> dict:
+        entry = self.session.get(ReportCatalogEntry, catalog_entry_id)
+        if entry is None:
+            return {
+                "catalog_entry_id": catalog_entry_id,
+                "items": [],
+                "error": "Catalog entry not found.",
+            }
+        return {
+            "catalog_entry_id": entry.id,
+            "report_code": entry.report_code,
+            "source_path": entry.source_path,
+            "items": self._entry_file_candidates(entry),
+            "error": None,
+        }
+
+    def _entry_file_candidates(self, entry: ReportCatalogEntry) -> list[dict]:
         raw_candidates = [
             entry.source_path or "",
             entry.report_code or "",
         ]
+        candidates: list[dict] = []
         for raw_value in raw_candidates:
             for candidate in self._path_candidates(raw_value):
-                if candidate.is_file() and candidate.suffix.lower() in SUPPORTED_EXTENSIONS:
-                    return candidate
-                if candidate.is_dir():
-                    nested = self._first_supported_file(candidate, preferred_stem=Path(raw_value).name)
-                    if nested:
-                        return nested
-        return None
+                if self._is_supported_file(candidate):
+                    candidates.append(self._candidate_payload(entry, candidate, "direct_file"))
+                    continue
+                if self._is_directory(candidate):
+                    for nested in self._directory_supported_files(candidate):
+                        candidates.append(self._candidate_payload(entry, nested, "folder_candidate"))
 
-    def _path_candidates(self, raw_value: str) -> list[Path]:
-        cleaned = raw_value.strip().strip('"')
-        if not cleaned:
+        deduped: dict[str, dict] = {}
+        for candidate in candidates:
+            key = candidate["path"].casefold()
+            if key not in deduped or candidate["score"] > deduped[key]["score"]:
+                deduped[key] = candidate
+        return sorted(deduped.values(), key=lambda item: (-item["score"], item["file_name"].casefold()))
+
+    def _candidate_payload(self, entry: ReportCatalogEntry, path: Path, match_method: str) -> dict:
+        return {
+            "path": str(path),
+            "file_name": path.name,
+            "extension": path.suffix.lower(),
+            "score": self._candidate_score(entry, path),
+            "match_method": match_method,
+        }
+
+    def _candidate_score(self, entry: ReportCatalogEntry, path: Path) -> int:
+        name_key = self._normalize_stem(path.stem)
+        score = {".pdf": 12, ".docx": 9, ".pptx": 7}.get(path.suffix.lower(), 0)
+        keys = self._target_keys(entry)
+        for key in keys:
+            if not key:
+                continue
+            if key == name_key:
+                score += 120
+            elif key in name_key or name_key in key:
+                score += 70
+
+        tokens = set(self._target_tokens(entry))
+        name_tokens = set(self._stem_tokens(path.stem))
+        score += len(tokens & name_tokens) * 8
+        if any(token in name_tokens for token in {"rapor", "report", "analiz", "analysis"}):
+            score += 8
+        return score
+
+    def _target_keys(self, entry: ReportCatalogEntry) -> list[str]:
+        raw_values = [
+            entry.source_path or "",
+            entry.report_code or "",
+            entry.report_title or "",
+        ]
+        keys: list[str] = []
+        for raw_value in raw_values:
+            for variant in self._text_variants(raw_value):
+                for value in {variant, Path(variant.strip()).name, Path(variant.strip()).stem}:
+                    key = self._normalize_stem(value)
+                    if len(key) >= 5 and key not in keys:
+                        keys.append(key)
+        return keys
+
+    def _target_tokens(self, entry: ReportCatalogEntry) -> list[str]:
+        text = " ".join(
+            value for value in [
+                entry.report_code,
+                entry.vehicle_name,
+                entry.report_title,
+                entry.discipline,
+            ]
+            if value
+        )
+        tokens: list[str] = []
+        ignored = {"2021", "2022", "2023", "2024", "2025", "2026", "rev", "raporu", "report"}
+        for variant in self._text_variants(text):
+            for token in self._stem_tokens(variant):
+                if len(token) >= 3 and token not in ignored and token not in tokens:
+                    tokens.append(token)
+        return tokens[:24]
+
+    def _directory_supported_files(self, directory: Path) -> list[Path]:
+        if self._is_search_root(directory):
             return []
 
-        direct = Path(cleaned)
-        candidates = [direct]
-        if direct.suffix.lower() not in SUPPORTED_EXTENSIONS:
-            candidates.extend(Path(f"{cleaned}{suffix}") for suffix in SUPPORTED_EXTENSIONS)
+        files: list[Path] = []
+        base_depth = len(directory.parts)
+        try:
+            for dirpath, dirnames, filenames in os.walk(directory):
+                current = Path(dirpath)
+                if len(current.parts) - base_depth >= self.MAX_DIRECTORY_DEPTH:
+                    dirnames[:] = []
+                for file_name in filenames:
+                    candidate = current / file_name
+                    if candidate.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                        continue
+                    files.append(candidate)
+                    if len(files) >= self.MAX_DIRECTORY_FILES:
+                        return files
+        except OSError:
+            return files
+        return files
 
-        if not direct.is_absolute():
-            for root in self.DEFAULT_SEARCH_ROOTS:
-                rooted = root / cleaned
-                candidates.append(rooted)
-                if rooted.suffix.lower() not in SUPPORTED_EXTENSIONS:
-                    candidates.extend(Path(f"{rooted}{suffix}") for suffix in SUPPORTED_EXTENSIONS)
+    def _link_catalog_document(
+        self,
+        catalog_entry_id: int,
+        document_id: int,
+        source_path: str,
+        match_method: str,
+    ) -> None:
+        existing = self.session.scalar(
+            select(CatalogDocumentLink).where(CatalogDocumentLink.catalog_entry_id == catalog_entry_id)
+        )
+        if existing:
+            existing.document_id = document_id
+            existing.source_path = source_path
+            existing.match_method = match_method
+        else:
+            self.session.add(
+                CatalogDocumentLink(
+                    catalog_entry_id=catalog_entry_id,
+                    document_id=document_id,
+                    source_path=source_path,
+                    match_method=match_method,
+                )
+            )
+        self.session.commit()
+
+    @staticmethod
+    def _is_supported_file(path: Path) -> bool:
+        try:
+            return path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS
+        except OSError:
+            return False
+
+    @staticmethod
+    def _is_directory(path: Path) -> bool:
+        try:
+            return path.is_dir()
+        except OSError:
+            return False
+
+    def _is_search_root(self, path: Path) -> bool:
+        normalized = str(path).rstrip("\\/").casefold()
+        return any(normalized == str(root).rstrip("\\/").casefold() for root in self.DEFAULT_SEARCH_ROOTS)
+
+    @staticmethod
+    def _text_variants(value: str) -> list[str]:
+        variants = [value]
+        for encoding in ("latin1", "cp1252"):
+            try:
+                repaired = value.encode(encoding).decode("utf-8")
+            except UnicodeError:
+                continue
+            if repaired and repaired not in variants:
+                variants.append(repaired)
+        return variants
+
+    def _path_candidates(self, raw_value: str) -> list[Path]:
+        candidates: list[Path] = []
+        for variant in self._text_variants(raw_value):
+            cleaned = variant.strip().strip('"')
+            if not cleaned:
+                continue
+
+            direct = Path(cleaned)
+            candidates.append(direct)
+            if direct.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                candidates.extend(Path(f"{cleaned}{suffix}") for suffix in SUPPORTED_EXTENSIONS)
+
+            if not direct.is_absolute():
+                for root in self.DEFAULT_SEARCH_ROOTS:
+                    rooted = root / cleaned
+                    candidates.append(rooted)
+                    if rooted.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                        candidates.extend(Path(f"{rooted}{suffix}") for suffix in SUPPORTED_EXTENSIONS)
 
         deduped: list[Path] = []
         seen: set[str] = set()
@@ -349,115 +574,15 @@ class CatalogIngestService:
                     return path
         return sorted(direct_files, key=lambda path: path.name.casefold())[0]
 
-    def _resolve_from_index(self, raw_value: str) -> Path | None:
-        key = self._normalize_stem(Path(raw_value.strip()).name)
-        if not key:
-            return None
-        file_index = self._build_file_index()
-        if key in file_index:
-            return file_index[key]
-        for indexed_key, indexed_path in file_index.items():
-            if key and (key in indexed_key or indexed_key in key):
-                return indexed_path
-        return None
-
-    def _resolve_by_targeted_search(self, entry: ReportCatalogEntry) -> Path | None:
-        target_keys = self._target_keys(entry)
-        if not target_keys:
-            return None
-        for directory in self._target_directories(entry):
-            found = self._find_matching_file(directory, target_keys)
-            if found:
-                return found
-        return None
-
-    def _target_keys(self, entry: ReportCatalogEntry) -> list[str]:
-        raw_values = [entry.source_path or "", entry.report_code or ""]
-        keys: list[str] = []
-        for raw_value in raw_values:
-            stem = self._normalize_stem(Path(raw_value.strip()).name)
-            if len(stem) >= 5 and stem not in keys:
-                keys.append(stem)
-        return keys
-
-    def _target_directories(self, entry: ReportCatalogEntry) -> list[Path]:
-        candidate_dirs: list[Path] = []
-        raw_path = Path((entry.source_path or entry.report_code or "").strip())
-        if raw_path.parts and not raw_path.is_absolute():
-            rooted = self.DEFAULT_SEARCH_ROOTS[0] / raw_path.parts[0]
-            if rooted.exists() and rooted.is_dir():
-                candidate_dirs.append(rooted)
-
-        tokens = self._entry_search_tokens(entry)
-        for child in self._root_children():
-            normalized_child = self._normalize_stem(child.name)
-            if any(token and (token in normalized_child or normalized_child in token) for token in tokens):
-                candidate_dirs.append(child)
-            if len(candidate_dirs) >= 10:
-                break
-
-        deduped: list[Path] = []
-        seen: set[str] = set()
-        for directory in candidate_dirs:
-            key = str(directory).casefold()
-            if key in seen:
-                continue
-            seen.add(key)
-            deduped.append(directory)
-        return deduped
-
-    def _root_children(self) -> list[Path]:
-        root = self.DEFAULT_SEARCH_ROOTS[0]
-        if not root.exists() or not root.is_dir():
-            return []
-        return [path for path in root.iterdir() if path.is_dir()]
-
-    def _entry_search_tokens(self, entry: ReportCatalogEntry) -> list[str]:
-        text = f"{entry.report_code} {entry.vehicle_name} {entry.report_title}"
-        raw_tokens = [
-            self._normalize_stem(token)
-            for token in text.replace("_", " ").replace("-", " ").split()
-        ]
-        ignored = {"2021", "2022", "2023", "2024", "2025", "2026", "raporu", "analiz", "analizi", "rev"}
-        return [token for token in raw_tokens if len(token) >= 3 and token not in ignored][:12]
-
-    def _find_matching_file(self, directory: Path, target_keys: list[str]) -> Path | None:
-        scanned = 0
-        for dirpath, _, filenames in os.walk(directory):
-            for file_name in filenames:
-                suffix = Path(file_name).suffix.lower()
-                if suffix not in SUPPORTED_EXTENSIONS:
-                    continue
-                scanned += 1
-                stem = self._normalize_stem(Path(file_name).stem)
-                if any(target and (target in stem or stem in target) for target in target_keys):
-                    return Path(dirpath) / file_name
-                if scanned >= 250:
-                    return None
-        return None
-
-    def _build_file_index(self) -> dict[str, Path]:
-        if self._file_index is not None:
-            return self._file_index
-
-        index: dict[str, Path] = {}
-        for root in self.DEFAULT_SEARCH_ROOTS:
-            if not root.exists() or not root.is_dir():
-                continue
-            for dirpath, _, filenames in os.walk(root):
-                for file_name in filenames:
-                    suffix = Path(file_name).suffix.lower()
-                    if suffix not in SUPPORTED_EXTENSIONS:
-                        continue
-                    path = Path(dirpath) / file_name
-                    key = self._normalize_stem(path.stem)
-                    if key and key not in index:
-                        index[key] = path
-                if len(index) >= 50000:
-                    break
-        self._file_index = index
-        return index
-
     @staticmethod
     def _normalize_stem(value: str) -> str:
         return "".join(character for character in value.casefold() if character.isalnum())
+
+    @staticmethod
+    def _stem_tokens(value: str) -> list[str]:
+        normalized = re.sub(r"[^0-9A-Za-zÇĞİÖŞÜçğıöşü]+", " ", value.casefold())
+        return [
+            CatalogIngestService._normalize_stem(token)
+            for token in normalized.split()
+            if len(CatalogIngestService._normalize_stem(token)) >= 2
+        ]

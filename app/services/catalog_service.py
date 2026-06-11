@@ -12,7 +12,7 @@ import unicodedata
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from ..db.models import Document, ReportCatalogEntry
+from ..db.models import CatalogDocumentLink, Document, ReportCatalogEntry
 
 
 @dataclass(frozen=True)
@@ -518,9 +518,19 @@ class CatalogService:
     def _match_documents(self, entries: list[ReportCatalogEntry]) -> dict[int, int]:
         if not entries:
             return {}
+        entry_ids = [entry.id for entry in entries]
+        explicit_links = self.session.execute(
+            select(CatalogDocumentLink.catalog_entry_id, CatalogDocumentLink.document_id)
+            .where(CatalogDocumentLink.catalog_entry_id.in_(entry_ids))
+        ).all()
+        matches: dict[int, int] = {
+            int(catalog_entry_id): int(document_id)
+            for catalog_entry_id, document_id in explicit_links
+        }
         documents = self.session.execute(select(Document.id, Document.title, Document.file_name)).all()
-        matches: dict[int, int] = {}
         for entry in entries:
+            if entry.id in matches:
+                continue
             entry_keys = self._document_match_keys(entry)
             for document in documents:
                 document_text = self._normalize_text(f"{document.title} {document.file_name}")
@@ -534,29 +544,53 @@ class CatalogService:
         return matches
 
     def _document_match_keys(self, entry: ReportCatalogEntry) -> set[str]:
-        raw_code = entry.report_code or ""
-        path_name = Path(raw_code).name
-        normalized_code = self._normalize_text(raw_code)
-        normalized_path_name = self._normalize_text(path_name)
+        raw_values = [
+            entry.report_code or "",
+            entry.source_path or "",
+        ]
         normalized_title = self._normalize_text(entry.report_title or "")
         keys = {
-            normalized_code,
-            normalized_path_name,
             normalized_title,
-            self._compact_key(normalized_code),
-            self._compact_key(normalized_path_name),
             self._compact_key(normalized_title),
         }
 
-        code_parts = [
-            part for part in re.split(r"[^a-z0-9]+", normalized_path_name)
-            if len(part) >= 2 and part not in {"rev", "pdf", "docx"}
-        ]
-        if len(code_parts) >= 3:
-            keys.add(self._compact_key(" ".join(code_parts[:4])))
-            keys.add(self._compact_key(" ".join(code_parts)))
+        for raw_value in raw_values:
+            for variant in self._text_variants(raw_value):
+                if not variant:
+                    continue
+                path_name = Path(variant).name
+                normalized_value = self._normalize_text(variant)
+                normalized_path_name = self._normalize_text(path_name)
+                keys.update(
+                    {
+                        normalized_value,
+                        normalized_path_name,
+                        self._compact_key(normalized_value),
+                        self._compact_key(normalized_path_name),
+                    }
+                )
+
+                code_parts = [
+                    part for part in re.split(r"[^a-z0-9]+", normalized_path_name)
+                    if len(part) >= 2 and part not in {"rev", "pdf", "docx"}
+                ]
+                if len(code_parts) >= 3:
+                    keys.add(self._compact_key(" ".join(code_parts[:4])))
+                    keys.add(self._compact_key(" ".join(code_parts)))
 
         return {key for key in keys if len(key) >= 5}
+
+    @staticmethod
+    def _text_variants(value: str) -> list[str]:
+        variants = [value]
+        for encoding in ("latin1", "cp1252"):
+            try:
+                repaired = value.encode(encoding).decode("utf-8")
+            except UnicodeError:
+                continue
+            if repaired and repaired not in variants:
+                variants.append(repaired)
+        return variants
 
     @staticmethod
     def _compact_key(text: str) -> str:

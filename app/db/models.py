@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -88,3 +88,15 @@ class ReportCatalogEntry(Base):
     source_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     row_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class CatalogDocumentLink(Base):
+    __tablename__ = "catalog_document_links"
+    __table_args__ = (UniqueConstraint("catalog_entry_id", name="uq_catalog_document_link_entry"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    catalog_entry_id: Mapped[int] = mapped_column(ForeignKey("report_catalog_entries.id"), nullable=False, index=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), nullable=False, index=True)
+    source_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    match_method: Mapped[str] = mapped_column(String(80), nullable=False, default="catalog_ingest")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)

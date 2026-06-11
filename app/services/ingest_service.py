@@ -12,6 +12,7 @@ from ..config import DOCUMENTS_DIR
 from ..db.models import ChunkEmbedding, Document, DocumentChunk, DocumentPage
 from ..parsers.docx_parser import parse_docx
 from ..parsers.pdf_parser import parse_pdf
+from ..parsers.pptx_parser import parse_pptx
 from ..processing.chunker import chunk_sections
 from ..processing.text_cleaner import normalize_sections
 from ..schemas import ParsedSection
@@ -19,7 +20,7 @@ from .embedding_service import EmbeddingService, build_embedding_service
 
 
 logger = logging.getLogger(__name__)
-SUPPORTED_EXTENSIONS = {".pdf", ".docx"}
+SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx"}
 
 
 class IngestService:
@@ -128,6 +129,8 @@ class IngestService:
             return parse_pdf(source_path)
         if extension == ".docx":
             return parse_docx(source_path)
+        if extension == ".pptx":
+            return parse_pptx(source_path)
         raise ValueError(f"Unsupported file type: {extension}")
 
     def _store_file(

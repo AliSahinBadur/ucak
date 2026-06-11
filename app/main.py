@@ -11,7 +11,7 @@ from typing import Annotated, Literal
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, HTMLResponse, Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .api_models import (
@@ -21,7 +21,9 @@ from .api_models import (
     BatchIngestResponse,
     CatalogAskRequest,
     CatalogAskResponse,
+    CatalogCandidateIngestRequest,
     CatalogImportResponse,
+    CatalogSampleIngestItemResponse,
     CatalogSampleIngestResponse,
     CatalogSearchResponse,
     CatalogSelectedIngestRequest,
@@ -38,11 +40,12 @@ from .api_models import (
     StorageCheckResponse,
 )
 from .db.session import SessionLocal, get_session, init_db
-from .db.models import Document, DocumentPage
+from .db.models import ChunkEmbedding, Document, DocumentChunk, DocumentPage
 from .services.embedding_reindex_service import EmbeddingReindexService
 from .services.embedding_service import build_embedding_service
 from .services.catalog_ingest_service import CatalogIngestService
 from .services.catalog_service import CatalogService
+from .services.graph_service import GraphService
 from .services.ingest_service import IngestService
 from .services.multi_document_qa_service import MultiDocumentQAService
 from .services.qa_service import QAService
@@ -340,9 +343,42 @@ def upload_page() -> HTMLResponse:
       overflow: auto;
       padding: 0;
     }
-    .module-modal-body .section {
-      border-top: 0;
+    body.modal-open::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background: rgba(42, 16, 20, 0.54);
+      backdrop-filter: blur(4px);
+    }
+    .section.module-expanded {
+      position: fixed;
+      inset: 22px;
+      z-index: 60;
+      overflow: auto;
+      background: var(--panel);
+      border: 1px solid #efc0c8;
+      border-radius: 22px;
+      box-shadow: 0 24px 80px rgba(42, 16, 20, 0.32);
       padding: 28px;
+    }
+    .section.module-expanded[data-modal-layout="catalog-stack"] .upload-grid,
+    .section.module-expanded[data-modal-layout="catalog-stack"] .catalog-board,
+    .section.module-expanded[data-modal-layout="catalog-stack"] .catalog-workspace {
+      grid-template-columns: 1fr;
+    }
+    .section.module-expanded[data-modal-layout="catalog-stack"] .upload-card,
+    .section.module-expanded[data-modal-layout="catalog-stack"] .panel {
+      min-width: 0;
+    }
+    .section.module-expanded[data-modal-layout="catalog-stack"] .catalog-table-scroll {
+      max-height: min(58vh, 620px);
+    }
+    .modal-only {
+      display: none;
+    }
+    .section.module-expanded .modal-only {
+      display: block;
     }
     body.modal-open {
       overflow: hidden;
@@ -419,6 +455,28 @@ def upload_page() -> HTMLResponse:
       margin-top: 18px;
       border-top: 1px solid var(--line);
       padding-top: 18px;
+    }
+    .log-details {
+      border-top: 1px solid var(--line);
+      padding-top: 14px;
+    }
+    .log-details summary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid #f0c6cd;
+      border-radius: 999px;
+      background: #fff6f8;
+      color: var(--accent-strong);
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+      user-select: none;
+    }
+    .log-details pre {
+      margin-top: 12px;
+      max-height: min(42vh, 420px);
     }
     pre {
       margin: 0;
@@ -558,6 +616,26 @@ def upload_page() -> HTMLResponse:
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
+    .uploaded-documents-panel {
+      margin-top: 20px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #fffdfd;
+      padding: 18px;
+    }
+    .uploaded-documents-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .uploaded-documents-head h2 {
+      margin-bottom: 4px;
+    }
+    .uploaded-documents-head p {
+      max-width: 720px;
+    }
     .catalog-board {
       margin-top: 16px;
       display: grid;
@@ -596,21 +674,13 @@ def upload_page() -> HTMLResponse:
       color: var(--accent-strong);
       background: #fff0f2;
     }
-    .catalog-pane.embedded {
-      border-color: #9fd4f2;
-      background: #f6fcff;
-    }
-    .catalog-pane.embedding-pending {
-      border-color: #f0cf8f;
-      background: #fffaf0;
-    }
-    .catalog-pane.embedded .catalog-pane-head {
-      color: #0e5d83;
-      background: #edf8ff;
-    }
-    .catalog-pane.embedding-pending .catalog-pane-head {
-      color: #8a5a00;
-      background: #fff4d8;
+    .catalog-pane-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 12px 14px;
+      border-top: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.72);
     }
     .catalog-count {
       border-radius: 999px;
@@ -657,6 +727,39 @@ def upload_page() -> HTMLResponse:
       width: 18px;
       height: 18px;
       accent-color: var(--accent);
+    }
+    .catalog-candidate-row.hidden {
+      display: none;
+    }
+    .catalog-candidate-cell {
+      background: #fffafa;
+      padding: 0 !important;
+    }
+    .catalog-candidates {
+      display: grid;
+      gap: 8px;
+      padding: 10px 12px 12px;
+    }
+    .catalog-candidate-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      border: 1px solid #f0c9cf;
+      border-radius: 8px;
+      background: white;
+      padding: 10px;
+    }
+    .catalog-candidate-name {
+      font-weight: 800;
+      color: var(--text);
+      word-break: break-word;
+    }
+    .catalog-candidate-meta {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      word-break: break-word;
     }
     .status-pill {
       display: inline-flex;
@@ -762,6 +865,60 @@ def upload_page() -> HTMLResponse:
       font-weight: 700;
       white-space: nowrap;
     }
+    .graph-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.8fr);
+      gap: 18px;
+      margin-top: 16px;
+      align-items: stretch;
+    }
+    .graph-canvas {
+      position: relative;
+      min-height: 520px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: linear-gradient(180deg, #fffafa 0%, #fff 100%);
+      overflow: hidden;
+    }
+    .graph-canvas svg {
+      width: 100%;
+      height: 520px;
+      display: block;
+    }
+    .graph-node {
+      cursor: pointer;
+    }
+    .graph-label {
+      font-size: 11px;
+      fill: #3a1a20;
+      pointer-events: none;
+    }
+    .graph-edge {
+      stroke: #e4a8b1;
+      stroke-width: 1.2;
+      opacity: 0.62;
+    }
+    .tag-cloud {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .tag-chip {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      border: 1px solid #f0c6cd;
+      background: #fff6f8;
+      color: var(--accent-strong);
+      border-radius: 999px;
+      padding: 7px 10px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .tag-chip span {
+      color: var(--muted);
+      font-weight: 700;
+    }
     .small {
       font-size: 13px;
       color: var(--muted);
@@ -795,6 +952,7 @@ def upload_page() -> HTMLResponse:
       .qa-layout,
       .catalog-workspace,
       .catalog-board,
+      .graph-layout,
       .split {
         grid-template-columns: 1fr;
       }
@@ -825,13 +983,15 @@ def upload_page() -> HTMLResponse:
             <span class="hero-pill">Upload</span>
             <span class="hero-pill">Search</span>
             <span class="hero-pill">Similar Reports</span>
+            <span class="hero-pill">Q & A </span>
+            <span class="hero-pill">Writing Assistant</span>
           </div>
         </div>
         <div class="section" data-module-title="Rapor Yukleme">
           <div class="section-head">
             <div>
               <h2>Rapor Yukleme</h2>
-              <p>Tekli veya toplu PDF/DOCX raporlarini sisteme ekle.</p>
+              <p>Tekli veya toplu PDF/DOCX/PPTX raporlarini sisteme ekle.</p>
             </div>
             <button class="expand-button" type="button" data-expand-module>Buyut</button>
           </div>
@@ -842,7 +1002,7 @@ def upload_page() -> HTMLResponse:
               <div class="actions">
                 <label class="button secondary" for="singlePicker">Dosya Sec</label>
                 <button class="button primary" id="singleUploadButton" type="button">Tekli Yukleme Baslat</button>
-                <input id="singlePicker" type="file" accept=".pdf,.docx" />
+                <input id="singlePicker" type="file" accept=".pdf,.docx,.pptx" />
               </div>
               <div class="meta" id="singleSummary">Henuz tekli dosya secilmedi.</div>
               <div class="status" id="singleStatusBox"></div>
@@ -867,6 +1027,33 @@ def upload_page() -> HTMLResponse:
               <div class="result">
                 <pre id="resultBox">{}</pre>
               </div>
+            </div>
+          </div>
+          <div class="modal-only uploaded-documents-panel">
+            <div class="uploaded-documents-head">
+              <div>
+                <h2>Icerideki Raporlar</h2>
+                <p>Sisteme yuklenmis PDF/DOCX/PPTX raporlarini burada kontrol et. Satira tiklayinca orijinal dosya acilir.</p>
+              </div>
+              <button class="button secondary" id="uploadedDocumentsRefreshButton" type="button">Listeyi Yenile</button>
+            </div>
+            <div class="note" id="uploadedDocumentsStatus">Rapor listesi henuz yuklenmedi.</div>
+            <div class="table-box" style="margin-top:12px;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Rapor</th>
+                    <th>Tur</th>
+                    <th>Chunk</th>
+                    <th>Embedding</th>
+                    <th>Yuklenme</th>
+                  </tr>
+                </thead>
+                <tbody id="uploadedDocumentsTable">
+                  <tr><td colspan="6" class="small">Rapor Yukleme modulu buyutulunce liste yenilenecek.</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -912,7 +1099,7 @@ def upload_page() -> HTMLResponse:
             </div>
           </div>
         </div>
-        <div class="section" data-module-title="Rapor Katalogu ve Coklu Belge QA">
+        <div class="section" data-module-title="Rapor Katalogu ve Coklu Belge QA" data-modal-layout="catalog-stack">
           <div class="section-head">
             <div>
               <h2>Rapor Katalogu ve Coklu Belge QA</h2>
@@ -931,14 +1118,13 @@ def upload_page() -> HTMLResponse:
               </div>
               <div class="actions">
                 <button class="button secondary" id="catalogTableRefreshButton" type="button">Katalog Tablosunu Yenile</button>
-                <button class="button primary" id="catalogSelectedIngestButton" type="button">Secilenleri Ice Al</button>
               </div>
               <div class="meta" id="catalogSummary">Henuz katalog dosyasi secilmedi.</div>
               <div class="status" id="catalogStatusBox"></div>
               <div class="catalog-board">
                 <div class="catalog-pane ingested">
                   <div class="catalog-pane-head">
-                    <span>Ingest Edilmis</span>
+                    <span>Icerideki Raporlar</span>
                     <span class="catalog-count" id="catalogIngestedCount">0</span>
                   </div>
                   <div class="catalog-table-scroll">
@@ -948,38 +1134,22 @@ def upload_page() -> HTMLResponse:
                           <th>Rapor</th>
                           <th>Arac</th>
                           <th>Tip</th>
+                          <th>Durum</th>
                           <th>Link</th>
                         </tr>
                       </thead>
                       <tbody id="catalogIngestedTable">
-                        <tr><td colspan="4" class="small">Katalog tablosu henuz yuklenmedi.</td></tr>
+                        <tr><td colspan="5" class="small">Katalog tablosu henuz yuklenmedi.</td></tr>
                       </tbody>
                     </table>
                   </div>
-                </div>
-                <div class="catalog-pane embedded">
-                  <div class="catalog-pane-head">
-                    <span>Embedding Tamam</span>
-                    <span class="catalog-count" id="catalogEmbeddedCount">0</span>
-                  </div>
-                  <div class="catalog-table-scroll">
-                    <table class="catalog-table">
-                      <thead>
-                        <tr>
-                          <th>Rapor</th>
-                          <th>Tip</th>
-                          <th>Embedding</th>
-                        </tr>
-                      </thead>
-                      <tbody id="catalogEmbeddedTable">
-                        <tr><td colspan="3" class="small">Katalog tablosu henuz yuklenmedi.</td></tr>
-                      </tbody>
-                    </table>
+                  <div class="catalog-pane-actions">
+                    <button class="button secondary" id="catalogEmbeddingRebuildButton" type="button">Embeddingleri Yenile</button>
                   </div>
                 </div>
                 <div class="catalog-pane pending">
                   <div class="catalog-pane-head">
-                    <span>Ingest Edilmemis</span>
+                    <span>Iceri Alinacak Raporlar</span>
                     <span class="catalog-count" id="catalogPendingCount">0</span>
                   </div>
                   <div class="catalog-table-scroll">
@@ -991,42 +1161,27 @@ def upload_page() -> HTMLResponse:
                           <th>Arac</th>
                           <th>Tip</th>
                           <th>Link</th>
+                          <th>Aday</th>
                         </tr>
                       </thead>
                       <tbody id="catalogPendingTable">
-                        <tr><td colspan="5" class="small">Katalog tablosu henuz yuklenmedi.</td></tr>
+                        <tr><td colspan="6" class="small">Katalog tablosu henuz yuklenmedi.</td></tr>
                       </tbody>
                     </table>
                   </div>
-                </div>
-                <div class="catalog-pane embedding-pending">
-                  <div class="catalog-pane-head">
-                    <span>Embedding Eksik</span>
-                    <span class="catalog-count" id="catalogEmbeddingPendingCount">0</span>
-                  </div>
-                  <div class="catalog-table-scroll">
-                    <table class="catalog-table">
-                      <thead>
-                        <tr>
-                          <th>Rapor</th>
-                          <th>Tip</th>
-                          <th>Embedding</th>
-                        </tr>
-                      </thead>
-                      <tbody id="catalogEmbeddingPendingTable">
-                        <tr><td colspan="3" class="small">Katalog tablosu henuz yuklenmedi.</td></tr>
-                      </tbody>
-                    </table>
+                  <div class="catalog-pane-actions">
+                    <button class="button primary" id="catalogSelectedIngestButton" type="button">Secilenleri Ice Al</button>
                   </div>
                 </div>
               </div>
-              <div class="result">
+              <details class="log-details">
+                <summary id="catalogLogSummary">Teknik log</summary>
                 <pre id="catalogResultBox">{}</pre>
-              </div>
+              </details>
             </div>
             <div class="upload-card">
               <h2>Coklu Belge Calisma Alani</h2>
-              <p>1. Katalogdan ilgili rapor grubunu bul. 2. Yalnizca bu grubun yuklenmis PDF/DOCX icerigi uzerinden ikinci soruyu sor.</p>
+              <p>1. Katalogdan ilgili rapor grubunu bul. 2. Yalnizca bu grubun yuklenmis PDF/DOCX/PPTX icerigi uzerinden ikinci soruyu sor.</p>
               <div class="field">
                 <label for="catalogQuestion">Katalog Sorusu</label>
                 <input id="catalogQuestion" type="text" placeholder="Ornek: Novocitivolt araci ile kac tane NVH testi yapildi?" />
@@ -1119,6 +1274,32 @@ def upload_page() -> HTMLResponse:
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+        <div class="section" data-module-title="Graph View ve Etiketler">
+          <div class="section-head">
+            <div>
+              <h2>Graph View ve Etiketler</h2>
+              <p>Katalog ve yuklu raporlardan arac, disiplin, yil, yazar ve durum etiketlerini otomatik cikar.</p>
+            </div>
+            <button class="expand-button" type="button" data-expand-module>Buyut</button>
+          </div>
+          <div class="actions">
+            <button class="button primary" id="graphRefreshButton" type="button">Graph Yenile</button>
+          </div>
+          <div class="note" id="graphStatus">Graph henuz yuklenmedi.</div>
+          <div class="graph-layout">
+            <div class="graph-canvas" id="graphCanvas">
+              <div class="empty" style="padding:16px;">Graph burada gorunecek.</div>
+            </div>
+            <div class="panel">
+              <div class="panel-title">Etiketler</div>
+              <div class="tag-cloud" id="graphTags">
+                <div class="empty">Etiketler burada listelenecek.</div>
+              </div>
+              <div class="panel-title" style="margin-top:18px;">Secilen Dugum</div>
+              <div id="graphDetails" class="answer-text">Bir dugume tiklayinca detay burada gorunecek.</div>
             </div>
           </div>
         </div>
@@ -1251,21 +1432,22 @@ def upload_page() -> HTMLResponse:
     const singleSummary = document.getElementById("singleSummary");
     const singleStatusBox = document.getElementById("singleStatusBox");
     const singleResultBox = document.getElementById("singleResultBox");
+    const uploadedDocumentsRefreshButton = document.getElementById("uploadedDocumentsRefreshButton");
+    const uploadedDocumentsStatus = document.getElementById("uploadedDocumentsStatus");
+    const uploadedDocumentsTable = document.getElementById("uploadedDocumentsTable");
     const catalogPicker = document.getElementById("catalogPicker");
     const catalogImportButton = document.getElementById("catalogImportButton");
     const catalogSummary = document.getElementById("catalogSummary");
     const catalogStatusBox = document.getElementById("catalogStatusBox");
     const catalogResultBox = document.getElementById("catalogResultBox");
+    const catalogLogSummary = document.getElementById("catalogLogSummary");
     const catalogTableRefreshButton = document.getElementById("catalogTableRefreshButton");
     const catalogSelectedIngestButton = document.getElementById("catalogSelectedIngestButton");
+    const catalogEmbeddingRebuildButton = document.getElementById("catalogEmbeddingRebuildButton");
     const catalogIngestedCount = document.getElementById("catalogIngestedCount");
     const catalogPendingCount = document.getElementById("catalogPendingCount");
-    const catalogEmbeddedCount = document.getElementById("catalogEmbeddedCount");
-    const catalogEmbeddingPendingCount = document.getElementById("catalogEmbeddingPendingCount");
     const catalogIngestedTable = document.getElementById("catalogIngestedTable");
     const catalogPendingTable = document.getElementById("catalogPendingTable");
-    const catalogEmbeddedTable = document.getElementById("catalogEmbeddedTable");
-    const catalogEmbeddingPendingTable = document.getElementById("catalogEmbeddingPendingTable");
     const catalogQuestion = document.getElementById("catalogQuestion");
     const catalogAskButton = document.getElementById("catalogAskButton");
     const catalogAskMeta = document.getElementById("catalogAskMeta");
@@ -1283,6 +1465,11 @@ def upload_page() -> HTMLResponse:
     const multiDocumentDocuments = document.getElementById("multiDocumentDocuments");
     const multiDocumentComparison = document.getElementById("multiDocumentComparison");
     const multiDocumentSources = document.getElementById("multiDocumentSources");
+    const graphRefreshButton = document.getElementById("graphRefreshButton");
+    const graphStatus = document.getElementById("graphStatus");
+    const graphCanvas = document.getElementById("graphCanvas");
+    const graphTags = document.getElementById("graphTags");
+    const graphDetails = document.getElementById("graphDetails");
     const searchQuery = document.getElementById("searchQuery");
     const searchMode = document.getElementById("searchMode");
     const searchButton = document.getElementById("searchButton");
@@ -1319,7 +1506,6 @@ def upload_page() -> HTMLResponse:
     let lastCatalogMatches = [];
     let activeTimerId = null;
     let activeModule = null;
-    let activeModulePlaceholder = null;
 
     function formatElapsed(milliseconds) {
       const seconds = milliseconds / 1000;
@@ -1350,25 +1536,30 @@ def upload_page() -> HTMLResponse:
     function openModule(section) {
       closeModule();
       activeModule = section;
-      activeModulePlaceholder = document.createComment("module-placeholder");
-      section.parentNode.insertBefore(activeModulePlaceholder, section);
-      moduleModalTitle.textContent = section.dataset.moduleTitle || "Modul";
-      moduleModalBody.appendChild(section);
-      moduleModal.classList.add("open");
-      moduleModal.setAttribute("aria-hidden", "false");
+      section.classList.add("module-expanded");
+      const expandButton = section.querySelector("[data-expand-module]");
+      if (expandButton) {
+        expandButton.textContent = "Kucult";
+      }
       document.body.classList.add("modal-open");
+      if (section.dataset.moduleTitle === "Rapor Yukleme") {
+        refreshUploadedDocuments();
+      }
+      if (section.dataset.moduleTitle === "Graph View ve Etiketler") {
+        refreshGraph();
+      }
     }
 
     function closeModule() {
-      if (!activeModule || !activeModulePlaceholder) {
+      if (!activeModule) {
         return;
       }
-      activeModulePlaceholder.parentNode.insertBefore(activeModule, activeModulePlaceholder);
-      activeModulePlaceholder.remove();
+      activeModule.classList.remove("module-expanded");
+      const expandButton = activeModule.querySelector("[data-expand-module]");
+      if (expandButton) {
+        expandButton.textContent = "Buyut";
+      }
       activeModule = null;
-      activeModulePlaceholder = null;
-      moduleModal.classList.remove("open");
-      moduleModal.setAttribute("aria-hidden", "true");
       document.body.classList.remove("modal-open");
     }
 
@@ -1382,7 +1573,7 @@ def upload_page() -> HTMLResponse:
 
       const supported = selectedFiles.filter(file => {
         const lower = file.name.toLowerCase();
-        return lower.endsWith(".pdf") || lower.endsWith(".docx");
+        return lower.endsWith(".pdf") || lower.endsWith(".docx") || lower.endsWith(".pptx");
       });
 
       summary.textContent = `${selectedFiles.length} dosya secildi, ${supported.length} tanesi desteklenen turde.`;
@@ -1395,6 +1586,46 @@ def upload_page() -> HTMLResponse:
         const more = document.createElement("li");
         more.textContent = `... ve ${supported.length - 12} dosya daha`;
         filesList.appendChild(more);
+      }
+    }
+
+    function renderUploadedDocuments(items) {
+      if (!items || items.length === 0) {
+        uploadedDocumentsTable.innerHTML = '<tr><td colspan="6" class="small">Iceride yuklenmis rapor bulunamadi.</td></tr>';
+        return;
+      }
+
+      uploadedDocumentsTable.innerHTML = items.map(item => `
+        <tr onclick="openDocumentFile(${item.document_id})" style="cursor:pointer;">
+          <td>${item.document_id}</td>
+          <td>
+            <div class="title">${escapeHtml(item.title)}</div>
+            <div class="small">${escapeHtml(item.file_name)}</div>
+          </td>
+          <td>${escapeHtml(item.file_type)}</td>
+          <td>${item.chunk_count}</td>
+          <td>${item.embedding_count}</td>
+          <td>${escapeHtml(item.created_at || "")}</td>
+        </tr>
+      `).join("");
+    }
+
+    async function refreshUploadedDocuments() {
+      uploadedDocumentsRefreshButton.disabled = true;
+      uploadedDocumentsStatus.textContent = "Icerideki raporlar yukleniyor...";
+      try {
+        const response = await fetch("/documents/list?limit=300");
+        const data = await response.json();
+        if (!response.ok) {
+          uploadedDocumentsStatus.textContent = data.detail || "Rapor listesi alinamadi.";
+          return;
+        }
+        renderUploadedDocuments(data.items || []);
+        uploadedDocumentsStatus.textContent = `Icerideki rapor: ${data.total}. Gosterilen: ${(data.items || []).length}.`;
+      } catch (error) {
+        uploadedDocumentsStatus.textContent = `Rapor listesi alinamadi: ${error}`;
+      } finally {
+        uploadedDocumentsRefreshButton.disabled = false;
       }
     }
 
@@ -1411,6 +1642,39 @@ def upload_page() -> HTMLResponse:
     function setCatalogStatus(kind, message) {
       catalogStatusBox.className = `status show ${kind}`;
       catalogStatusBox.textContent = message;
+    }
+
+    function setCatalogLog(data) {
+      catalogResultBox.textContent = JSON.stringify(data, null, 2);
+      if (data.total_seen !== undefined) {
+        catalogLogSummary.textContent = `Teknik log | toplam ${data.total_seen} | ingested ${data.ingested_count} | pending ${data.pending_count}`;
+        return;
+      }
+      if (data.created_count !== undefined) {
+        catalogLogSummary.textContent = `Teknik log | yeni ${data.created_count} | duplicate ${data.duplicate_count} | hata ${data.error_count}`;
+        return;
+      }
+      if (data.ingested_count !== undefined) {
+        catalogLogSummary.textContent = `Teknik log | ingested ${data.ingested_count} | duplicate ${data.duplicate_count} | hata ${data.error_count}`;
+        return;
+      }
+      if (data.chunks_seen !== undefined) {
+        catalogLogSummary.textContent = `Teknik log | chunk ${data.chunks_seen} | embedding ${data.embeddings_created}`;
+        return;
+      }
+      catalogLogSummary.textContent = "Teknik log";
+    }
+
+    function catalogIngestResultMessage(data) {
+      const base = `Ice alma tamamlandi. Yeni: ${data.ingested_count}, duplicate: ${data.duplicate_count}, hata: ${data.error_count}.`;
+      const failedItems = (data.items || []).filter(item => item.status === "error");
+      if (failedItems.length === 0) {
+        return base;
+      }
+
+      const firstError = failedItems[0];
+      const report = firstError.report_code || firstError.source_path || `ID ${firstError.catalog_entry_id}`;
+      return `${base} Ilk hata: ${report} -> ${firstError.error || "detay yok"}`;
     }
 
     function formatScore(value) {
@@ -1780,6 +2044,135 @@ def upload_page() -> HTMLResponse:
       }
     }
 
+    function graphNodeColor(node) {
+      if (node.type === "root") return "#8f1421";
+      if (node.type === "document") return node.status === "ingested" ? "#1b7f4b" : "#c62839";
+      if (node.type === "catalog") return "#c62839";
+      const colors = {
+        vehicle: "#0e5d83",
+        discipline: "#8a5a00",
+        year: "#5b3d91",
+        author: "#6b4a2f",
+        status: "#7a555b",
+      };
+      return colors[node.tag_type] || "#7a555b";
+    }
+
+    function graphRadius(node) {
+      if (node.type === "root") return 24;
+      if (node.type === "document") return 11;
+      if (node.type === "catalog") return 9;
+      return 8;
+    }
+
+    function graphLabel(value, maxLength = 28) {
+      const text = String(value || "");
+      return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
+    }
+
+    function layoutGraphNodes(nodes) {
+      const width = 980;
+      const height = 520;
+      const center = { x: width / 2, y: height / 2 };
+      const root = nodes.filter(node => node.type === "root");
+      const reports = nodes.filter(node => node.type === "document" || node.type === "catalog");
+      const tags = nodes.filter(node => node.type === "tag");
+
+      const positionGroup = (items, radius, phase) => {
+        items.forEach((node, index) => {
+          const angle = phase + (Math.PI * 2 * index / Math.max(items.length, 1));
+          node.x = center.x + Math.cos(angle) * radius;
+          node.y = center.y + Math.sin(angle) * radius;
+        });
+      };
+
+      root.forEach(node => {
+        node.x = center.x;
+        node.y = center.y;
+      });
+      positionGroup(tags.slice(0, 80), 155, -Math.PI / 2);
+      positionGroup(reports.slice(0, 120), 225, -Math.PI / 2.7);
+      return { nodes, width, height };
+    }
+
+    function renderGraph(data) {
+      const visibleNodes = (data.nodes || []).slice(0, 180).map(node => ({ ...node }));
+      const nodeById = new Map(visibleNodes.map(node => [node.id, node]));
+      const visibleEdges = (data.edges || []).filter(edge => nodeById.has(edge.source) && nodeById.has(edge.target)).slice(0, 360);
+      const layout = layoutGraphNodes(visibleNodes);
+      const edgeHtml = visibleEdges.map(edge => {
+        const source = nodeById.get(edge.source);
+        const target = nodeById.get(edge.target);
+        return `<line class="graph-edge" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" />`;
+      }).join("");
+      const nodeHtml = visibleNodes.map(node => {
+        const color = graphNodeColor(node);
+        const radius = graphRadius(node);
+        const label = escapeHtml(graphLabel(node.label, node.type === "tag" ? 22 : 30));
+        const labelY = node.y + radius + 14;
+        return `
+          <g class="graph-node" data-node-id="${escapeHtml(node.id)}">
+            <circle cx="${node.x}" cy="${node.y}" r="${radius}" fill="${color}" opacity="0.92"></circle>
+            <text class="graph-label" x="${node.x}" y="${labelY}" text-anchor="middle">${label}</text>
+          </g>
+        `;
+      }).join("");
+
+      graphCanvas.innerHTML = `
+        <svg viewBox="0 0 ${layout.width} ${layout.height}" role="img" aria-label="Rapor graph">
+          ${edgeHtml}
+          ${nodeHtml}
+        </svg>
+      `;
+      graphCanvas.querySelectorAll(".graph-node").forEach(element => {
+        element.addEventListener("click", () => {
+          const node = nodeById.get(element.dataset.nodeId);
+          if (!node) return;
+          graphDetails.textContent = [
+            `Tip: ${node.type}`,
+            `Etiket: ${node.label}`,
+            node.status ? `Durum: ${node.status}` : "",
+            node.document_id ? `Belge ID: ${node.document_id}` : "",
+            node.catalog_entry_id ? `Katalog ID: ${node.catalog_entry_id}` : "",
+          ].filter(Boolean).join("\\n");
+        });
+      });
+
+      renderGraphTags(data.tags || []);
+      graphStatus.textContent = `Graph hazir. Dugum: ${data.node_count}, iliski: ${data.edge_count}, etiket: ${(data.tags || []).length}.`;
+    }
+
+    function renderGraphTags(tags) {
+      if (!tags.length) {
+        graphTags.innerHTML = '<div class="empty">Etiket bulunamadi.</div>';
+        return;
+      }
+      graphTags.innerHTML = tags.slice(0, 80).map(tag => `
+        <div class="tag-chip" title="${escapeHtml(tag.type)}">
+          ${escapeHtml(tag.label)}
+          <span>${Number(tag.count || 0)}</span>
+        </div>
+      `).join("");
+    }
+
+    async function refreshGraph() {
+      graphRefreshButton.disabled = true;
+      graphStatus.textContent = "Graph yukleniyor...";
+      try {
+        const response = await fetch("/graph/overview?limit=160");
+        const data = await response.json();
+        if (!response.ok) {
+          graphStatus.textContent = data.detail || "Graph yuklenemedi.";
+          return;
+        }
+        renderGraph(data);
+      } catch (error) {
+        graphStatus.textContent = `Graph yuklenemedi: ${error}`;
+      } finally {
+        graphRefreshButton.disabled = false;
+      }
+    }
+
     function catalogLinkHtml(item) {
       const rawPath = item.source_path || item.report_code || "";
       if (!rawPath) {
@@ -1798,28 +2191,26 @@ def upload_page() -> HTMLResponse:
 
     function renderCatalogTableRows(target, items, options = {}) {
       const selectable = Boolean(options.selectable);
-      const compact = Boolean(options.compact);
-      const columns = compact ? 3 : selectable ? 5 : 4;
+      const columns = selectable ? 6 : 5;
       if (!items || items.length === 0) {
         target.innerHTML = `<tr><td colspan="${columns}" class="small">Kayit bulunamadi.</td></tr>`;
         return;
       }
 
       target.innerHTML = items.map(item => {
-        if (compact) {
-          return `
-            <tr${item.matched_document_id ? ` onclick="openDocumentFile(${item.matched_document_id})" style="cursor:pointer;"` : ""}>
-              <td>
-                <div class="title">${escapeHtml(item.report_code)}</div>
-                <div class="small">${escapeHtml(item.report_title || "")}</div>
-              </td>
-              <td>${escapeHtml(item.discipline || "")}</td>
-              <td>${embeddingStatusHtml(item)}</td>
-            </tr>
-          `;
-        }
         const checkbox = selectable
           ? `<td><input class="catalog-select" type="checkbox" data-catalog-entry-id="${item.id}" /></td>`
+          : "";
+        const statusCell = selectable ? "" : `<td>${embeddingStatusHtml(item)}</td>`;
+        const candidateCell = selectable
+          ? `<td><button class="button secondary catalog-candidate-toggle" type="button" data-catalog-candidates="${item.id}">Adaylar</button></td>`
+          : "";
+        const candidateRow = selectable
+          ? `<tr class="catalog-candidate-row hidden" id="catalogCandidateRow${item.id}">
+              <td class="catalog-candidate-cell" colspan="${columns}">
+                <div class="catalog-candidates" id="catalogCandidateList${item.id}"></div>
+              </td>
+            </tr>`
           : "";
         const openAction = item.matched_document_id
           ? ` onclick="openDocumentFile(${item.matched_document_id})" style="cursor:pointer;"`
@@ -1831,14 +2222,128 @@ def upload_page() -> HTMLResponse:
             <td>
               <div class="title">${escapeHtml(item.report_code)}</div>
               <div class="small">${escapeHtml(item.report_title || "")}${documentText}</div>
-              ${item.matched_document_id ? `<div class="small">${embeddingStatusHtml(item)}</div>` : ""}
             </td>
             <td>${escapeHtml(item.vehicle_name || "")}</td>
             <td>${escapeHtml(item.discipline || "")}</td>
+            ${statusCell}
             <td>${catalogLinkHtml(item)}</td>
+            ${candidateCell}
           </tr>
+          ${candidateRow}
         `;
       }).join("");
+    }
+
+    function catalogCandidateLogPayload(item) {
+      return {
+        requested_count: 1,
+        ingested_count: item.status === "ingested" ? 1 : 0,
+        duplicate_count: item.status === "duplicate" ? 1 : 0,
+        error_count: item.status === "error" ? 1 : 0,
+        items: [item],
+      };
+    }
+
+    function renderCatalogCandidates(entryId, data) {
+      const items = data.items || [];
+      if (items.length === 0) {
+        return '<div class="small">Bu katalog kaydi icin PDF/DOCX/PPTX aday dosya bulunamadi.</div>';
+      }
+      const rows = items.slice(0, 20).map(item => `
+        <div class="catalog-candidate-item">
+          <div>
+            <div class="catalog-candidate-name">${escapeHtml(item.file_name || item.path)}</div>
+            <div class="catalog-candidate-meta">
+              ${escapeHtml((item.extension || "").toUpperCase())} | skor ${Number(item.score || 0)} | ${escapeHtml(item.match_method || "")}
+            </div>
+            <div class="catalog-candidate-meta">${escapeHtml(item.path || "")}</div>
+          </div>
+          <button
+            class="button primary"
+            type="button"
+            data-catalog-ingest-candidate="${entryId}"
+            data-file-path="${escapeHtml(encodeURIComponent(item.path || ""))}"
+          >Bu dosyayi ice al</button>
+        </div>
+      `).join("");
+      const more = items.length > 20
+        ? `<div class="small">... ve ${items.length - 20} aday daha var. Ilk 20 aday gosteriliyor.</div>`
+        : "";
+      return rows + more;
+    }
+
+    async function loadCatalogCandidates(entryId) {
+      const row = document.getElementById(`catalogCandidateRow${entryId}`);
+      const list = document.getElementById(`catalogCandidateList${entryId}`);
+      if (!row || !list) return;
+      if (!row.classList.contains("hidden") && list.dataset.loaded === "true") {
+        row.classList.add("hidden");
+        return;
+      }
+
+      row.classList.remove("hidden");
+      list.dataset.loaded = "false";
+      list.innerHTML = '<div class="small">Aday dosyalar araniyor...</div>';
+      try {
+        const response = await fetch(`/catalog/${entryId}/file-candidates`);
+        const data = await response.json();
+        setCatalogLog(data);
+        if (!response.ok || data.error) {
+          list.innerHTML = `<div class="small">${escapeHtml(data.detail || data.error || "Aday dosyalar alinamadi.")}</div>`;
+          return;
+        }
+        list.innerHTML = renderCatalogCandidates(entryId, data);
+        list.dataset.loaded = "true";
+      } catch (error) {
+        list.innerHTML = `<div class="small">Aday dosyalar alinamadi: ${escapeHtml(error)}</div>`;
+      }
+    }
+
+    async function ingestCatalogCandidate(entryId, encodedFilePath) {
+      const filePath = decodeURIComponent(encodedFilePath || "");
+      if (!filePath) {
+        setCatalogStatus("error", "Iceri almak icin aday dosya yolu bulunamadi.");
+        return;
+      }
+
+      catalogTableRefreshButton.disabled = true;
+      catalogSelectedIngestButton.disabled = true;
+      const startedAt = startTimer(
+        message => setCatalogStatus("ok", message),
+        "Secilen aday dosya ice aliniyor..."
+      );
+      try {
+        const response = await fetch("/catalog/ingest-candidate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ catalog_entry_id: entryId, file_path: filePath }),
+        });
+        const data = await response.json();
+        const logPayload = catalogCandidateLogPayload(data);
+        setCatalogLog(logPayload);
+        if (!response.ok || data.status === "error") {
+          stopTimer(
+            startedAt,
+            message => setCatalogStatus("error", message),
+            data.detail || data.error || "Secilen aday dosya ice alinamadi."
+          );
+          return;
+        }
+        stopTimer(
+          startedAt,
+          message => setCatalogStatus("ok", message),
+          `Aday dosya ice alindi. Durum: ${data.status}. Belge ID: ${data.document_id || "-"}`
+        );
+        await refreshCatalogTable();
+        await refreshUploadedDocuments();
+      } catch (error) {
+        stopTimer(startedAt, message => setCatalogStatus("error", message), `Secilen aday dosya ice alinamadi: ${error}`);
+      } finally {
+        catalogTableRefreshButton.disabled = false;
+        catalogSelectedIngestButton.disabled = false;
+      }
     }
 
     function embeddingStatusHtml(item) {
@@ -1858,12 +2363,8 @@ def upload_page() -> HTMLResponse:
     function renderCatalogTable(data) {
       catalogIngestedCount.textContent = String(data.ingested_count || 0);
       catalogPendingCount.textContent = String(data.pending_count || 0);
-      catalogEmbeddedCount.textContent = String(data.embedded_count || 0);
-      catalogEmbeddingPendingCount.textContent = String(data.embedding_pending_count || 0);
       renderCatalogTableRows(catalogIngestedTable, data.ingested || [], { selectable: false });
       renderCatalogTableRows(catalogPendingTable, data.pending || [], { selectable: true });
-      renderCatalogTableRows(catalogEmbeddedTable, data.embedded || [], { compact: true });
-      renderCatalogTableRows(catalogEmbeddingPendingTable, data.embedding_pending || [], { compact: true });
     }
 
     async function refreshCatalogTable() {
@@ -1876,7 +2377,7 @@ def upload_page() -> HTMLResponse:
       try {
         const response = await fetch("/catalog/table?limit=2000");
         const data = await response.json();
-        catalogResultBox.textContent = JSON.stringify(data, null, 2);
+        setCatalogLog(data);
         if (!response.ok) {
           stopTimer(startedAt, message => setCatalogStatus("error", message), data.detail || "Katalog tablosu alinamadi.");
           return;
@@ -1910,6 +2411,8 @@ def upload_page() -> HTMLResponse:
         message => setCatalogStatus("ok", message),
         `${selectedIds.length} katalog kaydi ice aliniyor...`
       );
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 60000);
       try {
         const response = await fetch("/catalog/ingest-selected", {
           method: "POST",
@@ -1917,22 +2420,62 @@ def upload_page() -> HTMLResponse:
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ catalog_entry_ids: selectedIds }),
+          signal: controller.signal,
         });
+        window.clearTimeout(timeoutId);
         const data = await response.json();
-        catalogResultBox.textContent = JSON.stringify(data, null, 2);
+        setCatalogLog(data);
         if (!response.ok) {
           stopTimer(startedAt, message => setCatalogStatus("error", message), data.detail || "Secilen raporlar ice alinamadi.");
           return;
         }
         stopTimer(
           startedAt,
+          message => setCatalogStatus(data.error_count ? "error" : "ok", message),
+          catalogIngestResultMessage(data)
+        );
+        await refreshCatalogTable();
+        await refreshUploadedDocuments();
+      } catch (error) {
+        window.clearTimeout(timeoutId);
+        const message = error && error.name === "AbortError"
+          ? "Secilen raporlar ice alinamadi: dosya arama 60 saniyeyi asti."
+          : `Secilen raporlar ice alinamadi: ${error}`;
+        stopTimer(startedAt, messageText => setCatalogStatus("error", messageText), message);
+      } finally {
+        catalogTableRefreshButton.disabled = false;
+        catalogSelectedIngestButton.disabled = false;
+      }
+    }
+
+    async function rebuildCatalogEmbeddings() {
+      catalogEmbeddingRebuildButton.disabled = true;
+      catalogTableRefreshButton.disabled = true;
+      catalogSelectedIngestButton.disabled = true;
+      const startedAt = startTimer(
+        message => setCatalogStatus("ok", message),
+        "Embeddingler yenileniyor..."
+      );
+      try {
+        const response = await fetch("/embeddings/rebuild", {
+          method: "POST",
+        });
+        const data = await response.json();
+        setCatalogLog(data);
+        if (!response.ok) {
+          stopTimer(startedAt, message => setCatalogStatus("error", message), data.detail || "Embedding yenileme basarisiz oldu.");
+          return;
+        }
+        stopTimer(
+          startedAt,
           message => setCatalogStatus("ok", message),
-          `Ice alma tamamlandi. Yeni: ${data.ingested_count}, duplicate: ${data.duplicate_count}, hata: ${data.error_count}.`
+          `Embeddingler yenilendi. Chunk: ${data.chunks_seen}, embedding: ${data.embeddings_created}.`
         );
         await refreshCatalogTable();
       } catch (error) {
-        stopTimer(startedAt, message => setCatalogStatus("error", message), `Secilen raporlar ice alinamadi: ${error}`);
+        stopTimer(startedAt, message => setCatalogStatus("error", message), `Embedding yenileme basarisiz oldu: ${error}`);
       } finally {
+        catalogEmbeddingRebuildButton.disabled = false;
         catalogTableRefreshButton.disabled = false;
         catalogSelectedIngestButton.disabled = false;
       }
@@ -2134,7 +2677,7 @@ def upload_page() -> HTMLResponse:
         return;
       }
       const lower = selectedSingleFile.name.toLowerCase();
-      if (!(lower.endsWith(".pdf") || lower.endsWith(".docx"))) {
+      if (!(lower.endsWith(".pdf") || lower.endsWith(".docx") || lower.endsWith(".pptx"))) {
         setSingleStatus("error", "Sadece PDF ve DOCX desteklenir.");
         return;
       }
@@ -2154,6 +2697,9 @@ def upload_page() -> HTMLResponse:
         singleResultBox.textContent = JSON.stringify(data, null, 2);
         if (response.ok) {
           stopTimer(startedAt, message => setSingleStatus("ok", message), `Islem tamamlandi. Durum: ${data.status}.`);
+          if (activeModule && activeModule.dataset.moduleTitle === "Rapor Yukleme") {
+            await refreshUploadedDocuments();
+          }
         } else {
           stopTimer(startedAt, message => setSingleStatus("error", message), data.detail || "Yukleme basarisiz oldu.");
         }
@@ -2167,7 +2713,7 @@ def upload_page() -> HTMLResponse:
     uploadButton.addEventListener("click", async () => {
       const supported = selectedFiles.filter(file => {
         const lower = file.name.toLowerCase();
-        return lower.endsWith(".pdf") || lower.endsWith(".docx");
+        return lower.endsWith(".pdf") || lower.endsWith(".docx") || lower.endsWith(".pptx");
       });
 
       if (supported.length === 0) {
@@ -2194,6 +2740,9 @@ def upload_page() -> HTMLResponse:
             message => setStatus("ok", message),
             `Yukleme tamamlandi. ${data.ingested_count} yeni dosya islendi, ${data.duplicate_count} duplicate bulundu.`
           );
+          if (activeModule && activeModule.dataset.moduleTitle === "Rapor Yukleme") {
+            await refreshUploadedDocuments();
+          }
         } else {
           stopTimer(startedAt, message => setStatus("error", message), data.detail || "Yukleme basarisiz oldu.");
         }
@@ -2226,7 +2775,7 @@ def upload_page() -> HTMLResponse:
           body: formData,
         });
         const data = await response.json();
-        catalogResultBox.textContent = JSON.stringify(data, null, 2);
+        setCatalogLog(data);
         if (response.ok) {
           stopTimer(
             startedAt,
@@ -2261,6 +2810,25 @@ def upload_page() -> HTMLResponse:
     catalogAskButton.addEventListener("click", runCatalogAsk);
     catalogTableRefreshButton.addEventListener("click", refreshCatalogTable);
     catalogSelectedIngestButton.addEventListener("click", ingestSelectedCatalogRows);
+    catalogEmbeddingRebuildButton.addEventListener("click", rebuildCatalogEmbeddings);
+    catalogPendingTable.addEventListener("click", (event) => {
+      const candidateButton = event.target.closest("[data-catalog-candidates]");
+      if (candidateButton) {
+        event.preventDefault();
+        loadCatalogCandidates(Number(candidateButton.dataset.catalogCandidates));
+        return;
+      }
+      const ingestButton = event.target.closest("[data-catalog-ingest-candidate]");
+      if (ingestButton) {
+        event.preventDefault();
+        ingestCatalogCandidate(
+          Number(ingestButton.dataset.catalogIngestCandidate),
+          ingestButton.dataset.filePath || ""
+        );
+      }
+    });
+    uploadedDocumentsRefreshButton.addEventListener("click", refreshUploadedDocuments);
+    graphRefreshButton.addEventListener("click", refreshGraph);
     catalogQuestion.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
@@ -2278,7 +2846,11 @@ def upload_page() -> HTMLResponse:
       button.addEventListener("click", () => {
         const section = button.closest(".section");
         if (section) {
-          openModule(section);
+          if (section.classList.contains("module-expanded")) {
+            closeModule();
+          } else {
+            openModule(section);
+          }
         }
       });
     });
@@ -2289,7 +2861,7 @@ def upload_page() -> HTMLResponse:
       }
     });
     document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && moduleModal.classList.contains("open")) {
+      if (event.key === "Escape" && activeModule) {
         closeModule();
       }
     });
@@ -2317,8 +2889,8 @@ def ingest_file(
     session: Session = Depends(get_session),
 ) -> IngestResponse:
     suffix = Path(file.filename or "").suffix.lower()
-    if suffix not in {".pdf", ".docx"}:
-        raise HTTPException(status_code=400, detail="Only PDF and DOCX files are supported.")
+    if suffix not in {".pdf", ".docx", ".pptx"}:
+        raise HTTPException(status_code=400, detail="Only PDF, DOCX and PPTX files are supported.")
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
         temp_path = Path(temp_file.name)
@@ -2345,12 +2917,12 @@ def ingest_files_batch(
 
     for file in files:
         suffix = Path(file.filename or "").suffix.lower()
-        if suffix not in {".pdf", ".docx"}:
+        if suffix not in {".pdf", ".docx", ".pptx"}:
             items.append(
                 BatchIngestItemResponse(
                     file_name=file.filename or "",
                     status="error",
-                    error="Only PDF and DOCX files are supported.",
+                    error="Only PDF, DOCX and PPTX files are supported.",
                 )
             )
             continue
@@ -2523,6 +3095,35 @@ def catalog_table(
     return CatalogTableResponse(**service.catalog_table(limit=limit))
 
 
+@app.get("/catalog/{catalog_entry_id}/file-candidates")
+def catalog_file_candidates(
+    catalog_entry_id: int,
+    session: Session = Depends(get_session),
+) -> dict:
+    service = CatalogIngestService(session)
+    return service.file_candidates_for_entry(catalog_entry_id)
+
+
+@app.post("/catalog/ingest-candidate", response_model=CatalogSampleIngestItemResponse)
+def ingest_catalog_candidate(
+    payload: CatalogCandidateIngestRequest,
+    session: Session = Depends(get_session),
+) -> CatalogSampleIngestItemResponse:
+    service = CatalogIngestService(session)
+    return CatalogSampleIngestItemResponse(
+        **service.ingest_catalog_candidate(payload.catalog_entry_id, payload.file_path)
+    )
+
+
+@app.get("/graph/overview")
+def graph_overview(
+    limit: int = Query(160, ge=20, le=300),
+    session: Session = Depends(get_session),
+) -> dict:
+    service = GraphService(session)
+    return service.overview(limit=limit)
+
+
 @app.post("/catalog/ingest-selected", response_model=CatalogSelectedIngestResponse)
 def ingest_selected_catalog_entries(
     payload: CatalogSelectedIngestRequest,
@@ -2576,6 +3177,41 @@ def draft_report_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@app.get("/documents/list")
+def list_documents(
+    limit: Annotated[int, Query(ge=1, le=500)] = 300,
+    session: Session = Depends(get_session),
+) -> dict:
+    total = session.scalar(select(func.count(Document.id))) or 0
+    rows = session.execute(
+        select(
+            Document,
+            func.count(DocumentChunk.id).label("chunk_count"),
+            func.count(ChunkEmbedding.chunk_id).label("embedding_count"),
+        )
+        .outerjoin(DocumentChunk, DocumentChunk.document_id == Document.id)
+        .outerjoin(ChunkEmbedding, ChunkEmbedding.chunk_id == DocumentChunk.id)
+        .group_by(Document.id)
+        .order_by(Document.created_at.desc(), Document.id.desc())
+        .limit(limit)
+    ).all()
+    return {
+        "total": int(total),
+        "items": [
+            {
+                "document_id": document.id,
+                "title": document.title,
+                "file_name": document.file_name,
+                "file_type": document.file_type,
+                "created_at": document.created_at.strftime("%Y-%m-%d %H:%M") if document.created_at else "",
+                "chunk_count": int(chunk_count or 0),
+                "embedding_count": int(embedding_count or 0),
+            }
+            for document, chunk_count, embedding_count in rows
+        ],
+    }
 
 
 @app.get("/documents/{document_id}", response_class=HTMLResponse)
@@ -2731,6 +3367,7 @@ def document_file(document_id: int, session: Session = Depends(get_session)):
     media_type = {
         "pdf": "application/pdf",
         "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     }.get(document.file_type, "application/octet-stream")
     return FileResponse(
         path=file_path,

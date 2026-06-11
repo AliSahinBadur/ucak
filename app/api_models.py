@@ -279,6 +279,11 @@ class CatalogSelectedIngestRequest(BaseModel):
     catalog_entry_ids: list[int] = Field(default_factory=list)
 
 
+class CatalogCandidateIngestRequest(BaseModel):
+    catalog_entry_id: int = Field(gt=0)
+    file_path: str = Field(min_length=1)
+
+
 class CatalogSelectedIngestResponse(BaseModel):
     requested_count: int
     ingested_count: int
