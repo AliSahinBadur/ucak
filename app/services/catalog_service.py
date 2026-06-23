@@ -8,6 +8,7 @@ from io import BytesIO, StringIO
 from pathlib import Path
 import re
 import unicodedata
+from urllib.parse import unquote, urlparse
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -37,6 +38,7 @@ class CatalogService:
         rows = self._parse_xlsx(content) if suffix == ".xlsx" else self._parse_text(content)
         created = 0
         duplicates = 0
+        updated = 0
         errors: list[str] = []
         seen_hashes: set[str] = set()
 
@@ -48,10 +50,13 @@ class CatalogService:
                     continue
                 seen_hashes.add(row_hash)
 
-                existing = self.session.execute(
-                    select(ReportCatalogEntry.id).where(ReportCatalogEntry.row_hash == row_hash)
-                ).first()
+                existing = self.session.scalar(
+                    select(ReportCatalogEntry).where(ReportCatalogEntry.row_hash == row_hash)
+                )
                 if existing:
+                    if row.source_path and existing.source_path != row.source_path:
+                        existing.source_path = row.source_path
+                        updated += 1
                     duplicates += 1
                     continue
 
@@ -77,6 +82,7 @@ class CatalogService:
             "rows_seen": len(rows),
             "created_count": created,
             "duplicate_count": duplicates,
+            "updated_count": updated,
             "error_count": len(errors),
             "errors": errors[:20],
         }
@@ -602,11 +608,18 @@ class CatalogService:
         except ImportError as exc:
             raise ValueError("XLSX okumak icin openpyxl kurulu olmali. CSV/TSV de yukleyebilirsin.") from exc
 
-        workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
+        workbook = load_workbook(BytesIO(content), read_only=False, data_only=True)
         parsed: list[CatalogRow] = []
         for sheet in workbook.worksheets:
-            for row in sheet.iter_rows(values_only=True):
-                parsed_row = self._row_from_values(row)
+            for row in sheet.iter_rows():
+                values = [cell.value for cell in row]
+                hyperlinks = [
+                    cell.hyperlink.target
+                    if cell.hyperlink and cell.hyperlink.target
+                    else ""
+                    for cell in row
+                ]
+                parsed_row = self._row_from_values(values, hyperlinks=hyperlinks)
                 if parsed_row:
                     parsed.append(parsed_row)
         return parsed
@@ -625,7 +638,7 @@ class CatalogService:
                 parsed.append(parsed_row)
         return parsed
 
-    def _row_from_values(self, values: tuple | list | None) -> CatalogRow | None:
+    def _row_from_values(self, values: tuple | list | None, hyperlinks: list[str] | None = None) -> CatalogRow | None:
         if not values:
             return None
         cells = [self._cell_to_text(value) for value in values]
@@ -645,8 +658,35 @@ class CatalogService:
             discipline=cells[3].upper(),
             report_date=cells[4] or None,
             authors=cells[5] or None,
-            source_path=cells[0] if "\\" in cells[0] or "/" in cells[0] else None,
+            source_path=self._source_path_from_row(cells, hyperlinks or []),
         )
+
+    @classmethod
+    def _source_path_from_row(cls, cells: list[str], hyperlinks: list[str]) -> str | None:
+        candidates = [cells[0] if cells else ""]
+        candidates.extend(hyperlinks)
+        for candidate in candidates:
+            path = cls._normalize_source_path(candidate)
+            if path:
+                return path
+        return None
+
+    @staticmethod
+    def _normalize_source_path(value: str) -> str | None:
+        raw_value = str(value or "").strip().strip('"')
+        if not raw_value or raw_value.startswith("#"):
+            return None
+
+        if raw_value.casefold().startswith("file:"):
+            parsed = urlparse(raw_value)
+            raw_value = unquote(parsed.path or parsed.netloc)
+            if re.match(r"^/[A-Za-z]:/", raw_value):
+                raw_value = raw_value[1:]
+            raw_value = raw_value.replace("/", "\\")
+
+        if "\\" not in raw_value and "/" not in raw_value:
+            return None
+        return raw_value
 
     @staticmethod
     def _cell_to_text(value) -> str:

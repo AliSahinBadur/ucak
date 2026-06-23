@@ -14,9 +14,36 @@ from .ingest_service import IngestService, SUPPORTED_EXTENSIONS
 
 class CatalogIngestService:
     IGNORED_DISCIPLINES = {"", "ANALYSIS TYPE"}
-    DEFAULT_SEARCH_ROOTS = (Path("V:/RAPORLAR"), Path("V:/"))
-    MAX_DIRECTORY_FILES = 150
-    MAX_DIRECTORY_DEPTH = 2
+    DEFAULT_SEARCH_ROOTS = (
+        Path(r"\\isufile02\argevalidasyon$\RAPORLAR"),
+        Path("V:/RAPORLAR"),
+        Path("V:/"),
+    )
+    MAX_DIRECTORY_FILES = 250
+    MAX_DIRECTORY_DEPTH = 8
+    MAX_DIRECTORY_VISITS = 600
+    MAX_REPORT_DIRECTORY_VISITS = 220
+    COMMON_REPORT_GROUPS = (
+        "",
+        "RAPOR",
+        "REPORT",
+        "DUR",
+        "DURABILITY",
+        "FAT",
+        "FATIGUE",
+        "SAFE",
+        "SAFETY",
+        "TASE",
+        "CFD",
+        "NVH",
+        "VED",
+        "TEST",
+        "BLAST",
+        "DEF",
+        "6X6",
+        "4X4",
+        "8X8",
+    )
 
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -182,12 +209,8 @@ class CatalogIngestService:
                 "error": "Catalog entry not found.",
             }
 
-        candidate_map = {
-            item["path"].casefold(): item
-            for item in self._entry_file_candidates(entry)
-        }
-        selected = candidate_map.get(str(Path(file_path)).casefold()) or candidate_map.get(file_path.casefold())
-        if selected is None:
+        selected_path = self.validated_candidate_path(entry, file_path)
+        if selected_path is None:
             return {
                 "catalog_entry_id": entry.id,
                 "discipline": entry.discipline,
@@ -202,10 +225,35 @@ class CatalogIngestService:
 
         return self._ingest_or_preview(
             entry,
-            Path(selected["path"]),
+            selected_path,
             dry_run=False,
             match_method="catalog_candidate",
         )
+
+    def candidate_preview_path(self, catalog_entry_id: int, file_path: str) -> Path | None:
+        entry = self.session.get(ReportCatalogEntry, catalog_entry_id)
+        if entry is None:
+            return None
+        return self.validated_candidate_path(entry, file_path)
+
+    def best_candidate_preview_path(self, catalog_entry_id: int) -> Path | None:
+        entry = self.session.get(ReportCatalogEntry, catalog_entry_id)
+        if entry is None:
+            return None
+        return self._resolve_entry_file(entry)
+
+    def has_accessible_report_root(self) -> bool:
+        return any(self._is_directory(root) for root in self.DEFAULT_SEARCH_ROOTS)
+
+    def validated_candidate_path(self, entry: ReportCatalogEntry, file_path: str) -> Path | None:
+        candidate_map = {
+            item["path"].casefold(): item
+            for item in self._entry_file_candidates(entry)
+        }
+        selected = candidate_map.get(str(Path(file_path)).casefold()) or candidate_map.get(file_path.casefold())
+        if selected is None:
+            return None
+        return Path(selected["path"])
 
     def _ingest_or_preview(
         self,
@@ -373,6 +421,7 @@ class CatalogIngestService:
     def _entry_file_candidates(self, entry: ReportCatalogEntry) -> list[dict]:
         raw_candidates = [
             entry.source_path or "",
+            self._vehicle_report_folder(entry),
             entry.report_code or "",
         ]
         candidates: list[dict] = []
@@ -384,6 +433,10 @@ class CatalogIngestService:
                 if self._is_directory(candidate):
                     for nested in self._directory_supported_files(candidate):
                         candidates.append(self._candidate_payload(entry, nested, "folder_candidate"))
+        for report_directory in self._structured_report_directories(entry):
+            if self._is_directory(report_directory):
+                for nested in self._directory_supported_files(report_directory):
+                    candidates.append(self._candidate_payload(entry, nested, "structured_folder"))
 
         deduped: dict[str, dict] = {}
         for candidate in candidates:
@@ -391,6 +444,248 @@ class CatalogIngestService:
             if key not in deduped or candidate["score"] > deduped[key]["score"]:
                 deduped[key] = candidate
         return sorted(deduped.values(), key=lambda item: (-item["score"], item["file_name"].casefold()))
+
+    def _structured_report_directories(self, entry: ReportCatalogEntry) -> list[Path]:
+        report_code = (entry.report_code or "").strip().strip("\\/")
+        if not report_code or "\\" in report_code or "/" in report_code:
+            return []
+
+        directories: list[Path] = []
+        for root in self.DEFAULT_SEARCH_ROOTS:
+            if self._should_skip_structured_root(root):
+                continue
+            for vehicle_dir in self._vehicle_directory_candidates(root, entry):
+                for group_dir in self._report_group_directories(vehicle_dir, entry):
+                    directories.append(group_dir / report_code)
+                directories.extend(self._matching_report_directories(vehicle_dir, entry))
+        return self._dedupe_paths(directories)
+
+    def _vehicle_directory_candidates(self, root: Path, entry: ReportCatalogEntry) -> list[Path]:
+        keys = self._vehicle_keys(entry)
+        if not keys:
+            return []
+
+        candidates: list[tuple[int, Path]] = []
+        for raw_name in self._vehicle_name_variants(entry):
+            path = root / raw_name
+            if self._is_directory(path):
+                candidates.append((150, path))
+
+        try:
+            children = [path for path in root.iterdir() if path.is_dir()]
+        except OSError:
+            children = []
+
+        for child in children[:600]:
+            score = self._directory_name_score(child.name, keys)
+            if score > 0:
+                candidates.append((score, child))
+
+        best: dict[str, tuple[int, Path]] = {}
+        for score, path in candidates:
+            key = str(path).casefold()
+            if key not in best or score > best[key][0]:
+                best[key] = (score, path)
+        return [
+            path
+            for score, path in sorted(best.values(), key=lambda item: (-item[0], item[1].name.casefold()))[:18]
+        ]
+
+    def _matching_report_directories(self, vehicle_dir: Path, entry: ReportCatalogEntry) -> list[Path]:
+        report_keys = self._report_directory_keys(entry)
+        if not report_keys:
+            return []
+        matches: list[Path] = []
+        visited = 0
+        try:
+            for parent in self._report_group_directories(vehicle_dir, entry):
+                if visited >= self.MAX_REPORT_DIRECTORY_VISITS:
+                    break
+                try:
+                    children = [child for child in parent.iterdir() if child.is_dir()]
+                except OSError:
+                    continue
+                for child in children[: self.MAX_REPORT_DIRECTORY_VISITS - visited]:
+                    visited += 1
+                    if not child.is_dir():
+                        continue
+                    child_key = self._normalize_stem(child.name)
+                    if self._matches_any_key(child_key, report_keys):
+                        matches.append(child)
+                        if len(matches) >= 25:
+                            return matches
+        except OSError:
+            return matches
+        return matches[:25]
+
+    def _report_group_directories(self, vehicle_dir: Path, entry: ReportCatalogEntry) -> list[Path]:
+        raw_names = list(self.COMMON_REPORT_GROUPS)
+        raw_names.extend(self._discipline_group_names(entry.discipline or ""))
+        raw_names.extend(self._report_code_group_names(entry.report_code or ""))
+
+        directories = [vehicle_dir]
+        for raw_name in raw_names:
+            cleaned = raw_name.strip().strip("\\/")
+            if not cleaned:
+                continue
+            directories.append(vehicle_dir / cleaned)
+            directories.append(vehicle_dir / cleaned.replace(" ", "_"))
+            directories.append(vehicle_dir / cleaned.replace(" ", ""))
+        directories.extend(self._matching_group_directories(vehicle_dir, raw_names))
+        return self._dedupe_paths(directories)
+
+    def _matching_group_directories(self, vehicle_dir: Path, raw_names: list[str]) -> list[Path]:
+        group_keys = [
+            self._normalize_stem(name)
+            for name in raw_names
+            if len(self._normalize_stem(name)) >= 3
+        ]
+        if not group_keys:
+            return []
+        try:
+            children = [path for path in vehicle_dir.iterdir() if path.is_dir()]
+        except OSError:
+            return []
+
+        matches: list[Path] = []
+        for child in children[:250]:
+            child_key = self._normalize_stem(child.name)
+            if any(key == child_key or key in child_key or child_key in key for key in group_keys):
+                matches.append(child)
+        return matches[:30]
+
+    @staticmethod
+    def _discipline_group_names(discipline: str) -> list[str]:
+        normalized = discipline.strip().upper()
+        names = [normalized]
+        aliases = {
+            "DURABILITY": ["DUR", "DURABILITY"],
+            "DURABILITY - VED": ["DUR", "DURABILITY", "VED"],
+            "FATIGUE": ["FAT", "FATIGUE"],
+            "SAFETY": ["SAFE", "SAFETY"],
+            "CFD": ["CFD", "TASE"],
+            "NVH": ["NVH"],
+            "VED": ["VED"],
+            "TEST": ["TEST"],
+            "BLAST": ["BLAST"],
+            "BLAST & BALISTIC": ["BLAST", "DEF"],
+        }
+        names.extend(aliases.get(normalized, []))
+        return names
+
+    @staticmethod
+    def _report_code_group_names(report_code: str) -> list[str]:
+        names: list[str] = []
+        upper = report_code.upper()
+        for token in ("DUR", "FAT", "SAFE", "SAFETY", "TASE", "CFD", "NVH", "VED", "TEST", "BLAST", "DEF"):
+            if token in upper:
+                names.append(token)
+        for token in ("6X6", "4X4", "8X8", "P0", "P1", "RETROFIT"):
+            if token in upper:
+                names.append(token)
+        return names
+
+    def _report_directory_keys(self, entry: ReportCatalogEntry) -> list[str]:
+        report_code = (entry.report_code or "").strip()
+        if not report_code or "\\" in report_code or "/" in report_code:
+            return []
+        keys = [self._normalize_stem(report_code)]
+        compact = re.sub(r"(?<=[A-Za-z])(?=\d)|(?<=\d)(?=[A-Za-z])", "-", report_code)
+        keys.append(self._normalize_stem(compact))
+        return [key for key in dict.fromkeys(keys) if len(key) >= 5]
+
+    @staticmethod
+    def _matches_any_key(value: str, keys: list[str]) -> bool:
+        return any(key == value or key in value or value in key for key in keys)
+
+    def _vehicle_keys(self, entry: ReportCatalogEntry) -> list[str]:
+        values = self._vehicle_name_variants(entry)
+        values.extend(self._vehicle_values_from_report_code(entry.report_code or ""))
+        keys: list[str] = []
+        for value in values:
+            key = self._normalize_stem(value)
+            if len(key) >= 3 and key not in keys:
+                keys.append(key)
+        return keys
+
+    def _vehicle_name_variants(self, entry: ReportCatalogEntry) -> list[str]:
+        vehicle = (entry.vehicle_name or "").strip()
+        if not vehicle:
+            return []
+        variants = [vehicle, vehicle.replace(" ", "_"), vehicle.replace(" ", "")]
+        lowered = vehicle.casefold()
+        suffixes = (" gen2", " mux", " xl", " p0", " p1", " lf", " hp", " long", " short")
+        for suffix in suffixes:
+            if lowered.endswith(suffix):
+                variants.append(vehicle[: -len(suffix)].strip())
+        first_token = re.split(r"[\s_/-]+", vehicle.strip())[0]
+        if len(first_token) >= 4:
+            variants.append(first_token)
+        return [value for value in variants if value]
+
+    def _vehicle_values_from_report_code(self, report_code: str) -> list[str]:
+        parts = [part for part in re.split(r"[-_\s]+", report_code.strip()) if part]
+        if not parts:
+            return []
+        ignored = {
+            "2021", "2022", "2023", "2024", "2025", "2026",
+            "dur", "fat", "safe", "tase", "nvh", "ved", "test", "blast", "def", "cfd",
+            "01", "02", "03", "04", "05", "06", "07", "08", "09", "10",
+            "rev", "rev01", "rev02", "rev03", "rev04",
+        }
+        vehicle_parts: list[str] = []
+        for part in parts[1:]:
+            normalized = self._normalize_stem(part)
+            if normalized in ignored or normalized.isdigit():
+                break
+            vehicle_parts.append(part)
+            if len(vehicle_parts) >= 4:
+                break
+        values = [" ".join(vehicle_parts), "".join(vehicle_parts)]
+        values.extend(vehicle_parts)
+        if vehicle_parts:
+            values.append(vehicle_parts[0])
+        if len(vehicle_parts) > 1:
+            values.append(" ".join(vehicle_parts[1:]))
+            values.append("".join(vehicle_parts[1:]))
+        return [value for value in values if value]
+
+    @staticmethod
+    def _directory_name_score(name: str, keys: list[str]) -> int:
+        name_key = CatalogIngestService._normalize_stem(name)
+        score = 0
+        for key in keys:
+            if key == name_key:
+                score = max(score, 140)
+            elif key in name_key or name_key in key:
+                score = max(score, 95)
+            elif len(key) >= 5 and key[:5] in name_key:
+                score = max(score, 45)
+        return score
+
+    def _should_skip_structured_root(self, root: Path) -> bool:
+        root_key = str(root).rstrip("\\/").casefold()
+        return root_key.endswith(":") or root_key.endswith(":/") or root_key.endswith(":\\")
+
+    @staticmethod
+    def _dedupe_paths(paths: list[Path]) -> list[Path]:
+        deduped: list[Path] = []
+        seen: set[str] = set()
+        for path in paths:
+            key = str(path).casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(path)
+        return deduped
+
+    @staticmethod
+    def _vehicle_report_folder(entry: ReportCatalogEntry) -> str:
+        vehicle = (entry.vehicle_name or "").strip().strip("\\/")
+        report_code = (entry.report_code or "").strip().strip("\\/")
+        if not vehicle or not report_code:
+            return ""
+        return str(Path(vehicle) / report_code)
 
     def _candidate_payload(self, entry: ReportCatalogEntry, path: Path, match_method: str) -> dict:
         return {
@@ -458,19 +753,29 @@ class CatalogIngestService:
             return []
 
         files: list[Path] = []
-        base_depth = len(directory.parts)
+        queue: list[tuple[Path, int]] = [(directory, 0)]
+        visited = 0
         try:
-            for dirpath, dirnames, filenames in os.walk(directory):
-                current = Path(dirpath)
-                if len(current.parts) - base_depth >= self.MAX_DIRECTORY_DEPTH:
-                    dirnames[:] = []
-                for file_name in filenames:
-                    candidate = current / file_name
-                    if candidate.suffix.lower() not in SUPPORTED_EXTENSIONS:
-                        continue
-                    files.append(candidate)
-                    if len(files) >= self.MAX_DIRECTORY_FILES:
+            while queue and visited < self.MAX_DIRECTORY_VISITS:
+                current, depth = queue.pop(0)
+                visited += 1
+                child_dirs: list[Path] = []
+                for child in current.iterdir():
+                    if child.is_file() and child.suffix.lower() in SUPPORTED_EXTENSIONS:
+                        files.append(child)
+                        if len(files) >= self.MAX_DIRECTORY_FILES:
+                            return files
+                    elif child.is_dir() and depth < self.MAX_DIRECTORY_DEPTH:
+                        child_dirs.append(child)
+
+                if files:
+                    # Stop at the first depth that contains report files. This avoids
+                    # crawling unrelated archive folders under the same report code.
+                    same_depth_dirs = [item for item in queue if item[1] == depth]
+                    if not same_depth_dirs:
                         return files
+                for child_dir in sorted(child_dirs, key=lambda path: path.name.casefold()):
+                    queue.append((child_dir, depth + 1))
         except OSError:
             return files
         return files

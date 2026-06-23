@@ -151,6 +151,7 @@ class CatalogImportResponse(BaseModel):
     rows_seen: int
     created_count: int
     duplicate_count: int
+    updated_count: int = 0
     error_count: int
     errors: list[str]
 

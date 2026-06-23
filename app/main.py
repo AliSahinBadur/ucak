@@ -142,7 +142,7 @@ def upload_page() -> HTMLResponse:
     :root {
       --bg: #fbf3f4;
       --panel: #ffffff;
-      --line: #e8cfd4;
+      --line: #ae848d;
       --text: #2a1014;
       --muted: #7a555b;
       --accent: #c62839;
@@ -228,6 +228,37 @@ def upload_page() -> HTMLResponse:
       color: var(--accent-strong);
       font-size: 12px;
       font-weight: 700;
+    }
+    .module-switcher {
+      margin-top: 14px;
+      display: flex;
+      gap: 9px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .module-filter {
+      border: 1px solid #f1c8cf;
+      border-radius: 999px;
+      background: #fdecef;
+      color: var(--accent-strong);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 800;
+      padding: 8px 12px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .module-filter:hover {
+      background: #ffe4e8;
+    }
+    .module-filter.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+      box-shadow: 0 8px 18px rgba(198, 40, 57, 0.16);
+    }
+    .section.module-hidden {
+      display: none;
     }
     .section {
       padding: 24px 28px 28px;
@@ -363,9 +394,11 @@ def upload_page() -> HTMLResponse:
       padding: 28px;
     }
     .section.module-expanded[data-modal-layout="catalog-stack"] .upload-grid,
-    .section.module-expanded[data-modal-layout="catalog-stack"] .catalog-board,
     .section.module-expanded[data-modal-layout="catalog-stack"] .catalog-workspace {
       grid-template-columns: 1fr;
+    }
+    .section.module-expanded[data-modal-layout="catalog-stack"] .catalog-board {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     }
     .section.module-expanded[data-modal-layout="catalog-stack"] .upload-card,
     .section.module-expanded[data-modal-layout="catalog-stack"] .panel {
@@ -723,6 +756,22 @@ def upload_page() -> HTMLResponse:
     .catalog-table a:hover {
       text-decoration: underline;
     }
+    .catalog-preview-cell {
+      width: 118px;
+      min-width: 118px;
+      white-space: nowrap;
+    }
+    .catalog-preview-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 92px;
+      min-height: 34px;
+      padding: 7px 10px;
+      white-space: nowrap;
+      line-height: 1;
+      text-align: center;
+    }
     .catalog-select {
       width: 18px;
       height: 18px;
@@ -754,6 +803,13 @@ def upload_page() -> HTMLResponse:
       font-weight: 800;
       color: var(--text);
       word-break: break-word;
+    }
+    .catalog-candidate-name a {
+      color: var(--accent-strong);
+      text-decoration: none;
+    }
+    .catalog-candidate-name a:hover {
+      text-decoration: underline;
     }
     .catalog-candidate-meta {
       margin-top: 3px;
@@ -979,15 +1035,18 @@ def upload_page() -> HTMLResponse:
             <span class="version-pill">model: __MODEL_LABEL__</span>
           </div>
           <p>PDF ve DOCX raporlarini yukle, sonra ayni ekranda keyword, semantic veya hybrid arama ile ilgili pasajlari ve benzer raporlari incele.</p>
-          <div class="hero-meta">
-            <span class="hero-pill">Upload</span>
-            <span class="hero-pill">Search</span>
-            <span class="hero-pill">Similar Reports</span>
-            <span class="hero-pill">Q & A </span>
-            <span class="hero-pill">Writing Assistant</span>
+          <div class="module-switcher" aria-label="Modul secimi">
+            <button class="module-filter active" type="button" data-module-filter="upload">Upload</button>
+            <button class="module-filter" type="button" data-module-filter="search">Search</button>
+            <button class="module-filter" type="button" data-module-filter="similar">Similar Reports</button>
+            <button class="module-filter" type="button" data-module-filter="catalog">Catalog & Multi QA</button>
+            <button class="module-filter" type="button" data-module-filter="graph">Graph View</button>
+            <button class="module-filter" type="button" data-module-filter="qa">Q & A</button>
+            <button class="module-filter" type="button" data-module-filter="writing">Writing Assistant</button>
+            <button class="module-filter" type="button" data-module-filter="all">Her sey</button>
           </div>
         </div>
-        <div class="section" data-module-title="Rapor Yukleme">
+        <div class="section" data-module-title="Rapor Yukleme" data-module-key="upload">
           <div class="section-head">
             <div>
               <h2>Rapor Yukleme</h2>
@@ -1057,7 +1116,7 @@ def upload_page() -> HTMLResponse:
             </div>
           </div>
         </div>
-        <div class="section" data-module-title="Arama">
+        <div class="section" data-module-title="Arama" data-module-key="search similar">
           <div class="section-head">
             <div>
               <h2>Arama</h2>
@@ -1099,7 +1158,7 @@ def upload_page() -> HTMLResponse:
             </div>
           </div>
         </div>
-        <div class="section" data-module-title="Rapor Katalogu ve Coklu Belge QA" data-modal-layout="catalog-stack">
+        <div class="section" data-module-title="Rapor Katalogu ve Coklu Belge QA" data-modal-layout="catalog-stack" data-module-key="catalog">
           <div class="section-head">
             <div>
               <h2>Rapor Katalogu ve Coklu Belge QA</h2>
@@ -1115,8 +1174,6 @@ def upload_page() -> HTMLResponse:
                 <label class="button secondary" for="catalogPicker">Katalog Sec</label>
                 <button class="button primary" id="catalogImportButton" type="button">Katalogu Yukle</button>
                 <input id="catalogPicker" type="file" accept=".xlsx,.csv,.tsv,.txt" />
-              </div>
-              <div class="actions">
                 <button class="button secondary" id="catalogTableRefreshButton" type="button">Katalog Tablosunu Yenile</button>
               </div>
               <div class="meta" id="catalogSummary">Henuz katalog dosyasi secilmedi.</div>
@@ -1161,7 +1218,7 @@ def upload_page() -> HTMLResponse:
                           <th>Arac</th>
                           <th>Tip</th>
                           <th>Link</th>
-                          <th>Aday</th>
+                          <th>Rapor</th>
                         </tr>
                       </thead>
                       <tbody id="catalogPendingTable">
@@ -1277,7 +1334,7 @@ def upload_page() -> HTMLResponse:
             </div>
           </div>
         </div>
-        <div class="section" data-module-title="Graph View ve Etiketler">
+        <div class="section" data-module-title="Graph View ve Etiketler" data-module-key="graph">
           <div class="section-head">
             <div>
               <h2>Graph View ve Etiketler</h2>
@@ -1303,7 +1360,7 @@ def upload_page() -> HTMLResponse:
             </div>
           </div>
         </div>
-        <div class="section" data-module-title="Soru-Cevap">
+        <div class="section" data-module-title="Soru-Cevap" data-module-key="qa">
           <div class="section-head">
             <div>
               <h2>Soru-Cevap</h2>
@@ -1349,7 +1406,7 @@ def upload_page() -> HTMLResponse:
             </div>
           </div>
         </div>
-        <div class="section" data-module-title="Rapor Yazma Destegi">
+        <div class="section" data-module-title="Rapor Yazma Destegi" data-module-key="writing">
           <div class="section-head">
             <div>
               <h2>Rapor Yazma Destegi</h2>
@@ -1498,6 +1555,8 @@ def upload_page() -> HTMLResponse:
     const moduleModalTitle = document.getElementById("moduleModalTitle");
     const moduleModalBody = document.getElementById("moduleModalBody");
     const moduleModalClose = document.getElementById("moduleModalClose");
+    const moduleFilterButtons = Array.from(document.querySelectorAll("[data-module-filter]"));
+    const moduleSections = Array.from(document.querySelectorAll(".section[data-module-key]"));
 
     let selectedFiles = [];
     let selectedSingleFile = null;
@@ -1506,6 +1565,28 @@ def upload_page() -> HTMLResponse:
     let lastCatalogMatches = [];
     let activeTimerId = null;
     let activeModule = null;
+    let selectedModuleFilter = "upload";
+
+    function applyModuleFilter(filterKey) {
+      selectedModuleFilter = filterKey || "upload";
+      if (activeModule) {
+        closeModule();
+      }
+
+      moduleFilterButtons.forEach(button => {
+        button.classList.toggle("active", button.dataset.moduleFilter === selectedModuleFilter);
+      });
+
+      moduleSections.forEach(section => {
+        const keys = String(section.dataset.moduleKey || "").split(/\\s+/);
+        const shouldShow = selectedModuleFilter === "all" || keys.includes(selectedModuleFilter);
+        section.classList.toggle("module-hidden", !shouldShow);
+      });
+
+      if (selectedModuleFilter === "graph") {
+        refreshGraph();
+      }
+    }
 
     function formatElapsed(milliseconds) {
       const seconds = milliseconds / 1000;
@@ -1651,7 +1732,7 @@ def upload_page() -> HTMLResponse:
         return;
       }
       if (data.created_count !== undefined) {
-        catalogLogSummary.textContent = `Teknik log | yeni ${data.created_count} | duplicate ${data.duplicate_count} | hata ${data.error_count}`;
+        catalogLogSummary.textContent = `Teknik log | yeni ${data.created_count} | guncellenen ${data.updated_count || 0} | duplicate ${data.duplicate_count} | hata ${data.error_count}`;
         return;
       }
       if (data.ingested_count !== undefined) {
@@ -2173,16 +2254,20 @@ def upload_page() -> HTMLResponse:
       }
     }
 
+    function fileHrefFromPath(rawPath) {
+      const backslash = String.fromCharCode(92);
+      return rawPath && (rawPath.includes(backslash) || rawPath.includes("/"))
+        ? `file:///${rawPath.split(backslash).join("/")}`
+        : "";
+    }
+
     function catalogLinkHtml(item) {
       const rawPath = item.source_path || item.report_code || "";
       if (!rawPath) {
         return "";
       }
       const label = rawPath.length > 42 ? `${rawPath.slice(0, 39)}...` : rawPath;
-      const backslash = String.fromCharCode(92);
-      const href = rawPath.includes(backslash) || rawPath.includes("/")
-        ? `file:///${rawPath.split(backslash).join("/")}`
-        : "";
+      const href = fileHrefFromPath(rawPath);
       if (!href) {
         return `<span title="${escapeHtml(rawPath)}">${escapeHtml(label)}</span>`;
       }
@@ -2202,15 +2287,8 @@ def upload_page() -> HTMLResponse:
           ? `<td><input class="catalog-select" type="checkbox" data-catalog-entry-id="${item.id}" /></td>`
           : "";
         const statusCell = selectable ? "" : `<td>${embeddingStatusHtml(item)}</td>`;
-        const candidateCell = selectable
-          ? `<td><button class="button secondary catalog-candidate-toggle" type="button" data-catalog-candidates="${item.id}">Adaylar</button></td>`
-          : "";
-        const candidateRow = selectable
-          ? `<tr class="catalog-candidate-row hidden" id="catalogCandidateRow${item.id}">
-              <td class="catalog-candidate-cell" colspan="${columns}">
-                <div class="catalog-candidates" id="catalogCandidateList${item.id}"></div>
-              </td>
-            </tr>`
+        const previewCell = selectable
+          ? `<td class="catalog-preview-cell"><button class="button secondary catalog-preview-button" type="button" data-catalog-preview="${item.id}">Raporu Gor</button></td>`
           : "";
         const openAction = item.matched_document_id
           ? ` onclick="openDocumentFile(${item.matched_document_id})" style="cursor:pointer;"`
@@ -2227,9 +2305,8 @@ def upload_page() -> HTMLResponse:
             <td>${escapeHtml(item.discipline || "")}</td>
             ${statusCell}
             <td>${catalogLinkHtml(item)}</td>
-            ${candidateCell}
+            ${previewCell}
           </tr>
-          ${candidateRow}
         `;
       }).join("");
     }
@@ -2249,23 +2326,34 @@ def upload_page() -> HTMLResponse:
       if (items.length === 0) {
         return '<div class="small">Bu katalog kaydi icin PDF/DOCX/PPTX aday dosya bulunamadi.</div>';
       }
-      const rows = items.slice(0, 20).map(item => `
+      const rows = items.slice(0, 20).map(item => {
+        const fileName = item.file_name || item.path || "";
+        const href = `/catalog/${entryId}/file-preview?file_path=${encodeURIComponent(item.path || "")}`;
+        const fileLabel = href
+          ? `<a href="${escapeHtml(href)}" title="${escapeHtml(item.path || "")}" target="_blank">${escapeHtml(fileName)}</a>`
+          : escapeHtml(fileName);
+        const encodedPath = escapeHtml(encodeURIComponent(item.path || ""));
+        return `
         <div class="catalog-candidate-item">
           <div>
-            <div class="catalog-candidate-name">${escapeHtml(item.file_name || item.path)}</div>
+            <div class="catalog-candidate-name">${fileLabel}</div>
             <div class="catalog-candidate-meta">
               ${escapeHtml((item.extension || "").toUpperCase())} | skor ${Number(item.score || 0)} | ${escapeHtml(item.match_method || "")}
             </div>
             <div class="catalog-candidate-meta">${escapeHtml(item.path || "")}</div>
           </div>
-          <button
-            class="button primary"
-            type="button"
-            data-catalog-ingest-candidate="${entryId}"
-            data-file-path="${escapeHtml(encodeURIComponent(item.path || ""))}"
-          >Bu dosyayi ice al</button>
+          <div class="actions">
+            <a class="button secondary" href="${escapeHtml(href)}" target="_blank">Gor</a>
+            <button
+              class="button primary"
+              type="button"
+              data-catalog-ingest-candidate="${entryId}"
+              data-file-path="${encodedPath}"
+            >Bu dosyayi ice al</button>
+          </div>
         </div>
-      `).join("");
+      `;
+      }).join("");
       const more = items.length > 20
         ? `<div class="small">... ve ${items.length - 20} aday daha var. Ilk 20 aday gosteriliyor.</div>`
         : "";
@@ -2445,6 +2533,27 @@ def upload_page() -> HTMLResponse:
       } finally {
         catalogTableRefreshButton.disabled = false;
         catalogSelectedIngestButton.disabled = false;
+      }
+    }
+
+    async function openCatalogPreview(entryId) {
+      if (!entryId) {
+        setCatalogStatus("error", "Raporu acmak icin katalog kaydi bulunamadi.");
+        return;
+      }
+      setCatalogStatus("ok", "Rapor dosyasi araniyor...");
+      try {
+        const response = await fetch(`/catalog/${entryId}/best-file-preview-info`);
+        const data = await response.json();
+        if (!response.ok || !data.available) {
+          setCatalogStatus("error", data.detail || data.error || "Bu katalog kaydi icin acilacak rapor dosyasi bulunamadi.");
+          setCatalogLog(data);
+          return;
+        }
+        setCatalogStatus("ok", `Rapor aciliyor: ${data.file_name || "dosya"}`);
+        window.open(data.preview_url, "_blank");
+      } catch (error) {
+        setCatalogStatus("error", `Rapor dosyasi acilamadi: ${error}`);
       }
     }
 
@@ -2780,8 +2889,8 @@ def upload_page() -> HTMLResponse:
           stopTimer(
             startedAt,
             message => setCatalogStatus("ok", message),
-            `Katalog yuklendi. ${data.created_count} yeni kayit, ${data.duplicate_count} duplicate.`
-          );
+          `Katalog yuklendi. ${data.created_count} yeni kayit, ${data.updated_count || 0} guncellenen path, ${data.duplicate_count} duplicate.`
+        );
           await refreshCatalogTable();
         } else {
           stopTimer(startedAt, message => setCatalogStatus("error", message), data.detail || "Katalog yukleme basarisiz oldu.");
@@ -2812,10 +2921,10 @@ def upload_page() -> HTMLResponse:
     catalogSelectedIngestButton.addEventListener("click", ingestSelectedCatalogRows);
     catalogEmbeddingRebuildButton.addEventListener("click", rebuildCatalogEmbeddings);
     catalogPendingTable.addEventListener("click", (event) => {
-      const candidateButton = event.target.closest("[data-catalog-candidates]");
-      if (candidateButton) {
+      const previewButton = event.target.closest("[data-catalog-preview]");
+      if (previewButton) {
         event.preventDefault();
-        loadCatalogCandidates(Number(candidateButton.dataset.catalogCandidates));
+        openCatalogPreview(Number(previewButton.dataset.catalogPreview));
         return;
       }
       const ingestButton = event.target.closest("[data-catalog-ingest-candidate]");
@@ -2854,6 +2963,11 @@ def upload_page() -> HTMLResponse:
         }
       });
     });
+    moduleFilterButtons.forEach(button => {
+      button.addEventListener("click", () => {
+        applyModuleFilter(button.dataset.moduleFilter);
+      });
+    });
     moduleModalClose.addEventListener("click", closeModule);
     moduleModal.addEventListener("click", (event) => {
       if (event.target === moduleModal) {
@@ -2869,6 +2983,7 @@ def upload_page() -> HTMLResponse:
     draftDetailedButton.addEventListener("click", () => runDraft("detailed"));
     updateCatalogScope([], "");
     resetMultiDocumentWorkspace();
+    applyModuleFilter("upload");
 
     function openDocumentFile(documentId) {
       window.open(`/documents/${documentId}/file`, "_blank");
@@ -3102,6 +3217,66 @@ def catalog_file_candidates(
 ) -> dict:
     service = CatalogIngestService(session)
     return service.file_candidates_for_entry(catalog_entry_id)
+
+
+@app.get("/catalog/{catalog_entry_id}/file-preview")
+def catalog_file_preview(
+    catalog_entry_id: int,
+    file_path: str = Query(..., min_length=1),
+    session: Session = Depends(get_session),
+) -> FileResponse:
+    service = CatalogIngestService(session)
+    preview_path = service.candidate_preview_path(catalog_entry_id, file_path)
+    return _catalog_preview_response(preview_path)
+
+
+@app.get("/catalog/{catalog_entry_id}/best-file-preview")
+def catalog_best_file_preview(
+    catalog_entry_id: int,
+    session: Session = Depends(get_session),
+) -> FileResponse:
+    service = CatalogIngestService(session)
+    preview_path = service.best_candidate_preview_path(catalog_entry_id)
+    return _catalog_preview_response(preview_path)
+
+
+@app.get("/catalog/{catalog_entry_id}/best-file-preview-info")
+def catalog_best_file_preview_info(
+    catalog_entry_id: int,
+    session: Session = Depends(get_session),
+) -> dict:
+    service = CatalogIngestService(session)
+    preview_path = service.best_candidate_preview_path(catalog_entry_id)
+    if preview_path is None or not preview_path.exists():
+        if not service.has_accessible_report_root():
+            return {
+                "available": False,
+                "catalog_entry_id": catalog_entry_id,
+                "error": "Sunucu RAPORLAR kok klasorune erisemiyor. Uygulamayi V: surucusunu veya \\\\isufile02\\argevalidasyon$ paylasimini goren Windows oturumundan baslatmak gerekir.",
+            }
+        return {
+            "available": False,
+            "catalog_entry_id": catalog_entry_id,
+            "error": "Bu katalog kaydi icin RAPORLAR\\<arac>\\<rapor kodu> klasoru veya bu klasorun icinde PDF/DOCX/PPTX bulunamadi.",
+        }
+    return {
+        "available": True,
+        "catalog_entry_id": catalog_entry_id,
+        "file_name": preview_path.name,
+        "source_path": str(preview_path),
+        "preview_url": f"/catalog/{catalog_entry_id}/best-file-preview",
+    }
+
+
+def _catalog_preview_response(preview_path: Path | None) -> FileResponse:
+    if preview_path is None or not preview_path.exists():
+        raise HTTPException(status_code=404, detail="Report file could not be opened.")
+    media_type = {
+        ".pdf": "application/pdf",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    }.get(preview_path.suffix.lower(), "application/octet-stream")
+    return FileResponse(path=preview_path, media_type=media_type, filename=preview_path.name)
 
 
 @app.post("/catalog/ingest-candidate", response_model=CatalogSampleIngestItemResponse)
