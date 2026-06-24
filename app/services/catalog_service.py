@@ -663,8 +663,8 @@ class CatalogService:
 
     @classmethod
     def _source_path_from_row(cls, cells: list[str], hyperlinks: list[str]) -> str | None:
-        candidates = [cells[0] if cells else ""]
-        candidates.extend(hyperlinks)
+        candidates = [value for value in hyperlinks if value]
+        candidates.append(cells[0] if cells else "")
         for candidate in candidates:
             path = cls._normalize_source_path(candidate)
             if path:
@@ -682,7 +682,12 @@ class CatalogService:
             raw_value = unquote(parsed.path or parsed.netloc)
             if re.match(r"^/[A-Za-z]:/", raw_value):
                 raw_value = raw_value[1:]
-            raw_value = raw_value.replace("/", "\\")
+        elif re.match(r"^https?://", raw_value, flags=re.IGNORECASE):
+            return None
+        else:
+            raw_value = unquote(raw_value)
+
+        raw_value = raw_value.replace("/", "\\")
 
         if "\\" not in raw_value and "/" not in raw_value:
             return None

@@ -3,6 +3,7 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 import logging
+import os
 import re
 import tempfile
 import unicodedata
@@ -2550,8 +2551,20 @@ def upload_page() -> HTMLResponse:
           setCatalogLog(data);
           return;
         }
-        setCatalogStatus("ok", `Rapor aciliyor: ${data.file_name || "dosya"}`);
-        window.open(data.preview_url, "_blank");
+        const extension = String(data.extension || "").toLowerCase();
+        if (extension === ".pdf") {
+          setCatalogStatus("ok", `PDF tarayicida aciliyor: ${data.file_name || "dosya"}`);
+          window.open(data.preview_url, "_blank");
+          return;
+        }
+
+        const openResponse = await fetch(data.open_url, { method: "POST" });
+        const openData = await openResponse.json();
+        if (!openResponse.ok || !openData.opened) {
+          setCatalogStatus("error", openData.detail || openData.error || "Dosya Office/Explorer ile acilamadi.");
+          return;
+        }
+        setCatalogStatus("ok", `Dosya Office/Explorer ile acildi: ${openData.file_name || data.file_name || "dosya"}`);
       } catch (error) {
         setCatalogStatus("error", `Rapor dosyasi acilamadi: ${error}`);
       }
@@ -3263,8 +3276,10 @@ def catalog_best_file_preview_info(
         "available": True,
         "catalog_entry_id": catalog_entry_id,
         "file_name": preview_path.name,
+        "extension": preview_path.suffix.lower(),
         "source_path": str(preview_path),
         "preview_url": f"/catalog/{catalog_entry_id}/best-file-preview",
+        "open_url": f"/catalog/{catalog_entry_id}/open-best-file",
     }
 
 
@@ -3276,7 +3291,41 @@ def _catalog_preview_response(preview_path: Path | None) -> FileResponse:
         ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     }.get(preview_path.suffix.lower(), "application/octet-stream")
+    headers = {}
+    if preview_path.suffix.lower() == ".pdf":
+        headers["Content-Disposition"] = f'inline; filename="{_safe_download_name(preview_path.name, "report.pdf")}"'
+        return FileResponse(path=preview_path, media_type=media_type, headers=headers)
     return FileResponse(path=preview_path, media_type=media_type, filename=preview_path.name)
+
+
+@app.post("/catalog/{catalog_entry_id}/open-best-file")
+def catalog_open_best_file(
+    catalog_entry_id: int,
+    session: Session = Depends(get_session),
+) -> dict:
+    service = CatalogIngestService(session)
+    preview_path = service.best_candidate_preview_path(catalog_entry_id)
+    if preview_path is None or not preview_path.exists():
+        raise HTTPException(status_code=404, detail="Report file could not be opened.")
+    if preview_path.suffix.lower() == ".pdf":
+        return {
+            "opened": False,
+            "catalog_entry_id": catalog_entry_id,
+            "file_name": preview_path.name,
+            "error": "PDF files are opened in the browser preview.",
+        }
+    try:
+        os.startfile(str(preview_path))  # type: ignore[attr-defined]
+    except AttributeError as exc:
+        raise HTTPException(status_code=501, detail="Local file opening is only supported on Windows.") from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Local file could not be opened: {exc}") from exc
+    return {
+        "opened": True,
+        "catalog_entry_id": catalog_entry_id,
+        "file_name": preview_path.name,
+        "source_path": str(preview_path),
+    }
 
 
 @app.post("/catalog/ingest-candidate", response_model=CatalogSampleIngestItemResponse)

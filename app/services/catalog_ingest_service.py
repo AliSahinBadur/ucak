@@ -838,18 +838,19 @@ class CatalogIngestService:
     def _path_candidates(self, raw_value: str) -> list[Path]:
         candidates: list[Path] = []
         for variant in self._text_variants(raw_value):
-            cleaned = variant.strip().strip('"')
+            cleaned = variant.strip().strip('"').replace("/", "\\")
             if not cleaned:
                 continue
 
-            direct = Path(cleaned)
-            candidates.append(direct)
-            if direct.suffix.lower() not in SUPPORTED_EXTENSIONS:
-                candidates.extend(Path(f"{cleaned}{suffix}") for suffix in SUPPORTED_EXTENSIONS)
-
-            if not direct.is_absolute():
+            for path_text in self._relative_root_variants(cleaned):
+                direct = Path(path_text)
+                candidates.append(direct)
+                if direct.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                    candidates.extend(Path(f"{path_text}{suffix}") for suffix in SUPPORTED_EXTENSIONS)
+                if direct.is_absolute():
+                    continue
                 for root in self.DEFAULT_SEARCH_ROOTS:
-                    rooted = root / cleaned
+                    rooted = root / path_text
                     candidates.append(rooted)
                     if rooted.suffix.lower() not in SUPPORTED_EXTENSIONS:
                         candidates.extend(Path(f"{rooted}{suffix}") for suffix in SUPPORTED_EXTENSIONS)
@@ -863,6 +864,17 @@ class CatalogIngestService:
             seen.add(key)
             deduped.append(candidate)
         return deduped
+
+    @staticmethod
+    def _relative_root_variants(value: str) -> list[str]:
+        if value.startswith("\\\\") or re.match(r"^[A-Za-z]:", value):
+            return [value]
+        cleaned = value.strip().strip("\\/")
+        variants = [cleaned]
+        parts = [part for part in re.split(r"[\\/]+", cleaned) if part]
+        if parts and CatalogIngestService._normalize_stem(parts[0]) == "raporlar":
+            variants.append(str(Path(*parts[1:])))
+        return [variant for variant in dict.fromkeys(variants) if variant]
 
     @staticmethod
     def _first_supported_file(directory: Path, preferred_stem: str = "") -> Path | None:
