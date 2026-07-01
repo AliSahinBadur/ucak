@@ -7,7 +7,7 @@ import re
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..db.models import CatalogDocumentLink, ChunkEmbedding, DocumentChunk, ReportCatalogEntry
+from ..db.models import CatalogDocumentLink, ChunkEmbedding, Document, DocumentChunk, ReportCatalogEntry
 from .catalog_service import CatalogService
 from .ingest_service import IngestService, SUPPORTED_EXTENSIONS
 
@@ -101,6 +101,7 @@ class CatalogIngestService:
 
     def catalog_table(self, limit: int = 2000) -> dict:
         limit = max(20, min(limit, 5000))
+        reconcile_result = self.reconcile_catalog_document_links(limit=limit)
         entries = self.session.execute(
             select(ReportCatalogEntry)
             .where(ReportCatalogEntry.discipline.notin_(self.IGNORED_DISCIPLINES))
@@ -131,6 +132,78 @@ class CatalogIngestService:
             "pending": pending,
             "embedded": embedded,
             "embedding_pending": embedding_pending,
+            "auto_link_created_count": reconcile_result["created_count"],
+            "auto_link_existing_count": reconcile_result["explicit_count"],
+        }
+
+    def reconcile_catalog_document_links(self, limit: int = 5000, dry_run: bool = False) -> dict:
+        limit = max(20, min(limit, 10000))
+        entries = self.session.execute(
+            select(ReportCatalogEntry)
+            .where(ReportCatalogEntry.discipline.notin_(self.IGNORED_DISCIPLINES))
+            .order_by(ReportCatalogEntry.id.asc())
+            .limit(limit)
+        ).scalars().all()
+        if not entries:
+            return {
+                "checked_count": 0,
+                "created_count": 0,
+                "explicit_count": 0,
+                "skipped_count": 0,
+                "items": [],
+            }
+
+        existing_links = {
+            int(catalog_entry_id): int(document_id)
+            for catalog_entry_id, document_id in self.session.execute(
+                select(CatalogDocumentLink.catalog_entry_id, CatalogDocumentLink.document_id)
+                .where(CatalogDocumentLink.catalog_entry_id.in_([entry.id for entry in entries]))
+            ).all()
+        }
+        documents = self.session.execute(select(Document)).scalars().all()
+
+        created = 0
+        items: list[dict] = []
+        for entry in entries:
+            if entry.id in existing_links:
+                continue
+
+            best_document = None
+            best_score = 0
+            for document in documents:
+                score = self.catalog_service._document_match_score(entry, document)
+                if score > best_score:
+                    best_score = score
+                    best_document = document
+
+            if best_document is None or best_score < 240:
+                continue
+
+            if not dry_run:
+                self._link_catalog_document(
+                    catalog_entry_id=entry.id,
+                    document_id=int(best_document.id),
+                    source_path=best_document.file_path,
+                    match_method="auto_title_match",
+                )
+            created += 1
+            items.append(
+                {
+                    "catalog_entry_id": entry.id,
+                    "report_code": entry.report_code,
+                    "document_id": int(best_document.id),
+                    "document_title": best_document.title,
+                    "score": best_score,
+                }
+            )
+
+        return {
+            "checked_count": len(entries),
+            "dry_run": dry_run,
+            "created_count": created,
+            "explicit_count": len(existing_links),
+            "skipped_count": len(entries) - len(existing_links) - created,
+            "items": items[:50],
         }
 
     def ingest_catalog_entries(self, catalog_entry_ids: list[int]) -> dict:

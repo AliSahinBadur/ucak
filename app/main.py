@@ -30,8 +30,12 @@ from .api_models import (
     CatalogSelectedIngestRequest,
     CatalogSelectedIngestResponse,
     CatalogTableResponse,
+    ChatRequest,
+    ChatResponse,
     DraftReportRequest,
     DraftReportResponse,
+    DuplicateReportListResponse,
+    DuplicateReportScanResponse,
     HealthResponse,
     IngestResponse,
     MultiDocumentAskRequest,
@@ -46,11 +50,13 @@ from .services.embedding_reindex_service import EmbeddingReindexService
 from .services.embedding_service import build_embedding_service
 from .services.catalog_ingest_service import CatalogIngestService
 from .services.catalog_service import CatalogService
+from .services.duplicate_detection_service import DuplicateDetectionService
 from .services.graph_service import GraphService
 from .services.ingest_service import IngestService
 from .services.multi_document_qa_service import MultiDocumentQAService
 from .services.qa_service import QAService
 from .services.report_writer_service import ReportWriterService
+from .services.retrieval_orchestrator import RetrievalOrchestrator
 from .services.search_service import SearchService
 from .services.storage_service import StorageService
 from .version import APP_VERSION
@@ -526,10 +532,24 @@ def upload_page() -> HTMLResponse:
     }
     .search-grid {
       display: grid;
-      grid-template-columns: minmax(0, 2fr) 210px 120px;
+      grid-template-columns: minmax(0, 2fr) 190px 160px 120px;
       gap: 12px;
       align-items: end;
       margin-top: 16px;
+    }
+    .toggle-field {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 42px;
+      color: var(--accent-strong);
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .toggle-field input {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
     }
     .ask-grid {
       display: grid;
@@ -942,6 +962,49 @@ def upload_page() -> HTMLResponse:
       height: 520px;
       display: block;
     }
+    .chat-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.8fr);
+      gap: 18px;
+      margin-top: 16px;
+    }
+    .chat-messages {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 360px;
+      max-height: 560px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: white;
+      padding: 14px;
+    }
+    .chat-message {
+      max-width: 82%;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px 12px;
+      white-space: pre-wrap;
+      line-height: 1.55;
+      font-size: 14px;
+    }
+    .chat-message.user {
+      align-self: flex-end;
+      background: #fff0f2;
+      border-color: #efbdc5;
+    }
+    .chat-message.assistant {
+      align-self: flex-start;
+      background: #fff;
+    }
+    .chat-input-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 150px 130px;
+      gap: 10px;
+      margin-top: 12px;
+      align-items: end;
+    }
     .graph-node {
       cursor: pointer;
     }
@@ -1031,7 +1094,7 @@ def upload_page() -> HTMLResponse:
       <div class="card">
         <div class="hero">
           <div class="hero-title-row">
-            <h1>RaporHub</h1>
+            <h1>Big Agent</h1>
             <span class="version-pill">v__APP_VERSION__</span>
             <span class="version-pill">model: __MODEL_LABEL__</span>
           </div>
@@ -1039,7 +1102,8 @@ def upload_page() -> HTMLResponse:
           <div class="module-switcher" aria-label="Modul secimi">
             <button class="module-filter active" type="button" data-module-filter="upload">Upload</button>
             <button class="module-filter" type="button" data-module-filter="search">Search</button>
-            <button class="module-filter" type="button" data-module-filter="similar">Similar Reports</button>
+            <button class="module-filter" type="button" data-module-filter="chat">Chatbot</button>
+            <button class="module-filter" type="button" data-module-filter="duplicates">Mukerrer Tespiti</button>
             <button class="module-filter" type="button" data-module-filter="catalog">Catalog & Multi QA</button>
             <button class="module-filter" type="button" data-module-filter="graph">Graph View</button>
             <button class="module-filter" type="button" data-module-filter="qa">Q & A</button>
@@ -1117,11 +1181,11 @@ def upload_page() -> HTMLResponse:
             </div>
           </div>
         </div>
-        <div class="section" data-module-title="Arama" data-module-key="search similar">
+        <div class="section" data-module-title="Arama" data-module-key="search">
           <div class="section-head">
             <div>
               <h2>Arama</h2>
-              <p>Bir ifade gir, modu sec ve sonuc kartlariyla benzer raporlari ayni ekranda gor.</p>
+              <p>Rapor iceriginde ara; sagda bulunan sonuclara benzer raporlari gor.</p>
             </div>
             <button class="expand-button" type="button" data-expand-module>Buyut</button>
           </div>
@@ -1144,19 +1208,69 @@ def upload_page() -> HTMLResponse:
             </div>
           </div>
           <div class="note" id="searchMeta">Arama yapilmadi.</div>
-          <div class="split">
+          <div class="split" id="searchResultsLayout">
             <div class="panel">
               <div class="panel-title">Sonuclar</div>
               <div id="resultsList" class="cards">
                 <div class="empty">Sonuclar burada listelenecek.</div>
               </div>
             </div>
-            <div class="panel">
+            <div class="panel similar-panel">
               <div class="panel-title">Benzer Raporlar</div>
               <div id="similarList" class="cards">
                 <div class="empty">Benzer rapor onerileri burada listelenecek.</div>
               </div>
             </div>
+          </div>
+        </div>
+        <div class="section" data-module-title="Chatbot" data-module-key="chat">
+          <div class="section-head">
+            <div>
+              <h2>Chatbot</h2>
+              <p>Raporlar uzerinden sohbet et; cevaplar kaynak pasajlarla birlikte gelir.</p>
+            </div>
+            <button class="expand-button" type="button" data-expand-module>Buyut</button>
+          </div>
+          <div class="chat-layout">
+            <div class="panel">
+              <div class="panel-title">Sohbet</div>
+              <div id="chatMessages" class="chat-messages">
+                <div class="chat-message assistant">Merhaba. Icerideki raporlar uzerinden soru sorabilirsin.</div>
+              </div>
+              <div class="chat-input-row">
+                <input id="chatInput" type="text" placeholder="Ornek: BIG-E konfor raporunda hangi parkurlar var?" />
+                <select id="chatMode">
+                  <option value="hybrid">hybrid</option>
+                  <option value="semantic">semantic</option>
+                  <option value="keyword">keyword</option>
+                </select>
+                <button class="button primary" id="chatSendButton" type="button">Gonder</button>
+              </div>
+              <div class="note" id="chatStatus">Chatbot hazir.</div>
+            </div>
+            <div class="panel">
+              <div class="panel-title">Son Kaynaklar</div>
+              <div id="chatSources" class="cards">
+                <div class="empty">Kaynaklar cevap geldikce burada listelenecek.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="section" data-module-title="Mukerrer Tespiti" data-module-key="duplicates">
+          <div class="section-head">
+            <div>
+              <h2>Mukerrer Tespiti</h2>
+              <p>Icerideki raporlar arasinda birbirine cok benzeyen kayitli adaylari gor.</p>
+            </div>
+            <button class="expand-button" type="button" data-expand-module>Buyut</button>
+          </div>
+          <div class="actions">
+            <button class="button primary" id="duplicateScanButton" type="button">Taramayi Baslat</button>
+            <button class="button secondary" id="duplicateRefreshButton" type="button">Kayitli Sonuclari Yenile</button>
+          </div>
+          <div class="note" id="duplicateStatus">Mukerrer adaylari henuz yuklenmedi.</div>
+          <div id="duplicateList" class="cards" style="margin-top:16px;">
+            <div class="empty">Kayitli mukerrer adaylari burada listelenecek.</div>
           </div>
         </div>
         <div class="section" data-module-title="Rapor Katalogu ve Coklu Belge QA" data-modal-layout="catalog-stack" data-module-key="catalog">
@@ -1532,8 +1646,19 @@ def upload_page() -> HTMLResponse:
     const searchMode = document.getElementById("searchMode");
     const searchButton = document.getElementById("searchButton");
     const searchMeta = document.getElementById("searchMeta");
+    const searchResultsLayout = document.getElementById("searchResultsLayout");
     const resultsList = document.getElementById("resultsList");
     const similarList = document.getElementById("similarList");
+    const duplicateScanButton = document.getElementById("duplicateScanButton");
+    const duplicateRefreshButton = document.getElementById("duplicateRefreshButton");
+    const duplicateStatus = document.getElementById("duplicateStatus");
+    const duplicateList = document.getElementById("duplicateList");
+    const chatMessages = document.getElementById("chatMessages");
+    const chatInput = document.getElementById("chatInput");
+    const chatMode = document.getElementById("chatMode");
+    const chatSendButton = document.getElementById("chatSendButton");
+    const chatStatus = document.getElementById("chatStatus");
+    const chatSources = document.getElementById("chatSources");
     const askQuestion = document.getElementById("askQuestion");
     const askMode = document.getElementById("askMode");
     const askDocumentId = document.getElementById("askDocumentId");
@@ -1564,6 +1689,7 @@ def upload_page() -> HTMLResponse:
     let selectedCatalogFile = null;
     let lastCatalogQuestion = "";
     let lastCatalogMatches = [];
+    let chatHistory = [];
     let activeTimerId = null;
     let activeModule = null;
     let selectedModuleFilter = "upload";
@@ -1586,6 +1712,9 @@ def upload_page() -> HTMLResponse:
 
       if (selectedModuleFilter === "graph") {
         refreshGraph();
+      }
+      if (selectedModuleFilter === "duplicates") {
+        refreshDuplicates();
       }
     }
 
@@ -1629,6 +1758,9 @@ def upload_page() -> HTMLResponse:
       }
       if (section.dataset.moduleTitle === "Graph View ve Etiketler") {
         refreshGraph();
+      }
+      if (section.dataset.moduleTitle === "Mukerrer Tespiti") {
+        refreshDuplicates();
       }
     }
 
@@ -1879,6 +2011,161 @@ def upload_page() -> HTMLResponse:
           </div>
           <div class="small">matched chunks: <span class="count">${item.matched_chunks}</span>${item.top_page_start ? ` | sayfa ${item.top_page_start}-${item.top_page_end}` : ""}</div>
           <div class="excerpt">${highlightText(item.top_excerpt, query)}</div>
+        </article>
+      `).join("");
+    }
+
+    function renderDuplicatePairs(items) {
+      if (!items || items.length === 0) {
+        duplicateList.innerHTML = '<div class="empty">Kayitli mukerrer adayi bulunamadi. Once taramayi baslat.</div>';
+        return;
+      }
+
+      duplicateList.innerHTML = items.map(item => `
+        <article class="similar-card">
+          <div class="similar-head">
+            <div>
+              <div class="title">Benzerlik: ${formatScore(item.similarity_score)}</div>
+              <div class="small">Sebep: ${escapeHtml(item.reason)} | Baslik: ${formatScore(item.title_score)} | Embedding: ${formatScore(item.embedding_score)}</div>
+            </div>
+            <span class="tag">${escapeHtml(item.status || "candidate")}</span>
+          </div>
+          <div class="split" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px;">
+            <div class="source-card" onclick="openDocumentFile(${item.document_id_a})" style="cursor:pointer;">
+              <div class="title">${escapeHtml(item.document_title_a)}</div>
+              <div class="small">Belge ID: ${item.document_id_a} | ${escapeHtml(item.file_name_a)}</div>
+            </div>
+            <div class="source-card" onclick="openDocumentFile(${item.document_id_b})" style="cursor:pointer;">
+              <div class="title">${escapeHtml(item.document_title_b)}</div>
+              <div class="small">Belge ID: ${item.document_id_b} | ${escapeHtml(item.file_name_b)}</div>
+            </div>
+          </div>
+        </article>
+      `).join("");
+    }
+
+    async function refreshDuplicates() {
+      duplicateRefreshButton.disabled = true;
+      duplicateStatus.textContent = "Kayitli mukerrer adaylari yukleniyor...";
+      try {
+        const response = await fetch("/duplicates?limit=100");
+        const data = await response.json();
+        if (!response.ok) {
+          duplicateStatus.textContent = data.detail || "Mukerrer adaylari alinamadi.";
+          return;
+        }
+        renderDuplicatePairs(data.items || []);
+        duplicateStatus.textContent = `Kayitli mukerrer adayi: ${data.total}.`;
+      } catch (error) {
+        duplicateStatus.textContent = `Mukerrer adaylari alinamadi: ${error}`;
+      } finally {
+        duplicateRefreshButton.disabled = false;
+      }
+    }
+
+    async function runDuplicateScan() {
+      duplicateScanButton.disabled = true;
+      duplicateRefreshButton.disabled = true;
+      const startedAt = startTimer(
+        message => { duplicateStatus.textContent = message; },
+        "Mukerrer taramasi calisiyor..."
+      );
+      try {
+        const response = await fetch("/duplicates/scan?threshold=0.90&dry_run=false", {
+          method: "POST",
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          stopTimer(startedAt, message => { duplicateStatus.textContent = message; }, data.detail || "Mukerrer taramasi basarisiz oldu.");
+          return;
+        }
+        stopTimer(
+          startedAt,
+          message => { duplicateStatus.textContent = message; },
+          `Tarama tamamlandi. Dokuman: ${data.documents_seen}, aday: ${data.candidate_count}, yeni: ${data.created_count}, guncellenen: ${data.updated_count}.`
+        );
+        await refreshDuplicates();
+      } catch (error) {
+        stopTimer(startedAt, message => { duplicateStatus.textContent = message; }, `Mukerrer taramasi basarisiz oldu: ${error}`);
+      } finally {
+        duplicateScanButton.disabled = false;
+        duplicateRefreshButton.disabled = false;
+      }
+    }
+
+    function appendChatMessage(role, content) {
+      const node = document.createElement("div");
+      node.className = `chat-message ${role}`;
+      node.textContent = content;
+      chatMessages.appendChild(node);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    async function sendChatMessage() {
+      const message = chatInput.value.trim();
+      if (!message) {
+        chatStatus.textContent = "Mesaj yazmadan gonderemem.";
+        return;
+      }
+
+      chatInput.value = "";
+      appendChatMessage("user", message);
+      chatHistory.push({ role: "user", content: message });
+      chatSendButton.disabled = true;
+      const startedAt = startTimer(
+        text => { chatStatus.textContent = text; },
+        "Chatbot cevap ariyor..."
+      );
+
+      try {
+        const response = await fetch("/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message,
+            history: chatHistory.slice(-8),
+            mode: chatMode.value,
+            limit: 5,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          stopTimer(startedAt, text => { chatStatus.textContent = text; }, data.detail || "Chatbot cevap veremedi.");
+          appendChatMessage("assistant", data.detail || "Cevap olusturulamadi.");
+          return;
+        }
+        appendChatMessage("assistant", data.answer);
+        chatHistory = data.history || [
+          ...chatHistory,
+          { role: "assistant", content: data.answer },
+        ];
+        renderChatSources(data.sources || []);
+        stopTimer(
+          startedAt,
+          text => { chatStatus.textContent = text; },
+          `Cevap hazir. Guven: ${formatScore(data.confidence)} | Kaynak: ${(data.sources || []).length}`
+        );
+      } catch (error) {
+        stopTimer(startedAt, text => { chatStatus.textContent = text; }, `Chatbot hata verdi: ${error}`);
+        appendChatMessage("assistant", "Cevap olusturulurken hata olustu.");
+      } finally {
+        chatSendButton.disabled = false;
+      }
+    }
+
+    function renderChatSources(items) {
+      if (!items || items.length === 0) {
+        chatSources.innerHTML = '<div class="empty">Bu cevap icin kaynak bulunamadi.</div>';
+        return;
+      }
+
+      chatSources.innerHTML = items.map(item => `
+        <article class="source-card" onclick="openDocumentFile(${item.document_id})" style="cursor:pointer;">
+          <div class="title">${escapeHtml(item.document_title)}</div>
+          <div class="small">Belge ID: ${item.document_id} | Sayfa ${item.page_start}-${item.page_end}${item.section_title ? " | " + escapeHtml(item.section_title) : ""}</div>
+          <div class="excerpt">${escapeHtml(item.chunk_text)}</div>
         </article>
       `).join("");
     }
@@ -2472,10 +2759,13 @@ def upload_page() -> HTMLResponse:
           return;
         }
         renderCatalogTable(data);
+        const autoLinkText = Number(data.auto_link_created_count || 0) > 0
+          ? ` Yeni otomatik eslesme: ${data.auto_link_created_count}.`
+          : "";
         stopTimer(
           startedAt,
           message => setCatalogStatus("ok", message),
-          `Katalog tablosu hazir. Ingest edilmis: ${data.ingested_count}, edilmemis: ${data.pending_count}.`
+          `Katalog tablosu hazir. Ingest edilmis: ${data.ingested_count}, edilmemis: ${data.pending_count}.${autoLinkText}`
         );
       } catch (error) {
         stopTimer(startedAt, message => setCatalogStatus("error", message), `Katalog tablosu alinamadi: ${error}`);
@@ -2617,16 +2907,32 @@ def upload_page() -> HTMLResponse:
         "Arama calisiyor..."
       );
       try {
-        const response = await fetch(`/search?query=${encodeURIComponent(query)}&mode=${encodeURIComponent(mode)}&limit=5`);
+        const useQueryEnhancement = true;
+        const response = await fetch(`/search?query=${encodeURIComponent(query)}&mode=${encodeURIComponent(mode)}&limit=5&search_scope=content&use_query_enhancement=${useQueryEnhancement}`);
         const data = await response.json();
         if (!response.ok) {
           stopTimer(startedAt, message => { searchMeta.textContent = message; }, data.detail || "Arama basarisiz oldu.");
           return;
         }
+        const retrieval = data.retrieval || {};
+        const expandedCount = Array.isArray(retrieval.expanded_queries) ? retrieval.expanded_queries.length : 0;
+        const filters = retrieval.applied_filters || {};
+        const activeFilters = Object.entries(filters)
+          .filter(([, value]) => value !== null && value !== undefined && value !== "")
+          .map(([key, value]) => `${key}: ${value}`);
+        const filterText = activeFilters.length ? ` | Filtre: ${activeFilters.join(", ")}` : "";
+        const catalogScope = retrieval.catalog_scope || {};
+        const catalogText = ` | Katalog: ${catalogScope.match_count || 0}`;
+        const scopeWarning = catalogScope.scope_status === "catalog_matches_not_ingested"
+          ? " | Katalogda var ama henuz iceri alinmis dokuman yok"
+          : catalogScope.scope_status === "strict_catalog_title_fallback"
+            ? " | Katalog linki yok, basliktan eslesen dokumanlar gosteriliyor"
+          : "";
+        const enhancementText = ` | Ek sorgu: ${expandedCount}${filterText}${catalogText}${scopeWarning}`;
         stopTimer(
           startedAt,
           message => { searchMeta.textContent = message; },
-          `Mod: ${data.mode} | Provider: ${data.embedding_provider} | Sonuc: ${data.results.length} | Benzer rapor: ${data.similar_documents.length}`
+          `Mod: ${data.mode} | Provider: ${data.embedding_provider} | Sonuc: ${data.results.length} | Benzer rapor: ${data.similar_documents.length}${enhancementText}`
         );
         renderResults(data.results, query);
         renderSimilar(data.similar_documents, query);
@@ -2916,6 +3222,15 @@ def upload_page() -> HTMLResponse:
     });
 
     searchButton.addEventListener("click", runSearch);
+    chatSendButton.addEventListener("click", sendChatMessage);
+    chatInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        sendChatMessage();
+      }
+    });
+    duplicateScanButton.addEventListener("click", runDuplicateScan);
+    duplicateRefreshButton.addEventListener("click", refreshDuplicates);
     searchQuery.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
@@ -3104,23 +3419,64 @@ def search(
     query: str = Query(..., min_length=2),
     limit: int = Query(5, ge=1, le=20),
     mode: Literal["keyword", "semantic", "hybrid"] = Query("hybrid"),
+    search_scope: Literal["reports", "content"] = Query("content"),
+    use_query_enhancement: bool = Query(False),
+    use_reranking: bool = Query(False),
     session: Session = Depends(get_session),
 ) -> SearchResponse:
     service = SearchService(session)
-    if mode == "keyword":
+    retrieval = None
+    if search_scope == "reports":
+        results = service.report_search(query=query, limit=limit)
+        similar_documents = []
+    elif use_query_enhancement or use_reranking:
+        orchestrated = RetrievalOrchestrator(session, search_service=service).retrieve(
+            query=query,
+            mode=mode,
+            limit=limit,
+            use_query_enhancement=use_query_enhancement,
+            use_reranking=use_reranking,
+        )
+        results = orchestrated["results"]
+        similar_documents = orchestrated["similar_documents"]
+        retrieval = orchestrated["retrieval"]
+    elif mode == "keyword":
         results = service.keyword_search(query=query, limit=limit)
+        similar_documents = service.similar_documents_for_results(results, limit=3)
     elif mode == "semantic":
         results = service.semantic_search(query=query, limit=limit)
+        similar_documents = service.similar_documents_for_results(results, limit=3)
     else:
         results = service.hybrid_search(query=query, limit=limit)
+        similar_documents = service.similar_documents_for_results(results, limit=3)
 
     return SearchResponse(
         mode=mode,
         semantic_available=service.semantic_available(),
         embedding_provider=service.embedding_provider_name(),
         results=results,
-        similar_documents=service.similar_documents_for_results(results, limit=3),
+        similar_documents=similar_documents,
+        retrieval=retrieval,
     )
+
+
+@app.get("/duplicates", response_model=DuplicateReportListResponse)
+def duplicate_report_pairs(
+    limit: int = Query(100, ge=1, le=500),
+    session: Session = Depends(get_session),
+) -> DuplicateReportListResponse:
+    service = DuplicateDetectionService(session)
+    return DuplicateReportListResponse(**service.list_pairs(limit=limit))
+
+
+@app.post("/duplicates/scan", response_model=DuplicateReportScanResponse)
+def scan_duplicate_report_pairs(
+    threshold: float = Query(0.90, ge=0.1, le=1.0),
+    dry_run: bool = Query(False),
+    session: Session = Depends(get_session),
+) -> DuplicateReportScanResponse:
+    service = DuplicateDetectionService(session)
+    return DuplicateReportScanResponse(**service.scan(threshold=threshold, dry_run=dry_run))
 
 
 @app.post("/ask", response_model=AskResponse)
@@ -3135,8 +3491,124 @@ def ask(
             mode=payload.mode,
             limit=payload.limit,
             document_id=payload.document_id,
+            use_llm_answer=payload.use_llm_answer,
         )
     )
+
+
+@app.post("/chat", response_model=ChatResponse)
+def chat(
+    payload: ChatRequest,
+    session: Session = Depends(get_session),
+) -> ChatResponse:
+    if _is_chat_small_talk(payload.message):
+        answer_text = _chat_small_talk_answer(payload.message)
+        history = [
+            item.model_dump()
+            for item in payload.history[-8:]
+            if item.content.strip()
+        ]
+        history.append({"role": "user", "content": payload.message})
+        history.append({"role": "assistant", "content": answer_text})
+        return ChatResponse(
+            message=payload.message,
+            answer=answer_text,
+            answer_found=True,
+            confidence=1.0,
+            embedding_provider="chat-direct",
+            sources=[],
+            history=history[-10:],
+        )
+
+    service = QAService(session)
+    answer = service.answer_question(
+        payload.message,
+        mode=payload.mode,
+        limit=payload.limit,
+        document_id=payload.document_id,
+        use_llm_answer=payload.use_llm_answer,
+    )
+    history = [
+        item.model_dump()
+        for item in payload.history[-8:]
+        if item.content.strip()
+    ]
+    history.append({"role": "user", "content": payload.message})
+    history.append({"role": "assistant", "content": answer["answer"]})
+    return ChatResponse(
+        message=payload.message,
+        answer=answer["answer"],
+        answer_found=answer["answer_found"],
+        confidence=answer["confidence"],
+        embedding_provider=answer["embedding_provider"],
+        sources=answer["sources"],
+        history=history[-10:],
+    )
+
+
+def _is_chat_small_talk(message: str) -> bool:
+    normalized = _fold_chat_text(message)
+    if not normalized:
+        return False
+    report_terms = {
+        "rapor",
+        "analiz",
+        "test",
+        "titreşim",
+        "titresim",
+        "nvh",
+        "dur",
+        "safe",
+        "tase",
+        "bige",
+        "big",
+        "citi",
+        "citibus",
+        "goupil",
+    }
+    if any(term in normalized for term in report_terms):
+        return False
+    small_talk_phrases = {
+        "naber",
+        "nasilsin",
+        "nasil gidiyor",
+        "selam",
+        "merhaba",
+        "hello",
+        "hi",
+        "iyi misin",
+        "ne haber",
+        "gunaydin",
+        "iyi aksamlar",
+    }
+    return normalized in small_talk_phrases or (
+        len(normalized.split()) <= 3
+        and any(phrase in normalized for phrase in small_talk_phrases)
+    )
+
+
+def _chat_small_talk_answer(message: str) -> str:
+    normalized = _fold_chat_text(message)
+    if "nasil" in normalized or "iyi misin" in normalized:
+        return "Iyiyim, hazirim. Raporlar uzerinden bir sey sormak istersen beraber bakalim."
+    return "Buradayim, hazirim. Bana rapor, test, analiz veya katalogla ilgili bir soru sorabilirsin."
+
+
+def _fold_chat_text(message: str) -> str:
+    translated = message.casefold().translate(
+        str.maketrans(
+            {
+                "\u0131": "i",
+                "\u011f": "g",
+                "\u00fc": "u",
+                "\u015f": "s",
+                "\u00f6": "o",
+                "\u00e7": "c",
+                "\u0130": "i",
+            }
+        )
+    )
+    return re.sub(r"[^a-z0-9\s]+", " ", translated).strip()
 
 
 @app.post("/catalog/import", response_model=CatalogImportResponse)
@@ -3221,6 +3693,15 @@ def catalog_table(
 ) -> CatalogTableResponse:
     service = CatalogIngestService(session)
     return CatalogTableResponse(**service.catalog_table(limit=limit))
+
+
+@app.post("/catalog/reconcile-documents")
+def reconcile_catalog_documents(
+    dry_run: bool = Query(False),
+    session: Session = Depends(get_session),
+) -> dict:
+    service = CatalogIngestService(session)
+    return service.reconcile_catalog_document_links(dry_run=dry_run)
 
 
 @app.get("/catalog/{catalog_entry_id}/file-candidates")

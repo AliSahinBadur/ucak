@@ -155,6 +155,32 @@ Expected flow:
 
 ---
 
+## LLM-Assisted RAG Direction
+
+The existing deterministic retrieval system is the main system and must be preserved.
+
+Optional LLM features are layered on top:
+- query understanding
+- Turkish/English technical term expansion
+- metadata filter extraction
+- grounded answer generation
+
+Defaults:
+- `LLM_ENABLED=false`
+- `LLM_BACKEND=disabled`
+- `RERANKER_ENABLED=false`
+
+The app must start and remain useful without an LLM. LLM failures should fall back to the current heuristic/extractive flow.
+
+Embedding models and generation models are separate roles:
+- `Qwen3-Embedding-*` = retrieval/similarity embeddings only
+- Chat/Instruct LLM = optional query support and answer generation
+- Reranker = optional candidate ordering
+
+Do not load an embedding model with `AutoModelForCausalLM`.
+
+---
+
 ## Similar Report Strategy
 
 Start with chunk-based similarity.

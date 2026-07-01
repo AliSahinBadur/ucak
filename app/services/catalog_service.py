@@ -128,14 +128,7 @@ class CatalogService:
             "answer": answer,
             "answer_found": bool(candidates),
             "match_count": len(candidates),
-            "filters": {
-                "vehicle": profile["vehicle"],
-                "vehicles": profile["vehicles"],
-                "discipline": profile["discipline"],
-                "year": profile["year"],
-                "intent": profile["intent"],
-                "query_terms": profile["query_terms"],
-            },
+            "filters": self._filters_payload(profile),
             "catalog_matches": [
                 {
                     **self._entry_payload(entry),
@@ -148,8 +141,19 @@ class CatalogService:
     def _catalog_candidates(self, profile: dict, limit: int) -> list[ReportCatalogEntry]:
         statement = select(ReportCatalogEntry)
         conditions = []
+        if profile.get("report_code"):
+            conditions.append(ReportCatalogEntry.report_code.ilike(f"%{profile['report_code']}%"))
         if profile["vehicle"]:
-            conditions.append(ReportCatalogEntry.vehicle_name.ilike(f"%{profile['vehicle']}%"))
+            vehicle_values = profile.get("vehicles") or [profile["vehicle"]]
+            conditions.append(
+                or_(
+                    *[
+                        ReportCatalogEntry.vehicle_name.ilike(f"%{vehicle}%")
+                        for vehicle in vehicle_values
+                        if vehicle
+                    ]
+                )
+            )
         if profile["discipline"]:
             discipline = profile["discipline"]
             conditions.append(
@@ -186,13 +190,14 @@ class CatalogService:
 
     def _question_profile(self, question: str) -> dict:
         normalized = self._normalize_text(question)
+        report_code = self._detect_report_code(question)
         vehicles = self._detect_vehicles(normalized)
         vehicle = vehicles[0] if vehicles else ""
         discipline = self._detect_discipline(normalized)
         year_match = re.search(r"\b(20\d{2})\b", normalized)
         year = year_match.group(1) if year_match else ""
         normalized_vehicle = self._normalize_text(vehicle)
-        compact_vehicle = normalized_vehicle.replace(" ", "")
+        compact_vehicle = self._compact_key(normalized_vehicle)
         filler = {
             "araci",
             "arac",
@@ -215,6 +220,19 @@ class CatalogService:
             "yilinda",
             "nelerdir",
             "hangi",
+            "safety",
+            "safe",
+            "guvenlik",
+            "emniyet",
+            "durability",
+            "dur",
+            "dayanim",
+            "fatigue",
+            "fat",
+            "nvh",
+            "tase",
+            "cfd",
+            "ved",
         }
         query_terms = [
             token
@@ -232,6 +250,7 @@ class CatalogService:
             "discipline": discipline,
             "year": year,
             "intent": self._detect_intent(normalized, vehicles=vehicles, discipline=discipline),
+            "report_code": report_code,
             "query_terms": query_terms[:4],
         }
 
@@ -265,14 +284,7 @@ class CatalogService:
                 "answer": "Katalogda bu soruya uygun analiz tipi bulunamadi.",
                 "answer_found": False,
                 "match_count": 0,
-                "filters": {
-                    "vehicle": profile["vehicle"],
-                    "vehicles": profile["vehicles"],
-                    "discipline": profile["discipline"],
-                    "year": profile["year"],
-                    "intent": profile["intent"],
-                    "query_terms": profile["query_terms"],
-                },
+                "filters": self._filters_payload(profile),
                 "catalog_matches": [],
             }
 
@@ -290,14 +302,7 @@ class CatalogService:
             "answer": "\n".join(lines),
             "answer_found": True,
             "match_count": len(rows),
-            "filters": {
-                "vehicle": profile["vehicle"],
-                "vehicles": profile["vehicles"],
-                "discipline": profile["discipline"],
-                "year": profile["year"],
-                "intent": profile["intent"],
-                "query_terms": profile["query_terms"],
-            },
+            "filters": self._filters_payload(profile),
             "catalog_matches": [],
         }
 
@@ -421,19 +426,23 @@ class CatalogService:
     def _detect_vehicles(self, normalized_question: str) -> list[str]:
         vehicle_rows = self.session.execute(select(ReportCatalogEntry.vehicle_name).distinct()).all()
         matches: list[tuple[int, str]] = []
+        compact_question = self._compact_key(normalized_question)
         for (vehicle_name,) in vehicle_rows:
             normalized_vehicle = self._normalize_text(vehicle_name)
+            compact_vehicle = self._compact_key(normalized_vehicle)
             variants = {
                 normalized_vehicle,
                 normalized_vehicle.replace(" ", ""),
                 normalized_vehicle.replace("-", " "),
+                compact_vehicle,
             }
             vehicle_tokens = [token for token in normalized_vehicle.split() if not token.startswith("gen")]
             if len(vehicle_tokens) >= 2:
                 variants.add(" ".join(vehicle_tokens))
                 variants.add("".join(vehicle_tokens))
             for variant in variants:
-                if variant and variant in normalized_question:
+                target = compact_question if variant == compact_vehicle else normalized_question
+                if variant and variant in target:
                     matches.append((len(variant), vehicle_name))
                     break
         matches.sort(key=lambda item: item[0], reverse=True)
@@ -460,6 +469,7 @@ class CatalogService:
             "dayanim": "DURABILITY",
             "dur": "DURABILITY",
             "safety": "SAFETY",
+            "guvenlik": "SAFETY",
             "emniyet": "SAFETY",
             "cfd": "CFD",
             "akis": "CFD",
@@ -501,8 +511,14 @@ class CatalogService:
             "discipline": profile["discipline"],
             "year": profile["year"],
             "intent": profile["intent"],
+            "report_code": profile.get("report_code", ""),
             "query_terms": profile["query_terms"],
         }
+
+    @staticmethod
+    def _detect_report_code(question: str) -> str:
+        match = re.search(r"\b20\d{2}[-_][0-9A-Za-z.]+(?:[-_][0-9A-Za-z.]+){2,}\b", question or "")
+        return match.group(0) if match else ""
 
     def _build_catalog_answer(self, question: str, profile: dict, candidates: list[ReportCatalogEntry]) -> str:
         if not candidates:
@@ -537,17 +553,56 @@ class CatalogService:
         for entry in entries:
             if entry.id in matches:
                 continue
-            entry_keys = self._document_match_keys(entry)
+            best_document_id = 0
+            best_score = 0
             for document in documents:
-                document_text = self._normalize_text(f"{document.title} {document.file_name}")
-                compact_document_text = self._compact_key(document_text)
-                if any(key and key in document_text for key in entry_keys):
-                    matches[entry.id] = int(document.id)
-                    break
-                if any(key and key in compact_document_text for key in entry_keys):
-                    matches[entry.id] = int(document.id)
-                    break
+                score = self._document_match_score(entry, document)
+                if score > best_score:
+                    best_score = score
+                    best_document_id = int(document.id)
+            if best_score >= 240 and best_document_id:
+                matches[entry.id] = best_document_id
         return matches
+
+    def _document_match_score(self, entry: ReportCatalogEntry, document) -> int:
+        document_key = self._match_key(f"{document.title} {document.file_name}")
+        if not document_key:
+            return 0
+
+        score = 0
+        report_key = self._match_key(entry.report_code or "")
+        source_name_key = self._match_key(Path(entry.source_path or "").name)
+        source_stem_key = self._match_key(Path(entry.source_path or "").stem)
+        title_key = self._match_key(entry.report_title or "")
+
+        for key, weight in (
+            (report_key, 300),
+            (source_name_key, 260),
+            (source_stem_key, 240),
+            (title_key, 180),
+        ):
+            if len(key) >= 5 and key in document_key:
+                score = max(score, weight)
+
+        document_tokens = set(self._match_tokens(f"{document.title} {document.file_name}"))
+        report_tokens = self._match_tokens(entry.report_code or "")
+        meaningful_tokens = [
+            token
+            for token in report_tokens
+            if len(token) >= 2 and token not in {"rev", "pdf", "docx", "pptx"}
+        ]
+        short_number_tokens = [token for token in meaningful_tokens if token.isdigit() and len(token) <= 2]
+        token_match_ok = all(
+            token in document_tokens if token.isdigit() and len(token) <= 2 else token in document_key
+            for token in meaningful_tokens
+        )
+        if (
+            len(meaningful_tokens) >= 3
+            and token_match_ok
+            and all(token in document_tokens for token in short_number_tokens)
+        ):
+            score = max(score, 220)
+        return score
 
     def _document_match_keys(self, entry: ReportCatalogEntry) -> set[str]:
         raw_values = [
@@ -601,6 +656,19 @@ class CatalogService:
     @staticmethod
     def _compact_key(text: str) -> str:
         return re.sub(r"[^a-z0-9]+", "", text)
+
+    @classmethod
+    def _match_key(cls, text: str) -> str:
+        return cls._compact_key(cls._normalize_text(text or ""))
+
+    @classmethod
+    def _match_tokens(cls, text: str) -> list[str]:
+        normalized = cls._normalize_text(text or "")
+        return [
+            cls._match_key(token)
+            for token in re.split(r"[^0-9a-z]+", normalized)
+            if cls._match_key(token)
+        ]
 
     def _parse_xlsx(self, content: bytes) -> list[CatalogRow]:
         try:
@@ -751,6 +819,12 @@ class CatalogService:
         lowered = text.casefold().translate(
             str.maketrans(
                 {
+                    "\u0131": "i",
+                    "\u011f": "g",
+                    "\u00fc": "u",
+                    "\u015f": "s",
+                    "\u00f6": "o",
+                    "\u00e7": "c",
                     "ı": "i",
                     "ğ": "g",
                     "ü": "u",

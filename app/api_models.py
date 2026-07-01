@@ -65,12 +65,45 @@ class SimilarDocumentResponse(BaseModel):
     top_excerpt: str
 
 
+class DuplicateReportPairResponse(BaseModel):
+    id: int | None = None
+    document_id_a: int
+    document_title_a: str
+    file_name_a: str
+    document_id_b: int
+    document_title_b: str
+    file_name_b: str
+    similarity_score: float
+    title_score: float
+    embedding_score: float
+    matched_chunks: int = 0
+    reason: str
+    status: str = "candidate"
+    updated_at: str | None = None
+
+
+class DuplicateReportListResponse(BaseModel):
+    total: int
+    items: list[DuplicateReportPairResponse]
+
+
+class DuplicateReportScanResponse(BaseModel):
+    dry_run: bool
+    threshold: float
+    documents_seen: int
+    candidate_count: int
+    created_count: int
+    updated_count: int
+    items: list[DuplicateReportPairResponse]
+
+
 class SearchResponse(BaseModel):
     mode: Literal["keyword", "semantic", "hybrid"]
     semantic_available: bool
     embedding_provider: str
     results: list[SearchResultResponse]
     similar_documents: list[SimilarDocumentResponse]
+    retrieval: dict | None = None
 
 
 class AskRequest(BaseModel):
@@ -78,6 +111,21 @@ class AskRequest(BaseModel):
     mode: Literal["keyword", "semantic", "hybrid"] = "hybrid"
     limit: int = Field(default=5, ge=1, le=10)
     document_id: int | None = Field(default=None, ge=1)
+    use_llm_answer: bool = False
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=2, max_length=1000)
+    history: list[ChatMessage] = Field(default_factory=list)
+    mode: Literal["keyword", "semantic", "hybrid"] = "hybrid"
+    limit: int = Field(default=5, ge=1, le=10)
+    document_id: int | None = Field(default=None, ge=1)
+    use_llm_answer: bool = False
 
 
 class AnswerSourceResponse(BaseModel):
@@ -102,6 +150,16 @@ class AskResponse(BaseModel):
     confidence: float = Field(default=0.0)
     embedding_provider: str
     sources: list[AnswerSourceResponse]
+
+
+class ChatResponse(BaseModel):
+    message: str
+    answer: str
+    answer_found: bool
+    confidence: float = Field(default=0.0)
+    embedding_provider: str
+    sources: list[AnswerSourceResponse]
+    history: list[ChatMessage]
 
 
 class DraftReportRequest(BaseModel):
@@ -270,6 +328,8 @@ class CatalogTableResponse(BaseModel):
     pending_count: int
     embedded_count: int
     embedding_pending_count: int
+    auto_link_created_count: int = 0
+    auto_link_existing_count: int = 0
     ingested: list[CatalogTableRowResponse]
     pending: list[CatalogTableRowResponse]
     embedded: list[CatalogTableRowResponse]

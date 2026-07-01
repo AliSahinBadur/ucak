@@ -6,6 +6,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from ..db.models import DocumentChunk
+from .answer_generation_service import AnswerGenerationService
 from .search_service import SearchService
 
 
@@ -39,6 +40,7 @@ class QAService:
     def __init__(self, session: Session) -> None:
         self.session = session
         self.search_service = SearchService(session)
+        self.answer_generation_service = AnswerGenerationService()
 
     def answer_question(
         self,
@@ -47,6 +49,7 @@ class QAService:
         limit: int = 5,
         document_id: int | None = None,
         document_ids: list[int] | None = None,
+        use_llm_answer: bool = False,
     ) -> dict:
         cleaned_question = " ".join(question.split())
         scoped_document_ids = self._resolve_document_scope(document_id=document_id, document_ids=document_ids)
@@ -69,16 +72,24 @@ class QAService:
             }
 
         answer, answer_score = self._build_answer(cleaned_question, results)
+        generated_answer = self._generate_llm_answer(cleaned_question, results[:5]) if use_llm_answer else None
         answer_found = answer_score >= self.MIN_ANSWER_SCORE
         return {
             "question": cleaned_question,
             "mode": mode,
-            "answer": answer if answer_found else "Bu soruya yakin gorunen pasajlar bulundu ama guvenilir bir kisa cevap secilemedi.",
-            "answer_found": answer_found,
+            "answer": generated_answer
+            or (answer if answer_found else "Bu soruya yakin gorunen pasajlar bulundu ama guvenilir bir kisa cevap secilemedi."),
+            "answer_found": bool(generated_answer) or answer_found,
             "confidence": round(self._normalize_confidence(answer_score), 3),
             "embedding_provider": self.search_service.embedding_provider_name(),
             "sources": results[:3],
         }
+
+    def _generate_llm_answer(self, question: str, sources: list[dict]) -> str | None:
+        try:
+            return self.answer_generation_service.generate_answer(question, sources)
+        except Exception:
+            return None
 
     def _run_search(
         self,

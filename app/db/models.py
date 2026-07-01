@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -100,3 +100,20 @@ class CatalogDocumentLink(Base):
     source_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     match_method: Mapped[str] = mapped_column(String(80), nullable=False, default="catalog_ingest")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class DuplicateReportPair(Base):
+    __tablename__ = "duplicate_report_pairs"
+    __table_args__ = (UniqueConstraint("document_id_a", "document_id_b", name="uq_duplicate_report_pair"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    document_id_a: Mapped[int] = mapped_column(ForeignKey("documents.id"), nullable=False, index=True)
+    document_id_b: Mapped[int] = mapped_column(ForeignKey("documents.id"), nullable=False, index=True)
+    similarity_score: Mapped[float] = mapped_column(Float, nullable=False)
+    title_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    embedding_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    matched_chunks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reason: Mapped[str] = mapped_column(String(255), nullable=False, default="candidate")
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="candidate")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)

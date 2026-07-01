@@ -6,7 +6,7 @@ import re
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from ..db.models import ChunkEmbedding, Document, DocumentChunk
+from ..db.models import CatalogDocumentLink, ChunkEmbedding, Document, DocumentChunk, ReportCatalogEntry
 from .embedding_service import EmbeddingService, build_embedding_service
 
 
@@ -16,20 +16,27 @@ class SearchService:
     MIN_SEMANTIC_SCORE = 0.22
     MIN_SEMANTIC_NO_OVERLAP_SCORE = 0.27
     MIN_SIMILAR_DOCUMENT_SCORE = 0.24
-    MAX_RESULTS_PER_DOCUMENT = 2
+    MAX_RESULTS_PER_DOCUMENT = 1
     MAX_FUZZY_SCAN_ROWS = 1500
     GENERIC_QUERY_TOKENS = {
         "analiz",
         "analizi",
         "rapor",
         "raporu",
+        "raporlar",
+        "raporlari",
         "test",
         "testi",
+        "belge",
+        "belgesi",
+        "dosya",
+        "dosyasi",
         "degerlendirme",
         "degerlendirmesi",
         "sonuc",
         "sonuclari",
     }
+    YEAR_TOKEN_PATTERN = re.compile(r"^20\d{2}$")
 
     def __init__(
         self,
@@ -106,7 +113,7 @@ class SearchService:
             )
 
         results.sort(key=lambda item: item["keyword_score"], reverse=True)
-        return results[:limit]
+        return self._limit_results_per_document(results, limit)
 
     def semantic_search(self, query: str, limit: int = 5, document_ids: list[int] | None = None) -> list[dict]:
         query_tokens = self.embedding_service.tokenize(query.strip())
@@ -139,6 +146,13 @@ class SearchService:
         results: list[dict] = []
         expected_dimensions = len(query_vector)
         for row in rows:
+            searchable_text = " ".join(
+                value
+                for value in (row.document_title, row.file_name, row.section_title or "", row.chunk_text)
+                if value
+            )
+            if not self._passes_required_token_gate(query_tokens, searchable_text):
+                continue
             chunk_vector = self._resolve_chunk_vector(row.embedding, expected_dimensions=expected_dimensions)
             if not self.embedding_service.has_signal(chunk_vector):
                 continue
@@ -176,7 +190,7 @@ class SearchService:
         keyword_results = self.keyword_search(query, limit=max(limit * 4, 12), document_ids=document_ids)
         semantic_results = self.semantic_search(query, limit=max(limit * 3, 10), document_ids=document_ids)
         if not semantic_results:
-            return keyword_results[:limit]
+            return self._limit_results_per_document(keyword_results, limit)
 
         keyword_max = max((item["keyword_score"] for item in keyword_results), default=1.0)
         semantic_max = max((item["semantic_score"] for item in semantic_results), default=1.0)
@@ -220,6 +234,86 @@ class SearchService:
             reverse=True,
         )
         return self._limit_results_per_document(ranked, limit)
+
+    def report_search(self, query: str, limit: int = 5, document_ids: list[int] | None = None) -> list[dict]:
+        raw_query = query.strip()
+        tokens = self.embedding_service.tokenize(raw_query)
+        if not raw_query or not tokens:
+            return []
+        scoped_document_ids = self._normalize_document_ids(document_ids)
+        if document_ids is not None and not scoped_document_ids:
+            return []
+
+        statement = (
+            select(
+                Document.id.label("document_id"),
+                Document.title.label("document_title"),
+                Document.file_name,
+                DocumentChunk.id.label("chunk_id"),
+                DocumentChunk.page_start,
+                DocumentChunk.page_end,
+                DocumentChunk.section_title,
+                DocumentChunk.chunk_text,
+            )
+            .join(DocumentChunk, DocumentChunk.document_id == Document.id)
+            .order_by(Document.id.asc(), DocumentChunk.chunk_order.asc())
+        )
+        if scoped_document_ids:
+            statement = statement.where(Document.id.in_(scoped_document_ids))
+
+        first_chunk_by_document: dict[int, dict] = {}
+        for row in self.session.execute(statement).all():
+            document_id = int(row.document_id)
+            if document_id in first_chunk_by_document:
+                continue
+            first_chunk_by_document[document_id] = {
+                "id": int(row.chunk_id),
+                "document_id": document_id,
+                "document_title": row.document_title,
+                "file_name": row.file_name,
+                "page_start": row.page_start,
+                "page_end": row.page_end,
+                "section_title": row.section_title,
+                "chunk_text": row.chunk_text,
+            }
+
+        catalog_text_by_document = self._catalog_text_by_document(first_chunk_by_document.keys())
+        required_report_key = self._query_report_key(raw_query)
+        results: list[dict] = []
+        for document_id, item in first_chunk_by_document.items():
+            catalog_text = catalog_text_by_document.get(document_id, "")
+            report_text = f"{item['document_title']} {item['file_name']} {catalog_text}"
+            if required_report_key and required_report_key not in self._compact_search_text(
+                self._normalize_search_text(report_text)
+            ):
+                continue
+            title_score = self._keyword_score(
+                query=raw_query,
+                tokens=tokens,
+                chunk_text=item["chunk_text"],
+                document_title=f"{item['document_title']} {catalog_text}",
+                file_name=item["file_name"],
+                section_title=None,
+            )
+            if title_score > 0.0 and not self._passes_report_title_coverage(
+                tokens,
+                f"{report_text} {item['chunk_text']}",
+            ):
+                continue
+            if title_score <= 0.0:
+                continue
+            results.append(
+                {
+                    **item,
+                    "match_type": "keyword",
+                    "keyword_score": title_score,
+                    "semantic_score": 0.0,
+                    "combined_score": title_score,
+                }
+            )
+
+        results.sort(key=lambda item: item["combined_score"], reverse=True)
+        return results[:limit]
 
     def similar_documents_for_results(self, results: list[dict], limit: int = 3) -> list[dict]:
         if not results:
@@ -312,6 +406,32 @@ class SearchService:
     def embedding_provider_name(self) -> str:
         return self.embedding_service.provider_name
 
+    def _catalog_text_by_document(self, document_ids) -> dict[int, str]:
+        normalized_ids = [int(value) for value in document_ids if int(value or 0) > 0]
+        if not normalized_ids:
+            return {}
+        rows = self.session.execute(
+            select(
+                CatalogDocumentLink.document_id,
+                ReportCatalogEntry.report_code,
+                ReportCatalogEntry.vehicle_name,
+                ReportCatalogEntry.report_title,
+                ReportCatalogEntry.discipline,
+            )
+            .join(ReportCatalogEntry, ReportCatalogEntry.id == CatalogDocumentLink.catalog_entry_id)
+            .where(CatalogDocumentLink.document_id.in_(normalized_ids))
+        ).all()
+        by_document: dict[int, list[str]] = {}
+        for row in rows:
+            by_document.setdefault(int(row.document_id), []).append(
+                " ".join(
+                    value
+                    for value in (row.report_code, row.vehicle_name, row.report_title, row.discipline)
+                    if value
+                )
+            )
+        return {document_id: " ".join(values) for document_id, values in by_document.items()}
+
     @classmethod
     def _keyword_score(
         cls,
@@ -332,6 +452,8 @@ class SearchService:
         normalized_tokens = [cls._normalize_search_text(token) for token in unique_tokens]
         if not normalized_tokens:
             return 0.0
+        if not cls._passes_required_token_gate(normalized_tokens, searchable_text):
+            return 0.0
 
         words = set(cls._search_words(normalized_text))
         chunk_words = set(cls._search_words(normalized_chunk))
@@ -342,6 +464,7 @@ class SearchService:
         token_coverage = sum(token_scores) / len(normalized_tokens)
 
         specific_tokens = [token for token in normalized_tokens if token not in cls.GENERIC_QUERY_TOKENS]
+        core_tokens = [token for token in specific_tokens if not cls.YEAR_TOKEN_PATTERN.match(token)]
         if specific_tokens:
             specific_scores = [cls._best_token_match_score(token, normalized_text, words) for token in specific_tokens]
             specific_coverage = sum(specific_scores) / len(specific_tokens)
@@ -381,9 +504,27 @@ class SearchService:
     def _best_token_match_score(cls, token: str, text: str, words: set[str]) -> float:
         if token and token in text:
             return 1.0
+        compact_token = cls._compact_search_text(token)
+        compact_text = cls._compact_search_text(text)
+        if compact_token and compact_token in compact_text:
+            return 0.96
         if len(token) < 5:
             return 0.0
         return 0.78 if any(cls._is_near_token(token, word) for word in words) else 0.0
+
+    @classmethod
+    def _passes_required_token_gate(cls, tokens: list[str], searchable_text: str) -> bool:
+        normalized_text = cls._normalize_search_text(searchable_text)
+        words = set(cls._search_words(normalized_text))
+        normalized_tokens = [cls._normalize_search_text(token) for token in tokens]
+        specific_tokens = [token for token in normalized_tokens if token and token not in cls.GENERIC_QUERY_TOKENS]
+        core_tokens = [token for token in specific_tokens if not cls.YEAR_TOKEN_PATTERN.match(token)]
+        year_tokens = [token for token in specific_tokens if cls.YEAR_TOKEN_PATTERN.match(token)]
+        if core_tokens and not any(cls._best_token_match_score(token, normalized_text, words) > 0.0 for token in core_tokens):
+            return False
+        if core_tokens and year_tokens and not any(cls._best_token_match_score(token, normalized_text, words) > 0.0 for token in year_tokens):
+            return False
+        return True
 
     @classmethod
     def _lexical_rerank_score(cls, query: str, tokens: list[str], item: dict) -> float:
@@ -420,6 +561,13 @@ class SearchService:
         translated = text.casefold().translate(
             str.maketrans(
                 {
+                    "\u0131": "i",
+                    "\u011f": "g",
+                    "\u00fc": "u",
+                    "\u015f": "s",
+                    "\u00f6": "o",
+                    "\u00e7": "c",
+                    "\u0130": "i",
                     "ı": "i",
                     "ğ": "g",
                     "ü": "u",
@@ -436,6 +584,37 @@ class SearchService:
     @classmethod
     def _search_words(cls, text: str) -> list[str]:
         return re.findall(r"\w+", text)
+
+    @staticmethod
+    def _compact_search_text(text: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", text)
+
+    @classmethod
+    def _query_report_key(cls, query: str) -> str:
+        match = re.search(r"\b20\d{2}[-_][0-9A-Za-z.]+(?:[-_][0-9A-Za-z.]+){2,}\b", query or "")
+        if not match:
+            return ""
+        return cls._compact_search_text(cls._normalize_search_text(match.group(0)))
+
+    @classmethod
+    def _passes_report_title_coverage(cls, tokens: list[str], searchable_text: str) -> bool:
+        normalized_text = cls._normalize_search_text(searchable_text)
+        words = set(cls._search_words(normalized_text))
+        core_tokens = [
+            cls._normalize_search_text(token)
+            for token in tokens
+            if len(cls._normalize_search_text(token)) >= 3
+            and cls._normalize_search_text(token) not in cls.GENERIC_QUERY_TOKENS
+            and not cls.YEAR_TOKEN_PATTERN.match(cls._normalize_search_text(token))
+        ]
+        if len(core_tokens) < 3:
+            return True
+        matched = sum(
+            1
+            for token in core_tokens
+            if cls._best_token_match_score(token, normalized_text, words) > 0.0
+        )
+        return matched / len(core_tokens) >= 0.75
 
     @staticmethod
     def _base_chunk_query():

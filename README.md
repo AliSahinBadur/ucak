@@ -21,16 +21,16 @@ Optional open-source backend:
 Environment variables:
 
 ```powershell
-$env:EMBEDDING_PROVIDER = "sentence-transformers"
-$env:EMBEDDING_MODEL_NAME = "Qwen/Qwen3-Embedding-0.6B"
+$env:EMBEDDING_BACKEND = "sentence-transformers"
+$env:EMBEDDING_MODEL_PATH = "Qwen/Qwen3-Embedding-0.6B"
 $env:EMBEDDING_DEVICE = "cpu"
 ```
 
 If your network blocks Hugging Face downloads, point `EMBEDDING_MODEL_NAME` to a local model directory and force local loading:
 
 ```powershell
-$env:EMBEDDING_PROVIDER = "sentence-transformers"
-$env:EMBEDDING_MODEL_NAME = "C:\Users\ISU34977\PyCharmMiscProject\Big_Agent\models\Qwen3-Embedding-0.6B"
+$env:EMBEDDING_BACKEND = "sentence-transformers"
+$env:EMBEDDING_MODEL_PATH = "C:\Users\ISU34977\PyCharmMiscProject\Big_Agent\models\Qwen3-Embedding-0.6B"
 $env:EMBEDDING_LOCAL_FILES_ONLY = "true"
 $env:EMBEDDING_DEVICE = "cpu"
 ```
@@ -45,12 +45,49 @@ Why this is the current target:
 
 Expected local model folder names:
 - `models/Qwen3-Embedding-0.6B`
+- `models/Qwen3-Embedding-4B`
 - `models/qwen3-embedding-0.6b`
+
+`Qwen3-Embedding-*` models are embedding models only. They power retrieval, chunk similarity, and similar-report discovery; they must not be loaded as chat/generation models.
 
 After changing the embedding provider, rebuild stored embeddings:
 
 ```powershell
 Invoke-RestMethod -Method Post http://127.0.0.1:8000/embeddings/rebuild
+```
+
+## Optional Local LLM Layer
+
+The app starts with LLM features disabled:
+
+```powershell
+$env:LLM_ENABLED = "false"
+$env:LLM_BACKEND = "disabled"
+```
+
+With LLM disabled, ingestion, search, similar reports, catalog preview, and heuristic QA continue to work normally.
+
+The LLM layer is optional and local-first. When enabled, query understanding can use the LLM and Q&A can generate a Turkish answer from the retrieved source chunks. If the LLM fails or is disabled, the app falls back to the existing heuristic/extractive answer flow.
+
+Example optional Ollama configuration:
+
+```powershell
+$env:LLM_ENABLED = "true"
+$env:LLM_BACKEND = "ollama"
+$env:LLM_MODEL_NAME = "qwen2.5:3b"
+```
+
+LLM answer generation is intentionally gated separately because local chat models can be slow:
+
+```powershell
+$env:LLM_ANSWER_ENABLED = "true"
+```
+
+Reranking is also optional and disabled by default:
+
+```powershell
+$env:RERANKER_ENABLED = "false"
+$env:RERANKER_BACKEND = "disabled"
 ```
 
 ## Project Structure
