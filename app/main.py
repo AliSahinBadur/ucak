@@ -189,6 +189,8 @@ def upload_page() -> HTMLResponse:
       border-radius: 20px;
       box-shadow: 0 16px 38px rgba(120, 24, 38, 0.08);
       overflow: hidden;
+      display: flex;
+      flex-direction: column;
     }
     .hero {
       padding: 28px 28px 18px;
@@ -276,6 +278,14 @@ def upload_page() -> HTMLResponse:
       padding: 24px 28px 28px;
       position: relative;
     }
+    .section[data-module-key="upload"] { order: 1; }
+    .section[data-module-key="catalog"] { order: 2; }
+    .section[data-module-key="search"] { order: 3; }
+    .section[data-module-key="chat"] { order: 4; }
+    .section[data-module-key="duplicates"] { order: 5; }
+    .section[data-module-key="graph"] { order: 6; }
+    .section[data-module-key="qa"] { order: 7; }
+    .section[data-module-key="writing"] { order: 8; }
     .section + .section {
       border-top: 1px solid var(--line);
     }
@@ -949,23 +959,167 @@ def upload_page() -> HTMLResponse:
     }
     .graph-layout {
       display: grid;
-      grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.8fr);
+      grid-template-columns: 280px minmax(0, 1fr);
       gap: 18px;
       margin-top: 16px;
-      align-items: stretch;
+      align-items: start;
     }
-    .graph-canvas {
-      position: relative;
-      min-height: 520px;
+    .graph-dashboard {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .graph-browser {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 18px;
+      margin-top: 16px;
+      align-items: start;
+    }
+    .graph-sidebar,
+    .graph-main {
       border: 1px solid var(--line);
       border-radius: 16px;
       background: linear-gradient(180deg, #fffafa 0%, #fff 100%);
+      padding: 16px;
+      min-width: 0;
+    }
+    .graph-sidebar {
+      max-height: 720px;
+      overflow: auto;
+    }
+    .graph-controls {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 220px;
+      gap: 12px;
+      margin-bottom: 14px;
+      align-items: end;
+    }
+    .category-tree {
+      display: grid;
+      gap: 10px;
+    }
+    .category-group {
+      display: grid;
+      gap: 6px;
+    }
+    .category-group-title {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-top: 4px;
+    }
+    .category-button {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border: 1px solid #f0c6cd;
+      border-radius: 10px;
+      background: #fff;
+      color: var(--text);
+      padding: 9px 10px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 800;
+      text-align: left;
+    }
+    .category-button:hover,
+    .category-button.active {
+      border-color: var(--accent);
+      background: #fff0f2;
+      color: var(--accent-strong);
+    }
+    .category-button .count {
+      color: var(--muted);
+      font-weight: 800;
+      flex: 0 0 auto;
+    }
+    .density-chart {
+      display: grid;
+      gap: 9px;
+      margin-bottom: 16px;
+    }
+    .density-row {
+      display: grid;
+      grid-template-columns: minmax(120px, 0.55fr) minmax(120px, 1fr) 44px;
+      gap: 10px;
+      align-items: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .density-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text);
+      font-weight: 800;
+    }
+    .density-track {
+      height: 10px;
+      border-radius: 999px;
+      background: #f7dfe3;
       overflow: hidden;
     }
-    .graph-canvas svg {
+    .density-bar {
+      height: 100%;
+      border-radius: 999px;
+      background: var(--accent);
+    }
+    .document-table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: white;
+    }
+    .document-table {
       width: 100%;
-      height: 520px;
-      display: block;
+      min-width: 780px;
+      border-collapse: collapse;
+    }
+    .document-table th,
+    .document-table td {
+      padding: 11px 12px;
+      border-bottom: 1px solid #f1d9dd;
+      text-align: left;
+      vertical-align: top;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .document-table th {
+      background: #fff5f7;
+      color: var(--accent-strong);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+    .doc-name {
+      font-weight: 900;
+      color: var(--text);
+    }
+    .doc-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .doc-tag {
+      border-radius: 999px;
+      background: #fff0f2;
+      color: var(--accent-strong);
+      padding: 3px 7px;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    @media (max-width: 980px) {
+      .graph-dashboard,
+      .graph-browser,
+      .graph-layout,
+      .graph-controls {
+        grid-template-columns: 1fr;
+      }
     }
     .chat-layout {
       display: grid;
@@ -1258,23 +1412,23 @@ def upload_page() -> HTMLResponse:
             <span class="version-pill">v__APP_VERSION__</span>
             <span class="version-pill">model: __MODEL_LABEL__</span>
           </div>
-          <p>PDF ve DOCX raporlarini yukle, sonra ayni ekranda keyword, semantic veya hybrid arama ile ilgili pasajlari ve benzer raporlari incele.</p>
+          <p>Rapor havuzunu yonet, katalogla eslestir, kaynakli cevap al ve mukerrer adaylari ayni yerel sistemde incele.</p>
           <div class="module-switcher" aria-label="Modul secimi">
-            <button class="module-filter active" type="button" data-module-filter="upload">Upload</button>
-            <button class="module-filter" type="button" data-module-filter="search">Search</button>
+            <button class="module-filter active" type="button" data-module-filter="upload">Raporlar</button>
+            <button class="module-filter" type="button" data-module-filter="catalog">Katalog</button>
+            <button class="module-filter" type="button" data-module-filter="search">Arama</button>
             <button class="module-filter" type="button" data-module-filter="chat">Chatbot</button>
-            <button class="module-filter" type="button" data-module-filter="duplicates">Mukerrer Tespiti</button>
-            <button class="module-filter" type="button" data-module-filter="catalog">Catalog & Multi QA</button>
-            <button class="module-filter" type="button" data-module-filter="graph">Graph View</button>
-            <button class="module-filter" type="button" data-module-filter="qa">Q & A</button>
-            <button class="module-filter" type="button" data-module-filter="writing">Writing Assistant</button>
+            <button class="module-filter" type="button" data-module-filter="duplicates">Mukerrer</button>
+            <button class="module-filter" type="button" data-module-filter="graph">Kategoriler</button>
+            <button class="module-filter" type="button" data-module-filter="qa">Q&A</button>
+            <button class="module-filter" type="button" data-module-filter="writing">Yazim</button>
             <button class="module-filter" type="button" data-module-filter="all">Her sey</button>
           </div>
         </div>
-        <div class="section" data-module-title="Rapor Yukleme" data-module-key="upload">
+        <div class="section" data-module-title="Raporlar" data-module-key="upload">
           <div class="section-head">
             <div>
-              <h2>Rapor Yukleme</h2>
+              <h2>Raporlar</h2>
               <p>Tekli veya toplu PDF/DOCX/PPTX raporlarini sisteme ekle.</p>
             </div>
             <button class="expand-button" type="button" data-expand-module>Buyut</button>
@@ -1335,7 +1489,7 @@ def upload_page() -> HTMLResponse:
                   </tr>
                 </thead>
                 <tbody id="uploadedDocumentsTable">
-                  <tr><td colspan="6" class="small">Rapor Yukleme modulu buyutulunce liste yenilenecek.</td></tr>
+                  <tr><td colspan="6" class="small">Raporlar modulu buyutulunce liste yenilenecek.</td></tr>
                 </tbody>
               </table>
             </div>
@@ -1419,6 +1573,9 @@ def upload_page() -> HTMLResponse:
                 <div class="chat-message assistant">Merhaba. Icerideki raporlar uzerinden soru sorabilirsin.</div>
               </div>
               <div class="chat-prompts">
+                <button class="chat-prompt" type="button" data-chat-prompt="Big Agent ne yapar?">Big Agent ne yapar?</button>
+                <button class="chat-prompt" type="button" data-chat-prompt="Bu uygulama ne yapar?">Uygulama nedir?</button>
+                <button class="chat-prompt" type="button" data-chat-prompt="Kendinden bahset">Kendinden bahset</button>
                 <button class="chat-prompt" type="button" data-chat-prompt="BIG-E konfor raporunda hangi parkurlar var?">BIG-E konfor parkurlari</button>
                 <button class="chat-prompt" type="button" data-chat-prompt="Alternator braket raporunda dogal frekans kac Hz?">Alternator braket</button>
                 <button class="chat-prompt" type="button" data-chat-prompt="TASE sicaklik testinde kac sensor kullanildi?">TASE sensor</button>
@@ -1442,10 +1599,10 @@ def upload_page() -> HTMLResponse:
             </div>
           </div>
         </div>
-        <div class="section" data-module-title="Mukerrer Tespiti" data-module-key="duplicates">
+        <div class="section" data-module-title="Mukerrer" data-module-key="duplicates">
           <div class="section-head">
             <div>
-              <h2>Mukerrer Tespiti</h2>
+              <h2>Mukerrer</h2>
               <p>Icerideki raporlar arasinda birbirine cok benzeyen kayitli adaylari gor.</p>
             </div>
             <button class="expand-button" type="button" data-expand-module>Buyut</button>
@@ -1459,11 +1616,11 @@ def upload_page() -> HTMLResponse:
             <div class="empty">Kayitli mukerrer adaylari burada listelenecek.</div>
           </div>
         </div>
-        <div class="section" data-module-title="Rapor Katalogu ve Coklu Belge QA" data-modal-layout="catalog-stack" data-module-key="catalog">
+        <div class="section" data-module-title="Katalog" data-modal-layout="catalog-stack" data-module-key="catalog">
           <div class="section-head">
             <div>
-              <h2>Rapor Katalogu ve Coklu Belge QA</h2>
-              <p>Surekli guncellenen Excel/CSV katalogunu yukle. Sonra arac, disiplin veya test tipi uzerinden katalog seviyesinde soru sor.</p>
+              <h2>Katalog</h2>
+              <p>Excel/CSV katalogunu yukle, katalog kayitlarini icerdeki raporlarla eslestir ve rapor dosyalarini ac.</p>
             </div>
             <button class="expand-button" type="button" data-expand-module>Buyut</button>
           </div>
@@ -1635,29 +1792,64 @@ def upload_page() -> HTMLResponse:
             </div>
           </div>
         </div>
-        <div class="section" data-module-title="Graph View ve Etiketler" data-module-key="graph">
+        <div class="section" data-module-title="Kategori Tarayici" data-module-key="graph">
           <div class="section-head">
             <div>
-              <h2>Graph View ve Etiketler</h2>
-              <p>Katalog ve yuklu raporlardan arac, disiplin, yil, yazar ve durum etiketlerini otomatik cikar.</p>
+              <h2>Kategori Tarayici</h2>
+              <p>Katalog ve yuklu raporlari kategori agaci, belge tablosu ve yogunluk grafikleriyle incele.</p>
             </div>
             <button class="expand-button" type="button" data-expand-module>Buyut</button>
           </div>
           <div class="actions">
-            <button class="button primary" id="graphRefreshButton" type="button">Graph Yenile</button>
+            <button class="button primary" id="graphRefreshButton" type="button">Veriyi Yenile</button>
           </div>
-          <div class="note" id="graphStatus">Graph henuz yuklenmedi.</div>
-          <div class="graph-layout">
-            <div class="graph-canvas" id="graphCanvas">
-              <div class="empty" style="padding:16px;">Graph burada gorunecek.</div>
-            </div>
-            <div class="panel">
-              <div class="panel-title">Etiketler</div>
-              <div class="tag-cloud" id="graphTags">
-                <div class="empty">Etiketler burada listelenecek.</div>
+          <div class="note" id="graphStatus">Kategori verisi henuz yuklenmedi.</div>
+          <div class="graph-dashboard" id="graphStats">
+            <div class="stat-card"><div class="stat-label">Kategori</div><div class="stat-value">0</div></div>
+            <div class="stat-card"><div class="stat-label">Belge</div><div class="stat-value">0</div></div>
+            <div class="stat-card"><div class="stat-label">En Yogun</div><div class="stat-value">-</div></div>
+          </div>
+          <div class="graph-browser">
+            <aside class="graph-sidebar">
+              <div class="panel-title">Kategori Agaci</div>
+              <div id="graphTree" class="category-tree">
+                <div class="empty">Kategoriler burada listelenecek.</div>
               </div>
-              <div class="panel-title" style="margin-top:18px;">Secilen Dugum</div>
-              <div id="graphDetails" class="answer-text">Bir dugume tiklayinca detay burada gorunecek.</div>
+            </aside>
+            <div class="graph-main">
+              <div class="graph-controls">
+                <div class="field">
+                  <label for="graphSearchInput">Arama</label>
+                  <input id="graphSearchInput" type="text" placeholder="Belge adi, etiket, durum veya yil ara" />
+                </div>
+                <div class="field">
+                  <label for="graphCategoryFilter">Kategori</label>
+                  <select id="graphCategoryFilter">
+                    <option value="all">Tum kategoriler</option>
+                  </select>
+                </div>
+              </div>
+              <div class="panel-title">Kategori Yogunlugu</div>
+              <div id="graphDensityChart" class="density-chart">
+                <div class="empty">Yogunluk grafigi burada gorunecek.</div>
+              </div>
+              <div class="panel-title">Belgeler</div>
+              <div class="document-table-wrap">
+                <table class="document-table">
+                  <thead>
+                    <tr>
+                      <th>Ad</th>
+                      <th>Tur</th>
+                      <th>Tarih</th>
+                      <th>Etiket</th>
+                      <th>Durum</th>
+                    </tr>
+                  </thead>
+                  <tbody id="graphDocumentsTable">
+                    <tr><td colspan="5" class="small">Belge listesi burada gorunecek.</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -1825,9 +2017,12 @@ def upload_page() -> HTMLResponse:
     const multiDocumentSources = document.getElementById("multiDocumentSources");
     const graphRefreshButton = document.getElementById("graphRefreshButton");
     const graphStatus = document.getElementById("graphStatus");
-    const graphCanvas = document.getElementById("graphCanvas");
-    const graphTags = document.getElementById("graphTags");
-    const graphDetails = document.getElementById("graphDetails");
+    const graphStats = document.getElementById("graphStats");
+    const graphTree = document.getElementById("graphTree");
+    const graphSearchInput = document.getElementById("graphSearchInput");
+    const graphCategoryFilter = document.getElementById("graphCategoryFilter");
+    const graphDensityChart = document.getElementById("graphDensityChart");
+    const graphDocumentsTable = document.getElementById("graphDocumentsTable");
     const searchQuery = document.getElementById("searchQuery");
     const searchMode = document.getElementById("searchMode");
     const searchButton = document.getElementById("searchButton");
@@ -1880,6 +2075,7 @@ def upload_page() -> HTMLResponse:
     let lastCatalogQuestion = "";
     let lastCatalogMatches = [];
     let chatHistory = [];
+    let graphState = { categories: [], documents: [], selectedCategoryId: "all", search: "" };
     let activeTimerId = null;
     let activeModule = null;
     let selectedModuleFilter = "upload";
@@ -1944,13 +2140,13 @@ def upload_page() -> HTMLResponse:
         expandButton.textContent = "Kucult";
       }
       document.body.classList.add("modal-open");
-      if (section.dataset.moduleTitle === "Rapor Yukleme") {
+      if (section.dataset.moduleKey === "upload") {
         refreshUploadedDocuments();
       }
-      if (section.dataset.moduleTitle === "Graph View ve Etiketler") {
+      if (section.dataset.moduleKey === "graph") {
         refreshGraph();
       }
-      if (section.dataset.moduleTitle === "Mukerrer Tespiti") {
+      if (section.dataset.moduleKey === "duplicates") {
         refreshDuplicates();
       }
     }
@@ -2626,130 +2822,201 @@ def upload_page() -> HTMLResponse:
       }
     }
 
-    function graphNodeColor(node) {
-      if (node.type === "root") return "#8f1421";
-      if (node.type === "document") return node.status === "ingested" ? "#1b7f4b" : "#c62839";
-      if (node.type === "catalog") return "#c62839";
-      const colors = {
-        vehicle: "#0e5d83",
-        discipline: "#8a5a00",
-        year: "#5b3d91",
-        author: "#6b4a2f",
-        status: "#7a555b",
-      };
-      return colors[node.tag_type] || "#7a555b";
-    }
-
-    function graphRadius(node) {
-      if (node.type === "root") return 24;
-      if (node.type === "document") return 11;
-      if (node.type === "catalog") return 9;
-      return 8;
-    }
-
-    function graphLabel(value, maxLength = 28) {
-      const text = String(value || "");
-      return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
-    }
-
-    function layoutGraphNodes(nodes) {
-      const width = 980;
-      const height = 520;
-      const center = { x: width / 2, y: height / 2 };
-      const root = nodes.filter(node => node.type === "root");
-      const reports = nodes.filter(node => node.type === "document" || node.type === "catalog");
-      const tags = nodes.filter(node => node.type === "tag");
-
-      const positionGroup = (items, radius, phase) => {
-        items.forEach((node, index) => {
-          const angle = phase + (Math.PI * 2 * index / Math.max(items.length, 1));
-          node.x = center.x + Math.cos(angle) * radius;
-          node.y = center.y + Math.sin(angle) * radius;
-        });
-      };
-
-      root.forEach(node => {
-        node.x = center.x;
-        node.y = center.y;
-      });
-      positionGroup(tags.slice(0, 80), 155, -Math.PI / 2);
-      positionGroup(reports.slice(0, 120), 225, -Math.PI / 2.7);
-      return { nodes, width, height };
-    }
-
     function renderGraph(data) {
-      const visibleNodes = (data.nodes || []).slice(0, 180).map(node => ({ ...node }));
-      const nodeById = new Map(visibleNodes.map(node => [node.id, node]));
-      const visibleEdges = (data.edges || []).filter(edge => nodeById.has(edge.source) && nodeById.has(edge.target)).slice(0, 360);
-      const layout = layoutGraphNodes(visibleNodes);
-      const edgeHtml = visibleEdges.map(edge => {
-        const source = nodeById.get(edge.source);
-        const target = nodeById.get(edge.target);
-        return `<line class="graph-edge" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" />`;
-      }).join("");
-      const nodeHtml = visibleNodes.map(node => {
-        const color = graphNodeColor(node);
-        const radius = graphRadius(node);
-        const label = escapeHtml(graphLabel(node.label, node.type === "tag" ? 22 : 30));
-        const labelY = node.y + radius + 14;
-        return `
-          <g class="graph-node" data-node-id="${escapeHtml(node.id)}">
-            <circle cx="${node.x}" cy="${node.y}" r="${radius}" fill="${color}" opacity="0.92"></circle>
-            <text class="graph-label" x="${node.x}" y="${labelY}" text-anchor="middle">${label}</text>
-          </g>
-        `;
-      }).join("");
+      graphState = buildGraphBrowserState(data);
+      renderGraphBrowser();
+      graphStatus.textContent = `Kategori tarayici hazir. Kategori: ${graphState.categories.length}, belge: ${graphState.documents.length}.`;
+    }
 
-      graphCanvas.innerHTML = `
-        <svg viewBox="0 0 ${layout.width} ${layout.height}" role="img" aria-label="Rapor graph">
-          ${edgeHtml}
-          ${nodeHtml}
-        </svg>
-      `;
-      graphCanvas.querySelectorAll(".graph-node").forEach(element => {
-        element.addEventListener("click", () => {
-          const node = nodeById.get(element.dataset.nodeId);
-          if (!node) return;
-          graphDetails.textContent = [
-            `Tip: ${node.type}`,
-            `Etiket: ${node.label}`,
-            node.status ? `Durum: ${node.status}` : "",
-            node.document_id ? `Belge ID: ${node.document_id}` : "",
-            node.catalog_entry_id ? `Katalog ID: ${node.catalog_entry_id}` : "",
-          ].filter(Boolean).join("\\n");
+    function buildGraphBrowserState(data) {
+      const nodes = data.nodes || [];
+      const nodeById = new Map(nodes.map(node => [node.id, node]));
+      const tagNodes = nodes.filter(node => node.type === "tag");
+      const reportNodes = nodes.filter(node => node.type === "document" || node.type === "catalog");
+      const tagsByReport = new Map(reportNodes.map(node => [node.id, []]));
+
+      (data.edges || []).forEach(edge => {
+        if (!tagsByReport.has(edge.source)) return;
+        const tagNode = nodeById.get(edge.target);
+        if (!tagNode || tagNode.type !== "tag") return;
+        tagsByReport.get(edge.source).push({
+          id: `${tagNode.tag_type || "tag"}::${tagNode.label}`,
+          type: tagNode.tag_type || "tag",
+          label: tagNode.label || "",
         });
       });
 
-      renderGraphTags(data.tags || []);
-      graphStatus.textContent = `Graph hazir. Dugum: ${data.node_count}, iliski: ${data.edge_count}, etiket: ${(data.tags || []).length}.`;
+      const categories = tagNodes
+        .map(node => ({
+          id: `${node.tag_type || "tag"}::${node.label}`,
+          type: node.tag_type || "tag",
+          label: node.label || "",
+          count: 0,
+        }))
+        .filter(category => category.label);
+      const categoryById = new Map(categories.map(category => [category.id, category]));
+
+      const documents = reportNodes.map(node => {
+        const tags = tagsByReport.get(node.id) || [];
+        tags.forEach(tag => {
+          const category = categoryById.get(tag.id);
+          if (category) category.count += 1;
+        });
+        const discipline = tags.find(tag => tag.type === "discipline");
+        const year = tags.find(tag => tag.type === "year");
+        return {
+          id: node.id,
+          name: node.label || "-",
+          type: discipline ? discipline.label : (node.type === "document" ? "Yuklu belge" : "Katalog kaydi"),
+          date: year ? year.label : "-",
+          tags,
+          status: node.status === "ingested" ? "Iceride" : "Iceri alinacak",
+          documentId: node.document_id,
+          catalogEntryId: node.catalog_entry_id,
+        };
+      });
+
+      return {
+        categories: categories.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
+        documents,
+        selectedCategoryId: graphState.selectedCategoryId || "all",
+        search: graphState.search || "",
+      };
     }
 
-    function renderGraphTags(tags) {
-      if (!tags.length) {
-        graphTags.innerHTML = '<div class="empty">Etiket bulunamadi.</div>';
+    function renderGraphBrowser() {
+      const selectedExists = graphState.selectedCategoryId === "all" || graphState.categories.some(category => category.id === graphState.selectedCategoryId);
+      if (!selectedExists) graphState.selectedCategoryId = "all";
+      renderGraphStats();
+      renderGraphTree();
+      renderGraphCategoryFilter();
+      renderGraphDensityChart();
+      renderGraphDocuments();
+    }
+
+    function graphCategoryTypeLabel(type) {
+      const labels = {
+        vehicle: "Arac",
+        discipline: "Analiz Tipi",
+        year: "Yil",
+        author: "Yazar",
+        status: "Durum",
+      };
+      return labels[type] || "Etiket";
+    }
+
+    function filteredGraphDocuments() {
+      const search = normalizeSearchText(graphState.search || "");
+      return graphState.documents.filter(document => {
+        const categoryMatch = graphState.selectedCategoryId === "all" || document.tags.some(tag => tag.id === graphState.selectedCategoryId);
+        if (!categoryMatch) return false;
+        if (!search) return true;
+        const haystack = normalizeSearchText([
+          document.name,
+          document.type,
+          document.date,
+          document.status,
+          document.tags.map(tag => tag.label).join(" "),
+        ].join(" "));
+        return haystack.includes(search);
+      });
+    }
+
+    function renderGraphStats() {
+      const densest = graphState.categories[0];
+      graphStats.innerHTML = `
+        <div class="stat-card"><div class="stat-label">Kategori</div><div class="stat-value">${graphState.categories.length}</div></div>
+        <div class="stat-card"><div class="stat-label">Belge</div><div class="stat-value">${graphState.documents.length}</div></div>
+        <div class="stat-card"><div class="stat-label">En Yogun</div><div class="stat-value">${densest ? escapeHtml(densest.label).slice(0, 18) : "-"}</div></div>
+      `;
+    }
+
+    function renderGraphTree() {
+      const groups = new Map();
+      graphState.categories.forEach(category => {
+        if (!groups.has(category.type)) groups.set(category.type, []);
+        groups.get(category.type).push(category);
+      });
+      const allButton = `
+        <button class="category-button ${graphState.selectedCategoryId === "all" ? "active" : ""}" type="button" data-graph-category="all">
+          <span>Tum Belgeler</span><span class="count">${graphState.documents.length}</span>
+        </button>
+      `;
+      const groupHtml = Array.from(groups.entries()).map(([type, items]) => `
+        <div class="category-group">
+          <div class="category-group-title">${escapeHtml(graphCategoryTypeLabel(type))}</div>
+          ${items.slice(0, 30).map(category => `
+            <button class="category-button ${graphState.selectedCategoryId === category.id ? "active" : ""}" type="button" data-graph-category="${escapeHtml(category.id)}">
+              <span>${escapeHtml(category.label)}</span><span class="count">${category.count}</span>
+            </button>
+          `).join("")}
+        </div>
+      `).join("");
+      graphTree.innerHTML = allButton + groupHtml;
+      graphTree.querySelectorAll("[data-graph-category]").forEach(button => {
+        button.addEventListener("click", () => {
+          graphState.selectedCategoryId = button.dataset.graphCategory || "all";
+          graphCategoryFilter.value = graphState.selectedCategoryId;
+          renderGraphBrowser();
+        });
+      });
+    }
+
+    function renderGraphCategoryFilter() {
+      const options = [
+        '<option value="all">Tum kategoriler</option>',
+        ...graphState.categories.map(category => `<option value="${escapeHtml(category.id)}">${escapeHtml(graphCategoryTypeLabel(category.type))}: ${escapeHtml(category.label)}</option>`),
+      ];
+      graphCategoryFilter.innerHTML = options.join("");
+      graphCategoryFilter.value = graphState.selectedCategoryId;
+    }
+
+    function renderGraphDensityChart() {
+      const top = graphState.categories.slice(0, 10);
+      if (!top.length) {
+        graphDensityChart.innerHTML = '<div class="empty">Yogunluk verisi bulunamadi.</div>';
         return;
       }
-      graphTags.innerHTML = tags.slice(0, 80).map(tag => `
-        <div class="tag-chip" title="${escapeHtml(tag.type)}">
-          ${escapeHtml(tag.label)}
-          <span>${Number(tag.count || 0)}</span>
+      const maxCount = Math.max(...top.map(category => category.count), 1);
+      graphDensityChart.innerHTML = top.map(category => `
+        <div class="density-row">
+          <div class="density-label" title="${escapeHtml(category.label)}">${escapeHtml(category.label)}</div>
+          <div class="density-track"><div class="density-bar" style="width:${Math.max(4, Math.round(category.count * 100 / maxCount))}%;"></div></div>
+          <div>${category.count}</div>
         </div>
+      `).join("");
+    }
+
+    function renderGraphDocuments() {
+      const items = filteredGraphDocuments();
+      if (!items.length) {
+        graphDocumentsTable.innerHTML = '<tr><td colspan="5" class="small">Bu filtreyle belge bulunamadi.</td></tr>';
+        return;
+      }
+      graphDocumentsTable.innerHTML = items.slice(0, 120).map(document => `
+        <tr>
+          <td><div class="doc-name">${escapeHtml(document.name)}</div><div class="small">${escapeHtml(document.documentId ? `Belge ID: ${document.documentId}` : `Katalog ID: ${document.catalogEntryId || "-"}`)}</div></td>
+          <td>${escapeHtml(document.type)}</td>
+          <td>${escapeHtml(document.date)}</td>
+          <td><div class="doc-tags">${document.tags.slice(0, 5).map(tag => `<span class="doc-tag">${escapeHtml(tag.label)}</span>`).join("")}</div></td>
+          <td><span class="status-pill ${document.status === "Iceride" ? "complete" : "not_ingested"}">${escapeHtml(document.status)}</span></td>
+        </tr>
       `).join("");
     }
 
     async function refreshGraph() {
       graphRefreshButton.disabled = true;
-      graphStatus.textContent = "Graph yukleniyor...";
+      graphStatus.textContent = "Kategori verisi yukleniyor...";
       try {
         const response = await fetch("/graph/overview?limit=160");
         const data = await response.json();
         if (!response.ok) {
-          graphStatus.textContent = data.detail || "Graph yuklenemedi.";
+          graphStatus.textContent = data.detail || "Kategori verisi yuklenemedi.";
           return;
         }
         renderGraph(data);
       } catch (error) {
-        graphStatus.textContent = `Graph yuklenemedi: ${error}`;
+        graphStatus.textContent = `Kategori verisi yuklenemedi: ${error}`;
       } finally {
         graphRefreshButton.disabled = false;
       }
@@ -3338,7 +3605,7 @@ def upload_page() -> HTMLResponse:
         singleResultBox.textContent = JSON.stringify(data, null, 2);
         if (response.ok) {
           stopTimer(startedAt, message => setSingleStatus("ok", message), `Islem tamamlandi. Durum: ${data.status}.`);
-          if (activeModule && activeModule.dataset.moduleTitle === "Rapor Yukleme") {
+          if (activeModule && activeModule.dataset.moduleKey === "upload") {
             await refreshUploadedDocuments();
           }
         } else {
@@ -3381,7 +3648,7 @@ def upload_page() -> HTMLResponse:
             message => setStatus("ok", message),
             `Yukleme tamamlandi. ${data.ingested_count} yeni dosya islendi, ${data.duplicate_count} duplicate bulundu.`
           );
-          if (activeModule && activeModule.dataset.moduleTitle === "Rapor Yukleme") {
+          if (activeModule && activeModule.dataset.moduleKey === "upload") {
             await refreshUploadedDocuments();
           }
         } else {
@@ -3486,6 +3753,14 @@ def upload_page() -> HTMLResponse:
     });
     uploadedDocumentsRefreshButton.addEventListener("click", refreshUploadedDocuments);
     graphRefreshButton.addEventListener("click", refreshGraph);
+    graphSearchInput.addEventListener("input", () => {
+      graphState.search = graphSearchInput.value;
+      renderGraphDocuments();
+    });
+    graphCategoryFilter.addEventListener("change", () => {
+      graphState.selectedCategoryId = graphCategoryFilter.value || "all";
+      renderGraphBrowser();
+    });
     catalogQuestion.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
@@ -3773,6 +4048,8 @@ def _is_general_chat_message(message: str) -> bool:
     normalized = _fold_chat_text(message)
     if not normalized:
         return False
+    if _is_report_focused_message(normalized):
+        return False
     if _is_simple_math_message(message):
         return True
 
@@ -3795,7 +4072,10 @@ def _is_general_chat_message(message: str) -> bool:
     if any(phrase in normalized for phrase in general_phrases):
         return True
 
-    return _is_chat_small_talk(message)
+    if _is_chat_small_talk(message):
+        return True
+
+    return True
 
 
 def _is_simple_math_message(message: str) -> bool:
@@ -3813,23 +4093,7 @@ def _is_chat_small_talk(message: str) -> bool:
     normalized = _fold_chat_text(message)
     if not normalized:
         return False
-    report_terms = {
-        "rapor",
-        "analiz",
-        "test",
-        "titreşim",
-        "titresim",
-        "nvh",
-        "dur",
-        "safe",
-        "tase",
-        "bige",
-        "big",
-        "citi",
-        "citibus",
-        "goupil",
-    }
-    if any(term in normalized for term in report_terms):
+    if _is_report_focused_message(normalized):
         return False
     small_talk_phrases = {
         "naber",
@@ -3850,6 +4114,36 @@ def _is_chat_small_talk(message: str) -> bool:
     )
 
 
+def _is_report_focused_message(normalized: str) -> bool:
+    report_terms = {
+        "rapor",
+        "analiz",
+        "test",
+        "katalog",
+        "belge",
+        "dokuman",
+        "doküman",
+        "titreşim",
+        "titresim",
+        "konfor",
+        "parkur",
+        "sensor",
+        "sensör",
+        "nvh",
+        "dur",
+        "safe",
+        "tase",
+        "bige",
+        "big e",
+        "citi",
+        "citibus",
+        "goupil",
+    }
+    if any(term in normalized for term in report_terms):
+        return True
+    return bool(re.search(r"\b20\d{2}[a-z0-9-]*-[a-z0-9-]+", normalized))
+
+
 def _chat_general_answer(message: str, history: list[dict] | None = None) -> tuple[str, str, float]:
     normalized = _fold_chat_text(message)
     if any(phrase in normalized for phrase in ("adam misin", "insan misin", "robot musun", "gercek misin")):
@@ -3867,7 +4161,14 @@ def _chat_general_answer(message: str, history: list[dict] | None = None) -> tup
             "chat-direct",
             1.0,
         )
-    if "ne yapabilirsin" in normalized or "ne ise yararsin" in normalized or "amacin ne" in normalized:
+    if (
+        "ne yapabilirsin" in normalized
+        or "ne ise yararsin" in normalized
+        or "amacin ne" in normalized
+        or "big agent ne yapar" in normalized
+        or "bu uygulama ne yapar" in normalized
+        or "sistem ne yapar" in normalized
+    ):
         return (
             "Rapor iceriginde arama yapabilir, teknik sorulara kaynak pasajlarla cevap verebilir, ilgili raporlari ve "
             "benzer dokumanlari gosterebilir, katalog kayitlarini icerdeki raporlarla eslestirebilir ve mukerrer rapor "
