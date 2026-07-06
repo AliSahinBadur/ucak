@@ -5,6 +5,7 @@ import json
 import logging
 from typing import Protocol, TypeVar
 
+import httpx
 from pydantic import BaseModel, ValidationError
 
 from ..config import (
@@ -12,6 +13,7 @@ from ..config import (
     LLM_ENABLED,
     LLM_MODEL_NAME,
     LLM_TIMEOUT_SECONDS,
+    OLLAMA_HOST,
 )
 
 
@@ -61,12 +63,6 @@ class OllamaLLMProvider:
     def __init__(self, model_name: str, timeout_seconds: float = 30.0) -> None:
         if not model_name:
             raise RuntimeError("LLM_MODEL_NAME is required for Ollama.")
-        try:
-            import ollama
-        except ImportError as exc:
-            raise RuntimeError("ollama package is not installed.") from exc
-
-        self._ollama = ollama
         self.model_name = model_name
         self.timeout_seconds = timeout_seconds
         self.provider_name = f"ollama:{model_name}"
@@ -84,12 +80,19 @@ class OllamaLLMProvider:
         options: dict[str, float | int] = {"temperature": temperature}
         if max_tokens is not None:
             options["num_predict"] = max_tokens
-        response = self._ollama.chat(
-            model=self.model_name,
-            messages=[{"role": "user", "content": prompt}],
-            options=options,
-        )
-        return str(response["message"]["content"])
+        with httpx.Client(timeout=self.timeout_seconds) as client:
+            response = client.post(
+                f"{OLLAMA_HOST}/api/chat",
+                json={
+                    "model": self.model_name,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "stream": False,
+                    "options": options,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+        return str(payload["message"]["content"])
 
     def generate_json(self, prompt: str, schema: type[SchemaT]) -> SchemaT:
         raw_text = self.generate(prompt, temperature=0.0)

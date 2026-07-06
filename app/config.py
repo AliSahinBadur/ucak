@@ -43,7 +43,17 @@ def _default_embedding_provider() -> str:
 
 
 EMBEDDING_PROVIDER = os.getenv("EMBEDDING_BACKEND", os.getenv("EMBEDDING_PROVIDER", _default_embedding_provider()))
-EMBEDDING_DEVICE = os.getenv("EMBEDDING_DEVICE", "cpu")
+
+
+def _default_embedding_device() -> str:
+    try:
+        import torch
+    except Exception:
+        return "cpu"
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+
+EMBEDDING_DEVICE = os.getenv("EMBEDDING_DEVICE", _default_embedding_device())
 EMBEDDING_LOCAL_FILES_ONLY = _env_bool("EMBEDDING_LOCAL_FILES_ONLY", default=False)
 
 LLM_ENABLED = _env_bool("LLM_ENABLED", default=False)
@@ -53,6 +63,12 @@ LLM_MODEL_PATH = os.getenv("LLM_MODEL_PATH", "")
 LLM_MAX_CONTEXT_TOKENS = int(os.getenv("LLM_MAX_CONTEXT_TOKENS", "4096"))
 LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
 LLM_ANSWER_ENABLED = _env_bool("LLM_ANSWER_ENABLED", default=False)
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+
+CHAT_LLM_ENABLED = _env_bool("CHAT_LLM_ENABLED", default=True)
+CHAT_LLM_BACKEND = os.getenv("CHAT_LLM_BACKEND", "ollama").strip().casefold()
+CHAT_LLM_MODEL_NAME = os.getenv("CHAT_LLM_MODEL_NAME", os.getenv("LLM_MODEL_NAME", "qwen2.5:3b"))
+CHAT_LLM_TIMEOUT_SECONDS = float(os.getenv("CHAT_LLM_TIMEOUT_SECONDS", os.getenv("LLM_TIMEOUT_SECONDS", "45")))
 
 RERANKER_ENABLED = _env_bool("RERANKER_ENABLED", default=False)
 RERANKER_BACKEND = os.getenv("RERANKER_BACKEND", "disabled").strip().casefold()

@@ -123,6 +123,7 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=2, max_length=1000)
     history: list[ChatMessage] = Field(default_factory=list)
     mode: Literal["keyword", "semantic", "hybrid"] = "hybrid"
+    assistant_mode: Literal["auto", "report", "general"] = "auto"
     limit: int = Field(default=5, ge=1, le=10)
     document_id: int | None = Field(default=None, ge=1)
     use_llm_answer: bool = False

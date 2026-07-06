@@ -149,7 +149,9 @@ class SentenceTransformerEmbeddingService(BaseEmbeddingService):
 def build_embedding_service() -> EmbeddingService:
     provider = EMBEDDING_PROVIDER.strip().casefold()
     if provider in {"sentence-transformer", "sentence-transformers", "hf", "huggingface"}:
+        attempted_devices: list[str] = []
         try:
+            attempted_devices.append(EMBEDDING_DEVICE)
             service = SentenceTransformerEmbeddingService(
                 model_name=EMBEDDING_MODEL_NAME,
                 device=EMBEDDING_DEVICE,
@@ -157,9 +159,23 @@ def build_embedding_service() -> EmbeddingService:
             )
             logger.info("Loaded embedding provider %s", service.provider_name)
             return service
-        except Exception:
-            logger.exception(
-                "Falling back to token-hash embeddings because sentence-transformers could not load."
+        except Exception as exc:
+            logger.exception("Sentence-transformers could not load on %s.", EMBEDDING_DEVICE)
+            if EMBEDDING_DEVICE != "cpu":
+                try:
+                    attempted_devices.append("cpu")
+                    service = SentenceTransformerEmbeddingService(
+                        model_name=EMBEDDING_MODEL_NAME,
+                        device="cpu",
+                        local_files_only=EMBEDDING_LOCAL_FILES_ONLY,
+                    )
+                    logger.info("Loaded embedding provider %s on CPU after %s failed.", service.provider_name, EMBEDDING_DEVICE)
+                    return service
+                except Exception:
+                    logger.exception("Sentence-transformers CPU fallback also failed.")
+            logger.warning(
+                "Falling back to token-hash embeddings after trying devices: %s",
+                ", ".join(attempted_devices),
             )
 
     service = TokenHashEmbeddingService()

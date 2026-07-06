@@ -51,6 +51,7 @@ from .services.embedding_service import build_embedding_service
 from .services.catalog_ingest_service import CatalogIngestService
 from .services.catalog_service import CatalogService
 from .services.duplicate_detection_service import DuplicateDetectionService
+from .services.general_chat_service import GeneralChatService
 from .services.graph_service import GraphService
 from .services.ingest_service import IngestService
 from .services.multi_document_qa_service import MultiDocumentQAService
@@ -173,6 +174,10 @@ def upload_page() -> HTMLResponse:
       max-width: 1120px;
       margin: 36px auto;
       padding: 0 20px 40px;
+      transition: max-width 180ms ease;
+    }
+    body.chat-focus .wrap {
+      max-width: 1480px;
     }
     .stack {
       display: grid;
@@ -964,46 +969,194 @@ def upload_page() -> HTMLResponse:
     }
     .chat-layout {
       display: grid;
-      grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.8fr);
+      grid-template-columns: minmax(0, 1.7fr) minmax(340px, 0.75fr);
       gap: 18px;
       margin-top: 16px;
+      align-items: stretch;
+    }
+    body.chat-focus .section[data-module-key="chat"] {
+      padding-left: 34px;
+      padding-right: 34px;
+    }
+    body.chat-focus .chat-layout {
+      grid-template-columns: minmax(0, 1.85fr) minmax(360px, 0.85fr);
+      gap: 22px;
+    }
+    .section.module-expanded[data-module-key="chat"] .chat-layout {
+      grid-template-columns: minmax(0, 1.95fr) minmax(380px, 0.85fr);
+      gap: 22px;
+    }
+    .chat-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 650px;
+    }
+    .chat-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .chat-agent {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+    .chat-avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: #c92037;
+      color: white;
+      font-weight: 900;
+      letter-spacing: 0;
+      flex: 0 0 auto;
+    }
+    .chat-agent-title {
+      font-weight: 800;
+      line-height: 1.2;
+    }
+    .chat-agent-subtitle {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+    .chat-toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+    .chat-toolbar-actions select {
+      min-width: 128px;
+      height: 38px;
+      padding: 0 34px 0 12px;
+      font-size: 13px;
     }
     .chat-messages {
       display: flex;
       flex-direction: column;
       gap: 10px;
-      min-height: 360px;
-      max-height: 560px;
+      min-height: 420px;
+      max-height: 620px;
       overflow: auto;
       border: 1px solid var(--line);
       border-radius: 16px;
-      background: white;
-      padding: 14px;
+      background:
+        linear-gradient(180deg, rgba(255, 246, 248, 0.72), rgba(255, 255, 255, 0.96)),
+        white;
+      padding: 16px;
+      scroll-behavior: smooth;
     }
     .chat-message {
-      max-width: 82%;
+      max-width: min(82%, 720px);
       border: 1px solid var(--line);
       border-radius: 14px;
-      padding: 10px 12px;
+      padding: 10px 12px 12px;
       white-space: pre-wrap;
       line-height: 1.55;
       font-size: 14px;
+      box-shadow: 0 8px 18px rgba(56, 23, 29, 0.05);
     }
     .chat-message.user {
       align-self: flex-end;
-      background: #fff0f2;
-      border-color: #efbdc5;
+      background: #c92037;
+      border-color: #c92037;
+      color: white;
     }
     .chat-message.assistant {
       align-self: flex-start;
       background: #fff;
     }
+    .chat-message-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 5px;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      color: var(--muted);
+      letter-spacing: 0;
+    }
+    .chat-message.user .chat-message-label {
+      color: rgba(255, 255, 255, 0.72);
+    }
+    .chat-message-body {
+      white-space: pre-wrap;
+    }
+    .chat-prompts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .chat-prompt {
+      border: 1px solid #efbdc5;
+      border-radius: 999px;
+      background: #fff8f9;
+      color: #5b2730;
+      padding: 8px 11px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .chat-prompt:hover {
+      border-color: #d85a6b;
+      color: var(--accent-strong);
+    }
     .chat-input-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 150px 130px;
+      grid-template-columns: minmax(0, 1fr) 132px;
       gap: 10px;
       margin-top: 12px;
-      align-items: end;
+      align-items: stretch;
+    }
+    .chat-input-row textarea {
+      min-height: 54px;
+      max-height: 140px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+    .chat-input-row .button {
+      min-height: 54px;
+    }
+    .chat-side {
+      display: flex;
+      flex-direction: column;
+      min-height: 650px;
+    }
+    .chat-source-head {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .chat-source-meta {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .chat-source-card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 13px;
+      background: white;
+      cursor: pointer;
+    }
+    .chat-source-card:hover {
+      border-color: #df9da8;
+      box-shadow: 0 10px 24px rgba(161, 33, 49, 0.08);
+    }
+    .chat-source-card .excerpt {
+      max-height: 160px;
+      overflow: hidden;
     }
     .graph-node {
       cursor: pointer;
@@ -1073,8 +1226,15 @@ def upload_page() -> HTMLResponse:
       .catalog-workspace,
       .catalog-board,
       .graph-layout,
+      .chat-layout,
       .split {
         grid-template-columns: 1fr;
+      }
+      .chat-input-row {
+        grid-template-columns: 1fr;
+      }
+      .chat-message {
+        max-width: 100%;
       }
       .stats-grid {
         grid-template-columns: 1fr;
@@ -1232,24 +1392,50 @@ def upload_page() -> HTMLResponse:
             <button class="expand-button" type="button" data-expand-module>Buyut</button>
           </div>
           <div class="chat-layout">
-            <div class="panel">
-              <div class="panel-title">Sohbet</div>
+            <div class="panel chat-panel">
+              <div class="chat-toolbar">
+                <div class="chat-agent">
+                  <div class="chat-avatar">BA</div>
+                  <div>
+                    <div class="chat-agent-title">Rapor Asistani</div>
+                    <div class="chat-agent-subtitle">Kaynakli cevap ve rapor bulma</div>
+                  </div>
+                </div>
+                <div class="chat-toolbar-actions">
+                  <select id="chatAssistantMode" aria-label="Asistan modu">
+                    <option value="auto">otomatik</option>
+                    <option value="report">rapor</option>
+                    <option value="general">genel</option>
+                  </select>
+                  <select id="chatMode" aria-label="Chat arama modu">
+                    <option value="hybrid">hybrid</option>
+                    <option value="semantic">semantic</option>
+                    <option value="keyword">keyword</option>
+                  </select>
+                  <button class="button secondary" id="chatClearButton" type="button">Yeni Sohbet</button>
+                </div>
+              </div>
               <div id="chatMessages" class="chat-messages">
                 <div class="chat-message assistant">Merhaba. Icerideki raporlar uzerinden soru sorabilirsin.</div>
               </div>
+              <div class="chat-prompts">
+                <button class="chat-prompt" type="button" data-chat-prompt="BIG-E konfor raporunda hangi parkurlar var?">BIG-E konfor parkurlari</button>
+                <button class="chat-prompt" type="button" data-chat-prompt="Alternator braket raporunda dogal frekans kac Hz?">Alternator braket</button>
+                <button class="chat-prompt" type="button" data-chat-prompt="TASE sicaklik testinde kac sensor kullanildi?">TASE sensor</button>
+              </div>
               <div class="chat-input-row">
-                <input id="chatInput" type="text" placeholder="Ornek: BIG-E konfor raporunda hangi parkurlar var?" />
-                <select id="chatMode">
-                  <option value="hybrid">hybrid</option>
-                  <option value="semantic">semantic</option>
-                  <option value="keyword">keyword</option>
-                </select>
+                <textarea id="chatInput" rows="2" placeholder="Rapor, test veya analiz hakkinda soru sor..."></textarea>
                 <button class="button primary" id="chatSendButton" type="button">Gonder</button>
               </div>
               <div class="note" id="chatStatus">Chatbot hazir.</div>
             </div>
-            <div class="panel">
-              <div class="panel-title">Son Kaynaklar</div>
+            <div class="panel chat-side">
+              <div class="chat-source-head">
+                <div>
+                  <div class="panel-title">Son Kaynaklar</div>
+                  <div class="chat-source-meta" id="chatSourceMeta">Cevap geldikce ilgili rapor pasajlari burada gorunur.</div>
+                </div>
+              </div>
               <div id="chatSources" class="cards">
                 <div class="empty">Kaynaklar cevap geldikce burada listelenecek.</div>
               </div>
@@ -1655,10 +1841,14 @@ def upload_page() -> HTMLResponse:
     const duplicateList = document.getElementById("duplicateList");
     const chatMessages = document.getElementById("chatMessages");
     const chatInput = document.getElementById("chatInput");
+    const chatAssistantMode = document.getElementById("chatAssistantMode");
     const chatMode = document.getElementById("chatMode");
     const chatSendButton = document.getElementById("chatSendButton");
+    const chatClearButton = document.getElementById("chatClearButton");
     const chatStatus = document.getElementById("chatStatus");
     const chatSources = document.getElementById("chatSources");
+    const chatSourceMeta = document.getElementById("chatSourceMeta");
+    const chatPromptButtons = Array.from(document.querySelectorAll("[data-chat-prompt]"));
     const askQuestion = document.getElementById("askQuestion");
     const askMode = document.getElementById("askMode");
     const askDocumentId = document.getElementById("askDocumentId");
@@ -1703,6 +1893,7 @@ def upload_page() -> HTMLResponse:
       moduleFilterButtons.forEach(button => {
         button.classList.toggle("active", button.dataset.moduleFilter === selectedModuleFilter);
       });
+      document.body.classList.toggle("chat-focus", selectedModuleFilter === "chat");
 
       moduleSections.forEach(section => {
         const keys = String(section.dataset.moduleKey || "").split(/\\s+/);
@@ -2096,9 +2287,27 @@ def upload_page() -> HTMLResponse:
     function appendChatMessage(role, content) {
       const node = document.createElement("div");
       node.className = `chat-message ${role}`;
-      node.textContent = content;
+      const label = document.createElement("div");
+      label.className = "chat-message-label";
+      label.textContent = role === "user" ? "Sen" : "Big Agent";
+      const body = document.createElement("div");
+      body.className = "chat-message-body";
+      body.textContent = content;
+      node.appendChild(label);
+      node.appendChild(body);
       chatMessages.appendChild(node);
       chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function resetChat() {
+      chatHistory = [];
+      chatMessages.innerHTML = "";
+      appendChatMessage("assistant", "Merhaba. Raporlar uzerinden soru sorabilir, ben de kaynaklariyla birlikte cevaplayabilirim.");
+      chatSources.innerHTML = '<div class="empty">Kaynaklar cevap geldikce burada listelenecek.</div>';
+      chatSourceMeta.textContent = "Cevap geldikce ilgili rapor pasajlari burada gorunur.";
+      chatStatus.textContent = "Chatbot hazir.";
+      chatInput.value = "";
+      chatInput.focus();
     }
 
     async function sendChatMessage() {
@@ -2126,6 +2335,7 @@ def upload_page() -> HTMLResponse:
           body: JSON.stringify({
             message,
             history: chatHistory.slice(-8),
+            assistant_mode: chatAssistantMode.value,
             mode: chatMode.value,
             limit: 5,
           }),
@@ -2158,13 +2368,16 @@ def upload_page() -> HTMLResponse:
     function renderChatSources(items) {
       if (!items || items.length === 0) {
         chatSources.innerHTML = '<div class="empty">Bu cevap icin kaynak bulunamadi.</div>';
+        chatSourceMeta.textContent = "Bu cevap sohbet yaniti olarak dondu; kaynak pasaj kullanilmadi.";
         return;
       }
 
+      chatSourceMeta.textContent = `${items.length} kaynak bulundu. Karta tiklayinca orijinal dosya acilir.`;
       chatSources.innerHTML = items.map(item => `
-        <article class="source-card" onclick="openDocumentFile(${item.document_id})" style="cursor:pointer;">
+        <article class="chat-source-card" onclick="openDocumentFile(${item.document_id})">
           <div class="title">${escapeHtml(item.document_title)}</div>
           <div class="small">Belge ID: ${item.document_id} | Sayfa ${item.page_start}-${item.page_end}${item.section_title ? " | " + escapeHtml(item.section_title) : ""}</div>
+          <div class="small">match: ${escapeHtml(item.match_type)} | combined: ${formatScore(item.combined_score)}</div>
           <div class="excerpt">${escapeHtml(item.chunk_text)}</div>
         </article>
       `).join("");
@@ -3223,8 +3436,15 @@ def upload_page() -> HTMLResponse:
 
     searchButton.addEventListener("click", runSearch);
     chatSendButton.addEventListener("click", sendChatMessage);
+    chatClearButton.addEventListener("click", resetChat);
+    chatPromptButtons.forEach(button => {
+      button.addEventListener("click", () => {
+        chatInput.value = button.dataset.chatPrompt || "";
+        chatInput.focus();
+      });
+    });
     chatInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
+      if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
         sendChatMessage();
       }
@@ -3311,6 +3531,7 @@ def upload_page() -> HTMLResponse:
     draftDetailedButton.addEventListener("click", () => runDraft("detailed"));
     updateCatalogScope([], "");
     resetMultiDocumentWorkspace();
+    resetChat();
     applyModuleFilter("upload");
 
     function openDocumentFile(documentId) {
@@ -3501,21 +3722,23 @@ def chat(
     payload: ChatRequest,
     session: Session = Depends(get_session),
 ) -> ChatResponse:
-    if _is_chat_small_talk(payload.message):
-        answer_text = _chat_small_talk_answer(payload.message)
+    if payload.assistant_mode == "general" or (
+        payload.assistant_mode == "auto" and _is_general_chat_message(payload.message)
+    ):
         history = [
             item.model_dump()
             for item in payload.history[-8:]
             if item.content.strip()
         ]
+        answer_text, provider_name, confidence = _chat_general_answer(payload.message, history)
         history.append({"role": "user", "content": payload.message})
         history.append({"role": "assistant", "content": answer_text})
         return ChatResponse(
             message=payload.message,
             answer=answer_text,
             answer_found=True,
-            confidence=1.0,
-            embedding_provider="chat-direct",
+            confidence=confidence,
+            embedding_provider=provider_name,
             sources=[],
             history=history[-10:],
         )
@@ -3544,6 +3767,46 @@ def chat(
         sources=answer["sources"],
         history=history[-10:],
     )
+
+
+def _is_general_chat_message(message: str) -> bool:
+    normalized = _fold_chat_text(message)
+    if not normalized:
+        return False
+    if _is_simple_math_message(message):
+        return True
+
+    general_phrases = {
+        "kendinden bahset",
+        "sen kimsin",
+        "kimsin",
+        "ne yapabilirsin",
+        "ne ise yararsin",
+        "amacın ne",
+        "amacin ne",
+        "bu sistem nedir",
+        "kendini tanit",
+        "adam misin",
+        "insan misin",
+        "robot musun",
+        "gercek misin",
+        "kendini tanıt",
+    }
+    if any(phrase in normalized for phrase in general_phrases):
+        return True
+
+    return _is_chat_small_talk(message)
+
+
+def _is_simple_math_message(message: str) -> bool:
+    stripped = message.strip()
+    if not stripped:
+        return False
+    if re.fullmatch(r"[0-9\s+\-*/().,=]+", stripped) and re.search(r"[+\-*/]", stripped):
+        return True
+    normalized = _fold_chat_text(message)
+    math_words = {"arti", "eksi", "carpi", "bolu", "kac", "kactir", "hesapla"}
+    return any(word in normalized.split() for word in math_words) and bool(re.search(r"\d", normalized))
 
 
 def _is_chat_small_talk(message: str) -> bool:
@@ -3587,11 +3850,37 @@ def _is_chat_small_talk(message: str) -> bool:
     )
 
 
-def _chat_small_talk_answer(message: str) -> str:
+def _chat_general_answer(message: str, history: list[dict] | None = None) -> tuple[str, str, float]:
     normalized = _fold_chat_text(message)
+    if any(phrase in normalized for phrase in ("adam misin", "insan misin", "robot musun", "gercek misin")):
+        return (
+            "Ben insan degilim; Big Agent icinde calisan yapay zeka destekli bir rapor asistaniyim. "
+            "Genel sohbet edebilirim, ama asil isim raporlar ve teknik dokumanlar uzerinden yardim etmek.",
+            "chat-direct",
+            1.0,
+        )
+    if any(phrase in normalized for phrase in ("kendinden bahset", "sen kimsin", "kimsin", "kendini tanit", "kendini tanıt")):
+        return (
+            "Ben Big Agent icindeki rapor asistaniyim. PDF, DOCX ve PPTX raporlarindan kaynakli cevap bulmak, "
+            "benzer raporlari gostermek, katalog kayitlariyla icerdeki dokumanlari eslestirmek ve mukerrer rapor "
+            "adaylarini incelemek icin tasarlandim. Genel sohbet edebilirim ama asil gucum raporlar uzerinden kaynakli cevap vermek.",
+            "chat-direct",
+            1.0,
+        )
+    if "ne yapabilirsin" in normalized or "ne ise yararsin" in normalized or "amacin ne" in normalized:
+        return (
+            "Rapor iceriginde arama yapabilir, teknik sorulara kaynak pasajlarla cevap verebilir, ilgili raporlari ve "
+            "benzer dokumanlari gosterebilir, katalog kayitlarini icerdeki raporlarla eslestirebilir ve mukerrer rapor "
+            "adaylarini listeleyebilirim.",
+            "chat-direct",
+            1.0,
+        )
     if "nasil" in normalized or "iyi misin" in normalized:
-        return "Iyiyim, hazirim. Raporlar uzerinden bir sey sormak istersen beraber bakalim."
-    return "Buradayim, hazirim. Bana rapor, test, analiz veya katalogla ilgili bir soru sorabilirsin."
+        return "Iyiyim, hazirim. Raporlar uzerinden bir sey sormak istersen beraber bakalim.", "chat-direct", 1.0
+    result = GeneralChatService().answer(message, history or [])
+    if result is not None:
+        return result.answer, result.provider_name, result.confidence
+    return "Buradayim, hazirim. Bana rapor, test, analiz veya katalogla ilgili bir soru sorabilirsin.", "chat-direct", 1.0
 
 
 def _fold_chat_text(message: str) -> str:
