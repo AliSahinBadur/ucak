@@ -2,7 +2,7 @@
 
 Big_Agent is a local-first report assistant for vehicle test and analysis documents. It ingests PDF, DOCX, and PPTX files, stores searchable chunks, links catalog records to report files, and answers questions with source passages.
 
-Current version: `v0.50.80`
+Current version: `v0.50.88`
 
 ## What Works
 

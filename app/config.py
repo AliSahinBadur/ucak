@@ -70,6 +70,11 @@ CHAT_LLM_BACKEND = os.getenv("CHAT_LLM_BACKEND", "ollama").strip().casefold()
 CHAT_LLM_MODEL_NAME = os.getenv("CHAT_LLM_MODEL_NAME", os.getenv("LLM_MODEL_NAME", "qwen2.5:3b"))
 CHAT_LLM_TIMEOUT_SECONDS = float(os.getenv("CHAT_LLM_TIMEOUT_SECONDS", os.getenv("LLM_TIMEOUT_SECONDS", "45")))
 
+REPORT_LLM_ENABLED = _env_bool("REPORT_LLM_ENABLED", default=True)
+REPORT_LLM_BACKEND = os.getenv("REPORT_LLM_BACKEND", CHAT_LLM_BACKEND).strip().casefold()
+REPORT_LLM_MODEL_NAME = os.getenv("REPORT_LLM_MODEL_NAME", CHAT_LLM_MODEL_NAME)
+REPORT_LLM_TIMEOUT_SECONDS = float(os.getenv("REPORT_LLM_TIMEOUT_SECONDS", os.getenv("CHAT_LLM_TIMEOUT_SECONDS", "45")))
+
 RERANKER_ENABLED = _env_bool("RERANKER_ENABLED", default=False)
 RERANKER_BACKEND = os.getenv("RERANKER_BACKEND", "disabled").strip().casefold()
 RERANKER_MODEL_PATH = os.getenv("RERANKER_MODEL_PATH", "")

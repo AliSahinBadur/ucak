@@ -4,7 +4,9 @@ from functools import lru_cache
 import json
 import logging
 import math
+import os
 import re
+import threading
 import unicodedata
 from hashlib import sha256
 from pathlib import Path
@@ -115,6 +117,8 @@ class TokenHashEmbeddingService(BaseEmbeddingService):
 
 class SentenceTransformerEmbeddingService(BaseEmbeddingService):
     def __init__(self, model_name: str, device: str = "cpu", local_files_only: bool = False) -> None:
+        os.environ.setdefault("TQDM_DISABLE", "1")
+        os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError as exc:
@@ -145,8 +149,16 @@ class SentenceTransformerEmbeddingService(BaseEmbeddingService):
         return [float(value) for value in vector.tolist()]
 
 
-@lru_cache(maxsize=1)
+_EMBEDDING_SERVICE_LOCK = threading.Lock()
+
+
 def build_embedding_service() -> EmbeddingService:
+    with _EMBEDDING_SERVICE_LOCK:
+        return _build_embedding_service_cached()
+
+
+@lru_cache(maxsize=1)
+def _build_embedding_service_cached() -> EmbeddingService:
     provider = EMBEDDING_PROVIDER.strip().casefold()
     if provider in {"sentence-transformer", "sentence-transformers", "hf", "huggingface"}:
         attempted_devices: list[str] = []

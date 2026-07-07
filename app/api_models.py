@@ -108,7 +108,7 @@ class SearchResponse(BaseModel):
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=3)
-    mode: Literal["keyword", "semantic", "hybrid"] = "hybrid"
+    mode: Literal["keyword", "semantic", "hybrid"] = "keyword"
     limit: int = Field(default=5, ge=1, le=10)
     document_id: int | None = Field(default=None, ge=1)
     use_llm_answer: bool = False
@@ -166,6 +166,12 @@ class ChatResponse(BaseModel):
 class DraftReportRequest(BaseModel):
     title: str = Field(min_length=3, max_length=200)
     report_type: str = Field(default="Genel Teknik Rapor", min_length=3, max_length=120)
+    report_no: str = Field(default="", max_length=120)
+    report_date: str = Field(default="", max_length=40)
+    prepared_by: str = Field(default="", max_length=160)
+    checked_by: str = Field(default="", max_length=240)
+    requested_by: str = Field(default="", max_length=160)
+    classification: str = Field(default="GENEL / PUBLIC", max_length=80)
     objective: str = Field(default="", max_length=400)
     keywords: str = Field(default="", max_length=400)
     raw_notes: str = Field(default="", max_length=4000)
@@ -177,11 +183,18 @@ class DraftReportRequest(BaseModel):
 class DraftReportResponse(BaseModel):
     title: str
     report_type: str
+    report_no: str
+    report_date: str
+    prepared_by: str
+    checked_by: str
+    requested_by: str
+    classification: str
     detail_level: Literal["quick", "detailed"]
     draft: str
     refined_keywords: list[str]
     cleaned_notes: list[str]
     embedding_provider: str
+    generation_provider: str
     sources: list[AnswerSourceResponse]
 
 

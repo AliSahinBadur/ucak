@@ -171,13 +171,13 @@ def upload_page() -> HTMLResponse:
       color: var(--text);
     }
     .wrap {
-      max-width: 1120px;
+      max-width: 1620px;
       margin: 36px auto;
       padding: 0 20px 40px;
       transition: max-width 180ms ease;
     }
     body.chat-focus .wrap {
-      max-width: 1480px;
+      max-width: 1880px;
     }
     .stack {
       display: grid;
@@ -880,6 +880,27 @@ def upload_page() -> HTMLResponse:
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
       gap: 18px;
+    }
+    .draft-toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 12px;
+    }
+    .draft-toolbar .button {
+      padding: 10px 14px;
+      font-size: 14px;
+    }
+    .draft-hint {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff8f9;
+      padding: 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+      margin-top: 14px;
     }
     .answer-box {
       border: 1px solid var(--line);
@@ -1921,15 +1942,43 @@ def upload_page() -> HTMLResponse:
                 <div class="field">
                   <label for="draftMode">Mod</label>
                   <select id="draftMode">
+                    <option value="keyword">keyword</option>
                     <option value="hybrid">hybrid</option>
                     <option value="semantic">semantic</option>
-                    <option value="keyword">keyword</option>
                   </select>
                 </div>
+              </div>
+              <div class="search-grid">
+                <div class="field">
+                  <label for="draftReportNo">Rapor No</label>
+                  <input id="draftReportNo" type="text" placeholder="Ornek: 2025-BIG-e-NVH-01" />
+                </div>
+                <div class="field">
+                  <label for="draftReportDate">Tarih</label>
+                  <input id="draftReportDate" type="text" placeholder="Ornek: 13.01.2025" />
+                </div>
+              </div>
+              <div class="search-grid">
+                <div class="field">
+                  <label for="draftPreparedBy">Hazirlayan</label>
+                  <input id="draftPreparedBy" type="text" placeholder="Ornek: KEMAL DEMIR" />
+                </div>
+                <div class="field">
+                  <label for="draftRequestedBy">Talep Eden</label>
+                  <input id="draftRequestedBy" type="text" placeholder="Ornek: ERKAN KUTLU" />
+                </div>
+              </div>
+              <div class="field">
+                <label for="draftCheckedBy">Kontrol</label>
+                <input id="draftCheckedBy" type="text" placeholder="Ornek: EROL CIFCI, A.SALIH YILMAZ" />
               </div>
               <div class="actions" style="margin-top:12px;">
                 <button class="button primary" id="draftQuickButton" type="button" style="flex:1;">Hizli Rapor Olustur</button>
                 <button class="button primary" id="draftDetailedButton" type="button" style="flex:1;">Detayli Rapor Olustur</button>
+              </div>
+              <div class="draft-toolbar">
+                <button class="button secondary" id="draftSampleButton" type="button">Ornek Doldur</button>
+                <button class="button secondary" id="draftClearButton" type="button">Temizle</button>
               </div>
               <div class="field" style="margin-top:16px;">
                 <label for="draftObjective">Amac</label>
@@ -1944,9 +1993,14 @@ def upload_page() -> HTMLResponse:
                 <textarea id="draftNotes" placeholder="Madde madde notlarini, sayisal degerleri veya duzeltmek istedigin cumleleri buraya yaz."></textarea>
               </div>
               <div class="note" id="draftMeta">Taslak uretilmedi.</div>
+              <div class="draft-hint">Once baslik ve notlari gir, taslagi uret, sonra metni kontrol edip kopyala veya PDF olarak indir.</div>
             </div>
             <div class="panel">
               <div class="panel-title">Taslak Metin</div>
+              <div class="draft-toolbar">
+                <button class="button secondary" id="draftCopyButton" type="button" disabled>Kopyala</button>
+                <button class="button secondary" id="draftPdfButton" type="button" disabled>PDF Indir</button>
+              </div>
               <div class="draft-box">
                 <pre id="draftOutput" class="draft-text">Taslak burada gorunecek.</pre>
               </div>
@@ -2054,11 +2108,20 @@ def upload_page() -> HTMLResponse:
     const draftTitle = document.getElementById("draftTitle");
     const draftType = document.getElementById("draftType");
     const draftMode = document.getElementById("draftMode");
+    const draftReportNo = document.getElementById("draftReportNo");
+    const draftReportDate = document.getElementById("draftReportDate");
+    const draftPreparedBy = document.getElementById("draftPreparedBy");
+    const draftRequestedBy = document.getElementById("draftRequestedBy");
+    const draftCheckedBy = document.getElementById("draftCheckedBy");
     const draftObjective = document.getElementById("draftObjective");
     const draftKeywords = document.getElementById("draftKeywords");
     const draftNotes = document.getElementById("draftNotes");
     const draftQuickButton = document.getElementById("draftQuickButton");
     const draftDetailedButton = document.getElementById("draftDetailedButton");
+    const draftSampleButton = document.getElementById("draftSampleButton");
+    const draftClearButton = document.getElementById("draftClearButton");
+    const draftCopyButton = document.getElementById("draftCopyButton");
+    const draftPdfButton = document.getElementById("draftPdfButton");
     const draftMeta = document.getElementById("draftMeta");
     const draftOutput = document.getElementById("draftOutput");
     const draftSources = document.getElementById("draftSources");
@@ -2075,6 +2138,9 @@ def upload_page() -> HTMLResponse:
     let lastCatalogQuestion = "";
     let lastCatalogMatches = [];
     let chatHistory = [];
+    let lastDraftPayload = null;
+    let lastDraftData = null;
+    let lastAutoReportNo = "";
     let graphState = { categories: [], documents: [], selectedCategoryId: "all", search: "" };
     let activeTimerId = null;
     let activeModule = null;
@@ -2129,6 +2195,34 @@ def upload_page() -> HTMLResponse:
         activeTimerId = null;
       }
       setMessage(`${finalMessage} | Sure: ${formatElapsed(performance.now() - startedAt)}`);
+    }
+
+    function formatTodayForDraft() {
+      const today = new Date();
+      const day = String(today.getDate()).padStart(2, "0");
+      const month = String(today.getMonth() + 1).padStart(2, "0");
+      return `${day}.${month}.${today.getFullYear()}`;
+    }
+
+    function guessDraftReportNo(title) {
+      const match = String(title || "").match(/\\b20\\d{2}[-_][0-9A-Za-z.]+(?:[-_][0-9A-Za-z.]+){1,}\\b/);
+      return match ? match[0] : "TASLAK";
+    }
+
+    function updateDraftReportNoAuto(force = false) {
+      const current = draftReportNo.value.trim();
+      const guessed = guessDraftReportNo(draftTitle.value);
+      if (force || !current || current === "TASLAK" || current === lastAutoReportNo) {
+        draftReportNo.value = guessed;
+        lastAutoReportNo = guessed;
+      }
+    }
+
+    function ensureDraftDefaults() {
+      if (!draftReportDate.value.trim()) {
+        draftReportDate.value = formatTodayForDraft();
+      }
+      updateDraftReportNoAuto(false);
     }
 
     function openModule(section) {
@@ -3475,6 +3569,7 @@ def upload_page() -> HTMLResponse:
     }
 
     async function runDraft(detailLevel) {
+      ensureDraftDefaults();
       const title = draftTitle.value.trim();
       if (!title) {
         draftMeta.textContent = "Taslak uretmek icin once rapor basligi gir.";
@@ -3484,6 +3579,12 @@ def upload_page() -> HTMLResponse:
       const payload = {
         title,
         report_type: draftType.value.trim() || "Genel Teknik Rapor",
+        report_no: draftReportNo.value.trim(),
+        report_date: draftReportDate.value.trim(),
+        prepared_by: draftPreparedBy.value.trim(),
+        requested_by: draftRequestedBy.value.trim(),
+        checked_by: draftCheckedBy.value.trim(),
+        classification: "GENEL / PUBLIC",
         objective: draftObjective.value.trim(),
         keywords: draftKeywords.value.trim(),
         raw_notes: draftNotes.value.trim(),
@@ -3494,6 +3595,8 @@ def upload_page() -> HTMLResponse:
 
       draftQuickButton.disabled = true;
       draftDetailedButton.disabled = true;
+      draftCopyButton.disabled = true;
+      draftPdfButton.disabled = true;
       const startedAt = startTimer(
         message => { draftMeta.textContent = message; },
         detailLevel === "quick" ? "Hizli rapor uretiliyor..." : "Detayli rapor uretiliyor..."
@@ -3514,11 +3617,14 @@ def upload_page() -> HTMLResponse:
         stopTimer(
           startedAt,
           message => { draftMeta.textContent = message; },
-          `Tur: ${data.detail_level} | Provider: ${data.embedding_provider} | Anahtar kelime: ${data.refined_keywords.length} | Kaynak: ${data.sources.length} | PDF indiriliyor...`
+          `Tur: ${data.detail_level} | Arama: ${data.embedding_provider} | Yazim: ${data.generation_provider || "template"} | Anahtar kelime: ${data.refined_keywords.length} | Kaynak: ${data.sources.length}`
         );
         draftOutput.textContent = data.draft;
         renderDraftSources(data.sources);
-        await downloadDraftPdf(payload, data.title, data.detail_level);
+        lastDraftPayload = payload;
+        lastDraftData = data;
+        draftCopyButton.disabled = false;
+        draftPdfButton.disabled = false;
       } catch (error) {
         stopTimer(startedAt, message => { draftMeta.textContent = message; }, `Taslak olusturma basarisiz oldu: ${error}`);
       } finally {
@@ -3551,6 +3657,82 @@ def upload_page() -> HTMLResponse:
       anchor.click();
       anchor.remove();
       window.URL.revokeObjectURL(url);
+    }
+
+    async function downloadLatestDraftPdf() {
+      if (!lastDraftPayload || !lastDraftData) {
+        draftMeta.textContent = "Once bir taslak olustur.";
+        return;
+      }
+      draftPdfButton.disabled = true;
+      const startedAt = startTimer(
+        message => { draftMeta.textContent = message; },
+        "PDF hazirlaniyor..."
+      );
+      try {
+        await downloadDraftPdf(lastDraftPayload, lastDraftData.title, lastDraftData.detail_level);
+        stopTimer(startedAt, message => { draftMeta.textContent = message; }, "PDF indirildi.");
+      } catch (error) {
+        stopTimer(startedAt, message => { draftMeta.textContent = message; }, `PDF olusturulamadi: ${error}`);
+      } finally {
+        draftPdfButton.disabled = false;
+      }
+    }
+
+    async function copyDraftText() {
+      const text = draftOutput.textContent.trim();
+      if (!lastDraftData || !text || text === "Taslak burada gorunecek.") {
+        draftMeta.textContent = "Kopyalanacak taslak yok.";
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(text);
+        draftMeta.textContent = "Taslak metin panoya kopyalandi.";
+      } catch (error) {
+        draftMeta.textContent = `Kopyalama basarisiz oldu: ${error}`;
+      }
+    }
+
+    function fillDraftSample() {
+      draftTitle.value = "BIG-E Surus Konfor Degerlendirme Raporu";
+      draftType.value = "Test Degerlendirme Raporu";
+      draftReportNo.value = "2025-BIG-e-NVH-01";
+      draftReportDate.value = "13.01.2025";
+      draftPreparedBy.value = "KEMAL DEMIR";
+      draftRequestedBy.value = "ERKAN KUTLU";
+      draftCheckedBy.value = "EROL CIFCI, A.SALIH YILMAZ";
+      lastAutoReportNo = draftReportNo.value;
+      draftMode.value = "keyword";
+      draftObjective.value = "BIG-E araci icin surus konforu kapsaminda elde edilen test bulgularini ozetlemek ve onceki raporlarla uyumlu bir degerlendirme dili olusturmak.";
+      draftKeywords.value = "BIG-E, surus konforu, NVH, yol verisi, titreşim, parkur";
+      draftNotes.value = [
+        "Farkli parkur kosullarinda surus konforu izlenmistir.",
+        "Titreşim ve yol verisi bulgulari karsilastirmali olarak degerlendirilecektir.",
+        "Sonucta iyilestirme alanlari ve takip aksiyonlari belirtilecektir."
+      ].join("\\n");
+      draftMeta.textContent = "Ornek alanlar dolduruldu. Istersen hizli veya detayli taslak uret.";
+    }
+
+    function clearDraftForm() {
+      draftTitle.value = "";
+      draftType.value = "";
+      draftReportNo.value = "TASLAK";
+      lastAutoReportNo = "TASLAK";
+      draftReportDate.value = formatTodayForDraft();
+      draftPreparedBy.value = "";
+      draftRequestedBy.value = "";
+      draftCheckedBy.value = "";
+      draftMode.value = "keyword";
+      draftObjective.value = "";
+      draftKeywords.value = "";
+      draftNotes.value = "";
+      draftOutput.textContent = "Taslak burada gorunecek.";
+      draftSources.innerHTML = '<div class="empty">Taslak icin kullanilan referans pasajlar burada listelenecek.</div>';
+      draftMeta.textContent = "Taslak uretilmedi.";
+      lastDraftPayload = null;
+      lastDraftData = null;
+      draftCopyButton.disabled = true;
+      draftPdfButton.disabled = true;
     }
 
     picker.addEventListener("change", () => {
@@ -3802,8 +3984,21 @@ def upload_page() -> HTMLResponse:
         closeModule();
       }
     });
+    draftTitle.addEventListener("input", () => {
+      updateDraftReportNoAuto(false);
+    });
+    draftReportNo.addEventListener("input", () => {
+      if (draftReportNo.value.trim() !== lastAutoReportNo) {
+        lastAutoReportNo = "";
+      }
+    });
     draftQuickButton.addEventListener("click", () => runDraft("quick"));
     draftDetailedButton.addEventListener("click", () => runDraft("detailed"));
+    draftSampleButton.addEventListener("click", fillDraftSample);
+    draftClearButton.addEventListener("click", clearDraftForm);
+    draftCopyButton.addEventListener("click", copyDraftText);
+    draftPdfButton.addEventListener("click", downloadLatestDraftPdf);
+    ensureDraftDefaults();
     updateCatalogScope([], "");
     resetMultiDocumentWorkspace();
     resetChat();
@@ -4438,6 +4633,12 @@ def draft_report(
         **service.build_draft(
             title=payload.title,
             report_type=payload.report_type,
+            report_no=payload.report_no,
+            report_date=payload.report_date,
+            prepared_by=payload.prepared_by,
+            checked_by=payload.checked_by,
+            requested_by=payload.requested_by,
+            classification=payload.classification,
             objective=payload.objective,
             keywords=payload.keywords,
             raw_notes=payload.raw_notes,
@@ -4457,6 +4658,12 @@ def draft_report_pdf(
     draft_payload = service.build_draft(
         title=payload.title,
         report_type=payload.report_type,
+        report_no=payload.report_no,
+        report_date=payload.report_date,
+        prepared_by=payload.prepared_by,
+        checked_by=payload.checked_by,
+        requested_by=payload.requested_by,
+        classification=payload.classification,
         objective=payload.objective,
         keywords=payload.keywords,
         raw_notes=payload.raw_notes,

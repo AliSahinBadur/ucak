@@ -36,6 +36,18 @@ class SearchService:
         "sonuc",
         "sonuclari",
     }
+    REPORT_LOOKUP_TOKENS = {"rapor", "raporu", "raporlar", "raporlari", "belge", "belgesi", "dokuman", "dokumani"}
+    TOKEN_ALIASES = {
+        "guvenlik": ("safe", "safety", "emniyet"),
+        "emniyet": ("safe", "safety", "guvenlik"),
+        "titresim": ("nvh", "vibration"),
+        "vibrasyon": ("nvh", "vibration"),
+        "dayanim": ("dur", "durability"),
+        "yorulma": ("dur", "durability", "fatigue"),
+        "termal": ("tase", "cfd", "thermal"),
+        "sicaklik": ("tase", "thermal"),
+        "aerodinamik": ("cfd", "aero"),
+    }
     YEAR_TOKEN_PATTERN = re.compile(r"^20\d{2}$")
 
     def __init__(
@@ -44,11 +56,17 @@ class SearchService:
         embedding_service: EmbeddingService | None = None,
     ) -> None:
         self.session = session
-        self.embedding_service = embedding_service or build_embedding_service()
+        self._embedding_service = embedding_service
+
+    @property
+    def embedding_service(self) -> EmbeddingService:
+        if self._embedding_service is None:
+            self._embedding_service = build_embedding_service()
+        return self._embedding_service
 
     def keyword_search(self, query: str, limit: int = 5, document_ids: list[int] | None = None) -> list[dict]:
         raw_query = query.strip()
-        tokens = self.embedding_service.tokenize(raw_query)
+        tokens = self._tokenize(raw_query)
         if not raw_query:
             return []
         scoped_document_ids = self._normalize_document_ids(document_ids)
@@ -116,7 +134,7 @@ class SearchService:
         return self._limit_results_per_document(results, limit)
 
     def semantic_search(self, query: str, limit: int = 5, document_ids: list[int] | None = None) -> list[dict]:
-        query_tokens = self.embedding_service.tokenize(query.strip())
+        query_tokens = self._tokenize(query.strip())
         query_vector = self.embedding_service.embed_text(query)
         if not self.embedding_service.has_signal(query_vector):
             return []
@@ -186,11 +204,11 @@ class SearchService:
         return self._limit_results_per_document(results, limit)
 
     def hybrid_search(self, query: str, limit: int = 5, document_ids: list[int] | None = None) -> list[dict]:
-        query_tokens = self.embedding_service.tokenize(query.strip())
+        query_tokens = self._tokenize(query.strip())
         keyword_results = self.keyword_search(query, limit=max(limit * 4, 12), document_ids=document_ids)
         semantic_results = self.semantic_search(query, limit=max(limit * 3, 10), document_ids=document_ids)
         if not semantic_results:
-            return self._limit_results_per_document(keyword_results, limit)
+            return self._metadata_rerank_results(query, query_tokens, keyword_results, limit)
 
         keyword_max = max((item["keyword_score"] for item in keyword_results), default=1.0)
         semantic_max = max((item["semantic_score"] for item in semantic_results), default=1.0)
@@ -233,11 +251,11 @@ class SearchService:
             key=lambda item: item["combined_score"],
             reverse=True,
         )
-        return self._limit_results_per_document(ranked, limit)
+        return self._metadata_rerank_results(query, query_tokens, ranked, limit)
 
     def report_search(self, query: str, limit: int = 5, document_ids: list[int] | None = None) -> list[dict]:
         raw_query = query.strip()
-        tokens = self.embedding_service.tokenize(raw_query)
+        tokens = self._tokenize(raw_query)
         if not raw_query or not tokens:
             return []
         scoped_document_ids = self._normalize_document_ids(document_ids)
@@ -404,7 +422,14 @@ class SearchService:
         return chunk_id is not None
 
     def embedding_provider_name(self) -> str:
+        if self._embedding_service is None:
+            return "keyword-only"
         return self.embedding_service.provider_name
+
+    @staticmethod
+    def _tokenize(text: str) -> list[str]:
+        normalized = unicodedata.normalize("NFC", text).casefold()
+        return re.findall(r"\w+", normalized, re.UNICODE)
 
     def _catalog_text_by_document(self, document_ids) -> dict[int, str]:
         normalized_ids = [int(value) for value in document_ids if int(value or 0) > 0]
@@ -431,6 +456,131 @@ class SearchService:
                 )
             )
         return {document_id: " ".join(values) for document_id, values in by_document.items()}
+
+    def _metadata_rerank_results(
+        self,
+        query: str,
+        tokens: list[str],
+        results: list[dict],
+        limit: int,
+    ) -> list[dict]:
+        if not results:
+            return []
+
+        profile = self._query_profile(query, tokens)
+        document_ids = [int(item.get("document_id", 0) or 0) for item in results]
+        catalog_text_by_document = self._catalog_text_by_document(document_ids)
+        reranked: list[dict] = []
+        for item in results:
+            document_id = int(item.get("document_id", 0) or 0)
+            catalog_text = catalog_text_by_document.get(document_id, "")
+            metadata_score = self._metadata_match_score(query, profile, item, catalog_text)
+            if metadata_score is None:
+                continue
+            adjusted = dict(item)
+            base_score = float(adjusted.get("combined_score", 0.0) or 0.0)
+            adjusted["combined_score"] = base_score + metadata_score
+            adjusted["metadata_score"] = metadata_score
+            reranked.append(adjusted)
+
+        reranked.sort(key=lambda item: item["combined_score"], reverse=True)
+        return self._limit_results_per_document(reranked, limit)
+
+    @classmethod
+    def _query_profile(cls, query: str, tokens: list[str]) -> dict:
+        normalized_tokens = []
+        for token in tokens:
+            normalized = cls._normalize_search_text(token)
+            if normalized:
+                normalized_tokens.append(normalized)
+        normalized_tokens = list(dict.fromkeys(normalized_tokens))
+        year_tokens = [token for token in normalized_tokens if cls.YEAR_TOKEN_PATTERN.match(token)]
+        identity_tokens = [
+            token
+            for token in normalized_tokens
+            if token not in cls.GENERIC_QUERY_TOKENS
+            and not cls.YEAR_TOKEN_PATTERN.match(token)
+            and len(token) >= 2
+        ]
+        report_key = cls._query_report_key(query)
+        is_report_lookup = any(token in cls.REPORT_LOOKUP_TOKENS for token in normalized_tokens)
+        strict_identity = bool(report_key or is_report_lookup or (year_tokens and identity_tokens))
+        return {
+            "tokens": normalized_tokens,
+            "year_tokens": year_tokens,
+            "identity_tokens": identity_tokens,
+            "is_report_lookup": is_report_lookup,
+            "report_key": report_key,
+            "strict_identity": strict_identity,
+        }
+
+    @classmethod
+    def _metadata_match_score(cls, query: str, profile: dict, item: dict, catalog_text: str) -> float | None:
+        metadata_text = " ".join(
+            value
+            for value in (
+                item.get("document_title", ""),
+                item.get("file_name", ""),
+                catalog_text,
+            )
+            if value
+        )
+        normalized_metadata = cls._normalize_search_text(metadata_text)
+        metadata_words = set(cls._search_words(normalized_metadata))
+        normalized_query = cls._normalize_search_text(query)
+        identity_tokens: list[str] = profile["identity_tokens"]
+        year_tokens: list[str] = profile["year_tokens"]
+        is_report_lookup = bool(profile["is_report_lookup"])
+        strict_identity = bool(profile["strict_identity"])
+        report_key = str(profile.get("report_key") or "")
+        compact_metadata = cls._compact_search_text(normalized_metadata)
+
+        if report_key and report_key not in compact_metadata:
+            return None
+
+        year_matches = [
+            token
+            for token in year_tokens
+            if cls._best_token_match_score(token, normalized_metadata, metadata_words) > 0.0
+        ]
+        identity_matches = [
+            token
+            for token in identity_tokens
+            if cls._metadata_token_present(token, normalized_metadata, metadata_words)
+        ]
+
+        if strict_identity:
+            if year_tokens and len(year_matches) < len(year_tokens):
+                return None
+            if identity_tokens and not identity_matches:
+                return None
+            if (is_report_lookup or report_key) and len(identity_tokens) <= 2 and len(identity_matches) < len(identity_tokens):
+                return None
+
+        score = 0.0
+        compact_query = cls._compact_search_text(normalized_query)
+        if compact_query and compact_query in compact_metadata:
+            score += 1.25
+        if year_tokens:
+            score += 0.3 * len(year_matches) / len(year_tokens)
+        if identity_tokens:
+            score += 1.05 * len(identity_matches) / len(identity_tokens)
+        if is_report_lookup and identity_matches:
+            score += 0.4
+        return score
+
+    @classmethod
+    def _metadata_token_present(cls, token: str, normalized_metadata: str, metadata_words: set[str]) -> bool:
+        variants = {token, *cls.TOKEN_ALIASES.get(token, ())}
+        compact_metadata = cls._compact_search_text(normalized_metadata)
+        for variant in variants:
+            normalized_variant = cls._normalize_search_text(variant)
+            if cls._best_token_match_score(normalized_variant, normalized_metadata, metadata_words) > 0.0:
+                return True
+            compact_variant = cls._compact_search_text(normalized_variant)
+            if compact_variant and compact_variant in compact_metadata:
+                return True
+        return False
 
     @classmethod
     def _keyword_score(
