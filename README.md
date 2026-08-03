@@ -2,7 +2,34 @@
 
 Big_Agent is a local-first report assistant for vehicle test and analysis documents. It ingests PDF, DOCX, and PPTX files, stores searchable chunks, links catalog records to report files, and answers questions with source passages.
 
-Current version: `v0.50.96`
+Current version: `v0.50.109`
+
+## Big Agent and RaporHub
+
+Big Agent is now the canonical codebase for both products. The API, RAG, ingestion,
+catalog, comparison, and report-writing services are shared. `APP_VARIANT` selects
+the product identity and theme, while each instance keeps its own data directory.
+
+Run Big Agent:
+
+```powershell
+$env:APP_VARIANT = "big_agent"
+$env:BIG_AGENT_DATA_DIR = "C:\Users\ISU34977\PyCharmMiscProject\Big_Agent\data"
+& 'C:\Users\ISU34977\PyCharmMiscProject\.venv312\Scripts\python.exe' -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Run RaporHub from the same codebase in another terminal:
+
+```powershell
+$env:APP_VARIANT = "raporhub"
+$env:RAPORHUB_DATA_DIR = "C:\Users\ISU34977\PyCharmMiscProject\Big_Agent\data_raporhub"
+$env:APP_AUTH_COOKIE_NAME = "raporhub_session"
+& 'C:\Users\ISU34977\PyCharmMiscProject\.venv312\Scripts\python.exe' -m uvicorn app.main:app --host 127.0.0.1 --port 8001
+```
+
+The old standalone `RaporHub` folder is not modified by this setup. New shared
+features should be developed here once; product-specific UI work is selected by
+the variant configuration.
 
 ## What Works
 

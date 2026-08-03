@@ -5,6 +5,7 @@ __pycache__/
 .mypy_cache/
 
 data/
+data_*/
 data_team*/
 data_analiz/
 data_test/

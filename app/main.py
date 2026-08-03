@@ -74,13 +74,20 @@ from .services.retrieval_orchestrator import RetrievalOrchestrator
 from .services.search_service import SearchService
 from .services.storage_service import StorageService
 from .version import APP_VERSION
-from .config import APP_AUTH_COOKIE_NAME, APP_AUTH_ENABLED, APP_SESSION_SECRET, APP_USERS_RAW
+from .config import (
+    APP_AUTH_COOKIE_NAME,
+    APP_AUTH_ENABLED,
+    APP_BRAND,
+    APP_SESSION_SECRET,
+    APP_USERS_RAW,
+    APP_VARIANT,
+)
 
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 #dfgasdgfasdfasdfasdfasdf
-app = FastAPI(title="Big Agent MVP", version=APP_VERSION)
+app = FastAPI(title=APP_BRAND.api_title, version=APP_VERSION)
 AUTH_COOKIE_NAME = APP_AUTH_COOKIE_NAME
 AUTH_SESSION_SECONDS = 8 * 60 * 60
 
@@ -148,22 +155,22 @@ def _login_html(error: str = "") -> str:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Big Agent Login</title>
+  <title>{APP_BRAND.display_name} Login</title>
   <style>
-    body {{ margin:0; min-height:100vh; display:grid; place-items:center; font-family:Arial,sans-serif; background:#f7f3f4; color:#24191b; }}
-    form {{ width:min(380px, calc(100vw - 32px)); background:#fff; border:1px solid #eadadd; border-radius:14px; padding:24px; box-shadow:0 18px 50px rgba(65,28,34,.12); }}
+    body {{ margin:0; min-height:100vh; display:grid; place-items:center; font-family:Arial,sans-serif; background:{APP_BRAND.background}; color:{APP_BRAND.text}; }}
+    form {{ width:min(380px, calc(100vw - 32px)); background:{APP_BRAND.panel}; border:1px solid {APP_BRAND.line}; border-radius:{APP_BRAND.card_radius}; padding:24px; box-shadow:0 18px 50px {APP_BRAND.card_shadow}; }}
     h1 {{ margin:0 0 6px; font-size:24px; }}
-    p {{ margin:0 0 18px; color:#735b60; font-size:14px; }}
+    p {{ margin:0 0 18px; color:{APP_BRAND.muted}; font-size:14px; }}
     label {{ display:block; font-size:13px; font-weight:700; margin:14px 0 6px; }}
-    input {{ width:100%; box-sizing:border-box; border:1px solid #dcc8cc; border-radius:10px; padding:12px; font-size:15px; }}
-    button {{ width:100%; margin-top:18px; border:0; border-radius:10px; padding:12px; background:#8f1d2c; color:#fff; font-weight:700; cursor:pointer; }}
+    input {{ width:100%; box-sizing:border-box; border:1px solid {APP_BRAND.line}; border-radius:8px; padding:12px; font-size:15px; }}
+    button {{ width:100%; margin-top:18px; border:0; border-radius:8px; padding:12px; background:{APP_BRAND.accent_strong}; color:#fff; font-weight:700; cursor:pointer; }}
     .error {{ margin:12px 0 0; color:#9b1024; background:#fff1f3; border:1px solid #f1c9cf; border-radius:10px; padding:10px; font-size:13px; }}
-    .version {{ margin-top:14px; color:#8a7478; font-size:12px; text-align:center; }}
+    .version {{ margin-top:14px; color:{APP_BRAND.muted}; font-size:12px; text-align:center; }}
   </style>
 </head>
 <body>
   <form method="post" action="/login">
-    <h1>Big Agent</h1>
+    <h1>{APP_BRAND.display_name}</h1>
     <p>Test kullanicisi ile giris yap.</p>
     <label for="username">Kullanici</label>
     <input id="username" name="username" autocomplete="username" autofocus />
@@ -252,6 +259,30 @@ def _display_model_name() -> str:
     return candidate
 
 
+def _apply_brand_tokens(html: str) -> str:
+    replacements = {
+        "__BRAND_NAME__": escape(APP_BRAND.display_name),
+        "__APP_VARIANT__": APP_VARIANT,
+        "__THEME_BG__": APP_BRAND.background,
+        "__THEME_PANEL__": APP_BRAND.panel,
+        "__THEME_LINE__": APP_BRAND.line,
+        "__THEME_TEXT__": APP_BRAND.text,
+        "__THEME_MUTED__": APP_BRAND.muted,
+        "__THEME_ACCENT__": APP_BRAND.accent,
+        "__THEME_ACCENT_STRONG__": APP_BRAND.accent_strong,
+        "__THEME_SOFT__": APP_BRAND.soft,
+        "__THEME_SOFT_2__": APP_BRAND.soft_2,
+        "__THEME_HALO_1__": APP_BRAND.halo_1,
+        "__THEME_HALO_2__": APP_BRAND.halo_2,
+        "__THEME_SURFACE_TOP__": APP_BRAND.surface_top,
+        "__THEME_CARD_SHADOW__": APP_BRAND.card_shadow,
+        "__THEME_CARD_RADIUS__": APP_BRAND.card_radius,
+    }
+    for token, value in replacements.items():
+        html = html.replace(token, value)
+    return html
+
+
 def _safe_download_name(value: str, fallback: str = "rapor") -> str:
     normalized = unicodedata.normalize("NFKD", value)
     ascii_only = normalized.encode("ascii", "ignore").decode("ascii")
@@ -261,7 +292,12 @@ def _safe_download_name(value: str, fallback: str = "rapor") -> str:
 
 @app.get("/health", response_model=HealthResponse)
 def healthcheck() -> HealthResponse:
-    return HealthResponse(status="ok", version=APP_VERSION)
+    return HealthResponse(
+        status="ok",
+        version=APP_VERSION,
+        application=APP_BRAND.display_name,
+        variant=APP_VARIANT,
+    )
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -310,29 +346,34 @@ def upload_page() -> HTMLResponse:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Big Agent</title>
+  <title>__BRAND_NAME__</title>
   <style>
     :root {
-      --bg: #fbf3f4;
-      --panel: #ffffff;
-      --line: #ae848d;
-      --text: #2a1014;
-      --muted: #7a555b;
-      --accent: #c62839;
-      --accent-strong: #8f1421;
-      --soft: #fdecef;
-      --soft-2: #fff9fa;
+      --bg: __THEME_BG__;
+      --panel: __THEME_PANEL__;
+      --line: __THEME_LINE__;
+      --text: __THEME_TEXT__;
+      --muted: __THEME_MUTED__;
+      --accent: __THEME_ACCENT__;
+      --accent-strong: __THEME_ACCENT_STRONG__;
+      --soft: __THEME_SOFT__;
+      --soft-2: __THEME_SOFT_2__;
       --ok: #1b7f4b;
       --error: #a61b2b;
+      --halo-1: __THEME_HALO_1__;
+      --halo-2: __THEME_HALO_2__;
+      --surface-top: __THEME_SURFACE_TOP__;
+      --card-shadow: __THEME_CARD_SHADOW__;
+      --card-radius: __THEME_CARD_RADIUS__;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       font-family: "Segoe UI", Tahoma, sans-serif;
       background:
-        radial-gradient(circle at top right, #ffd9df 0%, transparent 26%),
-        radial-gradient(circle at left center, #fff0f2 0%, transparent 20%),
-        linear-gradient(180deg, #fff7f8 0%, var(--bg) 100%);
+        radial-gradient(circle at top right, var(--halo-1) 0%, transparent 26%),
+        radial-gradient(circle at left center, var(--halo-2) 0%, transparent 20%),
+        linear-gradient(180deg, var(--surface-top) 0%, var(--bg) 100%);
       color: var(--text);
     }
     .wrap {
@@ -351,8 +392,8 @@ def upload_page() -> HTMLResponse:
     .card {
       background: var(--panel);
       border: 1px solid var(--line);
-      border-radius: 20px;
-      box-shadow: 0 16px 38px rgba(120, 24, 38, 0.08);
+      border-radius: var(--card-radius);
+      box-shadow: 0 16px 38px var(--card-shadow);
       overflow: hidden;
       display: flex;
       flex-direction: column;
@@ -379,9 +420,9 @@ def upload_page() -> HTMLResponse:
       justify-content: center;
       border-radius: 999px;
       padding: 7px 12px;
-      background: #ffe6ea;
+      background: var(--soft);
       color: var(--accent-strong);
-      border: 1px solid #f2bcc5;
+      border: 1px solid var(--line);
       font-size: 12px;
       font-weight: 800;
       letter-spacing: 0.02em;
@@ -902,7 +943,7 @@ def upload_page() -> HTMLResponse:
     }
     .catalog-pane.pending {
       border-color: #efb3bd;
-      background: #fff7f8;
+      background: var(--soft-2);
     }
     .catalog-pane-head {
       display: flex;
@@ -919,7 +960,7 @@ def upload_page() -> HTMLResponse:
     }
     .catalog-pane.pending .catalog-pane-head {
       color: var(--accent-strong);
-      background: #fff0f2;
+      background: var(--soft);
     }
     .catalog-pane-actions {
       display: flex;
@@ -1150,7 +1191,7 @@ def upload_page() -> HTMLResponse:
       align-items: center;
       border-radius: 999px;
       padding: 4px 10px;
-      background: #fff0f2;
+      background: var(--soft);
       color: var(--accent-strong);
       font-size: 12px;
       font-weight: 700;
@@ -1641,7 +1682,7 @@ def upload_page() -> HTMLResponse:
     .category-button:hover,
     .category-button.active {
       border-color: var(--accent);
-      background: #fff0f2;
+      background: var(--soft);
       color: var(--accent-strong);
     }
     .category-button .count {
@@ -1717,7 +1758,7 @@ def upload_page() -> HTMLResponse:
     }
     .doc-tag {
       border-radius: 999px;
-      background: #fff0f2;
+      background: var(--soft);
       color: var(--accent-strong);
       padding: 3px 7px;
       font-size: 11px;
@@ -2072,13 +2113,13 @@ def upload_page() -> HTMLResponse:
     }
   </style>
 </head>
-<body>
+<body data-app-variant="__APP_VARIANT__">
   <div class="wrap">
     <div class="stack">
       <div class="card">
         <div class="hero">
           <div class="hero-title-row">
-            <h1>Big Agent</h1>
+            <h1>__BRAND_NAME__</h1>
             <span class="version-pill">v__APP_VERSION__</span>
             <span class="version-pill">model: __MODEL_LABEL__</span>
             <a class="logout-link" href="/logout">Cikis</a>
@@ -2236,7 +2277,7 @@ def upload_page() -> HTMLResponse:
                 <div class="chat-message assistant">Merhaba. Icerideki raporlar uzerinden soru sorabilirsin.</div>
               </div>
               <div class="chat-prompts">
-                <button class="chat-prompt" type="button" data-chat-prompt="Big Agent ne yapar?">Big Agent ne yapar?</button>
+                <button class="chat-prompt" type="button" data-chat-prompt="__BRAND_NAME__ ne yapar?">__BRAND_NAME__ ne yapar?</button>
                 <button class="chat-prompt" type="button" data-chat-prompt="Bu uygulama ne yapar?">Uygulama nedir?</button>
                 <button class="chat-prompt" type="button" data-chat-prompt="Kendinden bahset">Kendinden bahset</button>
                 <button class="chat-prompt" type="button" data-chat-prompt="BIG-E konfor raporunda hangi parkurlar var?">BIG-E konfor parkurlari</button>
@@ -3866,7 +3907,7 @@ def upload_page() -> HTMLResponse:
       const label = document.createElement("div");
       label.className = "chat-message-label";
       const labelText = document.createElement("span");
-      labelText.textContent = role === "user" ? "Sen" : "Big Agent";
+      labelText.textContent = role === "user" ? "Sen" : "__BRAND_NAME__";
       label.appendChild(labelText);
       if (meta) {
         const metaNode = document.createElement("span");
@@ -5342,7 +5383,7 @@ def upload_page() -> HTMLResponse:
     """
     html = html.replace("__APP_VERSION__", APP_VERSION)
     html = html.replace("__MODEL_LABEL__", model_label)
-    return HTMLResponse(html)
+    return HTMLResponse(_apply_brand_tokens(html))
 
 
 @app.post("/ingest", response_model=IngestResponse)
@@ -5920,14 +5961,14 @@ def _chat_general_answer(message: str, history: list[dict] | None = None) -> tup
     normalized = _fold_chat_text(message)
     if any(phrase in normalized for phrase in ("adam misin", "insan misin", "robot musun", "gercek misin")):
         return (
-            "Ben insan degilim; Big Agent icinde calisan yapay zeka destekli bir rapor asistaniyim. "
+            f"Ben insan degilim; {APP_BRAND.display_name} icinde calisan yapay zeka destekli bir rapor asistaniyim. "
             "Genel sohbet edebilirim, ama asil isim raporlar ve teknik dokumanlar uzerinden yardim etmek.",
             "chat-direct",
             1.0,
         )
     if any(phrase in normalized for phrase in ("kendinden bahset", "sen kimsin", "kimsin", "kendini tanit", "kendini tanıt")):
         return (
-            "Ben Big Agent icindeki rapor asistaniyim. PDF, DOCX ve PPTX raporlarindan kaynakli cevap bulmak, "
+            f"Ben {APP_BRAND.display_name} icindeki rapor asistaniyim. PDF, DOCX ve PPTX raporlarindan kaynakli cevap bulmak, "
             "benzer raporlari gostermek, katalog kayitlariyla icerdeki dokumanlari eslestirmek ve mukerrer rapor "
             "adaylarini incelemek icin tasarlandim. Genel sohbet edebilirim ama asil gucum raporlar uzerinden kaynakli cevap vermek.",
             "chat-direct",
@@ -5938,6 +5979,7 @@ def _chat_general_answer(message: str, history: list[dict] | None = None) -> tup
         or "ne ise yararsin" in normalized
         or "amacin ne" in normalized
         or "big agent ne yapar" in normalized
+        or "raporhub ne yapar" in normalized
         or "bu uygulama ne yapar" in normalized
         or "sistem ne yapar" in normalized
     ):

@@ -3,9 +3,17 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from .branding import get_app_brand, normalize_app_variant
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = Path(os.getenv("BIG_AGENT_DATA_DIR", BASE_DIR / "data")).expanduser()
+APP_VARIANT = normalize_app_variant(os.getenv("APP_VARIANT"))
+APP_BRAND = get_app_brand(APP_VARIANT)
+_variant_data_dir = os.getenv(APP_BRAND.data_dir_env) or os.getenv("APP_DATA_DIR")
+DATA_DIR = Path(
+    _variant_data_dir
+    or BASE_DIR / APP_BRAND.default_data_dir
+).expanduser()
 DOCUMENTS_DIR = DATA_DIR / "documents"
 DATABASE_URL = f"sqlite:///{(DATA_DIR / 'app.db').as_posix()}"
 APP_AUTH_ENABLED = False
@@ -23,7 +31,7 @@ def _env_bool(name: str, default: bool = False) -> bool:
 APP_AUTH_ENABLED = _env_bool("APP_AUTH_ENABLED", default=False)
 APP_USERS_RAW = os.getenv("APP_USERS", "")
 APP_SESSION_SECRET = os.getenv("APP_SESSION_SECRET", "")
-APP_AUTH_COOKIE_NAME = os.getenv("APP_AUTH_COOKIE_NAME", "big_agent_session")
+APP_AUTH_COOKIE_NAME = os.getenv("APP_AUTH_COOKIE_NAME", APP_BRAND.default_cookie_name)
 
 
 def _default_embedding_model_name() -> str:
