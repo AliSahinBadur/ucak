@@ -5,14 +5,16 @@ __pycache__/
 .mypy_cache/
 
 data/
+data_team*/
+data_analiz/
+data_test/
 models/
 output/
 exports/
+backups/
+screenshots/
 tmp_*.js
 tmp_*.py
-
-# Browser automation profiles generated during UI checks.
-screenshots/chrome-profile*/
 
 *.db
 *.sqlite3

@@ -5,9 +5,12 @@ from pathlib import Path
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
+DATA_DIR = Path(os.getenv("BIG_AGENT_DATA_DIR", BASE_DIR / "data")).expanduser()
 DOCUMENTS_DIR = DATA_DIR / "documents"
 DATABASE_URL = f"sqlite:///{(DATA_DIR / 'app.db').as_posix()}"
+APP_AUTH_ENABLED = False
+APP_USERS_RAW = ""
+APP_SESSION_SECRET = ""
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -15,6 +18,12 @@ def _env_bool(name: str, default: bool = False) -> bool:
     if raw_value is None:
         return default
     return raw_value.strip().casefold() in {"1", "true", "yes", "on"}
+
+
+APP_AUTH_ENABLED = _env_bool("APP_AUTH_ENABLED", default=False)
+APP_USERS_RAW = os.getenv("APP_USERS", "")
+APP_SESSION_SECRET = os.getenv("APP_SESSION_SECRET", "")
+APP_AUTH_COOKIE_NAME = os.getenv("APP_AUTH_COOKIE_NAME", "big_agent_session")
 
 
 def _default_embedding_model_name() -> str:
@@ -55,6 +64,7 @@ def _default_embedding_device() -> str:
 
 EMBEDDING_DEVICE = os.getenv("EMBEDDING_DEVICE", _default_embedding_device())
 EMBEDDING_LOCAL_FILES_ONLY = _env_bool("EMBEDDING_LOCAL_FILES_ONLY", default=False)
+EMBEDDING_SHOW_PROGRESS = _env_bool("EMBEDDING_SHOW_PROGRESS", default=False)
 
 LLM_ENABLED = _env_bool("LLM_ENABLED", default=False)
 LLM_BACKEND = os.getenv("LLM_BACKEND", "disabled").strip().casefold()

@@ -1,17 +1,22 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 from html import escape
 from pathlib import Path
 import logging
 import os
 import re
+import secrets
 import tempfile
+import time
 import unicodedata
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -41,6 +46,9 @@ from .api_models import (
     MultiDocumentAskRequest,
     MultiDocumentAskResponse,
     ReindexEmbeddingsResponse,
+    ReportComparisonRequest,
+    ReportComparisonResponse,
+    ReportComparisonUploadResponse,
     SearchResponse,
     StorageCheckResponse,
 )
@@ -51,21 +59,141 @@ from .services.embedding_service import build_embedding_service
 from .services.catalog_ingest_service import CatalogIngestService
 from .services.catalog_service import CatalogService
 from .services.duplicate_detection_service import DuplicateDetectionService
+from .services.document_intelligence_service import DocumentIntelligenceService
 from .services.general_chat_service import GeneralChatService
 from .services.graph_service import GraphService
 from .services.ingest_service import IngestService
 from .services.multi_document_qa_service import MultiDocumentQAService
 from .services.qa_service import QAService
+from .services.report_comparison_service import (
+    ReportComparisonService,
+    resolve_comparison_pdf_path,
+)
 from .services.report_writer_service import ReportWriterService
 from .services.retrieval_orchestrator import RetrievalOrchestrator
 from .services.search_service import SearchService
 from .services.storage_service import StorageService
 from .version import APP_VERSION
+from .config import APP_AUTH_COOKIE_NAME, APP_AUTH_ENABLED, APP_SESSION_SECRET, APP_USERS_RAW
 
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 #dfgasdgfasdfasdfasdfasdf
 app = FastAPI(title="Big Agent MVP", version=APP_VERSION)
+AUTH_COOKIE_NAME = APP_AUTH_COOKIE_NAME
+AUTH_SESSION_SECONDS = 8 * 60 * 60
+
+
+def _parse_app_users(raw_value: str) -> dict[str, str]:
+    users: dict[str, str] = {}
+    for item in raw_value.split(";"):
+        if ":" not in item:
+            continue
+        username, password = item.split(":", 1)
+        username = username.strip()
+        password = password.strip()
+        if username and password:
+            users[username] = password
+    return users
+
+
+APP_USERS = _parse_app_users(APP_USERS_RAW)
+
+
+def _auth_secret() -> str:
+    return APP_SESSION_SECRET or "change-this-local-test-secret"
+
+
+def _session_signature(username: str, expires_at: int) -> str:
+    payload = f"{username}|{expires_at}".encode("utf-8")
+    return hmac.new(_auth_secret().encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+
+def _create_session_cookie(username: str) -> str:
+    expires_at = int(time.time()) + AUTH_SESSION_SECONDS
+    signature = _session_signature(username, expires_at)
+    raw = f"{username}|{expires_at}|{signature}".encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii")
+
+
+def _read_session_user(request: Request) -> str | None:
+    token = request.cookies.get(AUTH_COOKIE_NAME)
+    if not token:
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(token.encode("ascii")).decode("utf-8")
+        username, expires_text, signature = raw.split("|", 2)
+        expires_at = int(expires_text)
+    except Exception:
+        return None
+    if expires_at < int(time.time()):
+        return None
+    if username not in APP_USERS:
+        return None
+    expected = _session_signature(username, expires_at)
+    if not hmac.compare_digest(signature, expected):
+        return None
+    return username
+
+
+def _auth_enabled() -> bool:
+    return APP_AUTH_ENABLED and bool(APP_USERS)
+
+
+def _login_html(error: str = "") -> str:
+    error_html = f'<div class="error">{escape(error)}</div>' if error else ""
+    return f"""<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Big Agent Login</title>
+  <style>
+    body {{ margin:0; min-height:100vh; display:grid; place-items:center; font-family:Arial,sans-serif; background:#f7f3f4; color:#24191b; }}
+    form {{ width:min(380px, calc(100vw - 32px)); background:#fff; border:1px solid #eadadd; border-radius:14px; padding:24px; box-shadow:0 18px 50px rgba(65,28,34,.12); }}
+    h1 {{ margin:0 0 6px; font-size:24px; }}
+    p {{ margin:0 0 18px; color:#735b60; font-size:14px; }}
+    label {{ display:block; font-size:13px; font-weight:700; margin:14px 0 6px; }}
+    input {{ width:100%; box-sizing:border-box; border:1px solid #dcc8cc; border-radius:10px; padding:12px; font-size:15px; }}
+    button {{ width:100%; margin-top:18px; border:0; border-radius:10px; padding:12px; background:#8f1d2c; color:#fff; font-weight:700; cursor:pointer; }}
+    .error {{ margin:12px 0 0; color:#9b1024; background:#fff1f3; border:1px solid #f1c9cf; border-radius:10px; padding:10px; font-size:13px; }}
+    .version {{ margin-top:14px; color:#8a7478; font-size:12px; text-align:center; }}
+  </style>
+</head>
+<body>
+  <form method="post" action="/login">
+    <h1>Big Agent</h1>
+    <p>Test kullanicisi ile giris yap.</p>
+    <label for="username">Kullanici</label>
+    <input id="username" name="username" autocomplete="username" autofocus />
+    <label for="password">Sifre</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" />
+    {error_html}
+    <button type="submit">Giris</button>
+    <div class="version">v{APP_VERSION}</div>
+  </form>
+</body>
+</html>"""
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    if not _auth_enabled():
+        return await call_next(request)
+
+    path = request.url.path
+    if path in {"/health", "/login", "/logout", "/favicon.ico"}:
+        return await call_next(request)
+
+    username = _read_session_user(request)
+    if username:
+        request.state.username = username
+        return await call_next(request)
+
+    if request.method == "GET" and (path == "/" or "text/html" in request.headers.get("accept", "")):
+        return RedirectResponse("/login", status_code=303)
+    return JSONResponse({"detail": "Authentication required."}, status_code=401)
 
 
 def custom_openapi():
@@ -134,6 +262,43 @@ def _safe_download_name(value: str, fallback: str = "rapor") -> str:
 @app.get("/health", response_model=HealthResponse)
 def healthcheck() -> HealthResponse:
     return HealthResponse(status="ok", version=APP_VERSION)
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    if _auth_enabled() and _read_session_user(request):
+        return RedirectResponse("/", status_code=303)
+    return HTMLResponse(_login_html())
+
+
+@app.post("/login")
+async def login(request: Request):
+    if not _auth_enabled():
+        return RedirectResponse("/", status_code=303)
+
+    form = await request.form()
+    username = str(form.get("username", "")).strip()
+    password = str(form.get("password", ""))
+    expected = APP_USERS.get(username)
+    if not expected or not secrets.compare_digest(password, expected):
+        return HTMLResponse(_login_html("Kullanici adi veya sifre hatali."), status_code=401)
+
+    response = RedirectResponse("/", status_code=303)
+    response.set_cookie(
+        AUTH_COOKIE_NAME,
+        _create_session_cookie(username),
+        max_age=AUTH_SESSION_SECONDS,
+        httponly=True,
+        samesite="lax",
+    )
+    return response
+
+
+@app.get("/logout")
+def logout():
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie(AUTH_COOKIE_NAME)
+    return response
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -221,6 +386,16 @@ def upload_page() -> HTMLResponse:
       font-weight: 800;
       letter-spacing: 0.02em;
     }
+    .logout-link {
+      margin-left: auto;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+      text-decoration: none;
+    }
+    .logout-link:hover {
+      color: var(--accent-strong);
+    }
     .hero p {
       margin: 0;
       color: var(--muted);
@@ -294,6 +469,9 @@ def upload_page() -> HTMLResponse:
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 20px;
       align-items: stretch;
+    }
+    .report-upload-grid {
+      grid-template-columns: minmax(0, 1fr);
     }
     .upload-card {
       display: flex;
@@ -978,6 +1156,417 @@ def upload_page() -> HTMLResponse:
       font-weight: 700;
       white-space: nowrap;
     }
+    .duplicate-workspace-tabs,
+    .comparison-result-tabs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 18px;
+    }
+    .duplicate-workspace-tab,
+    .comparison-result-tab {
+      min-height: 42px;
+      border: 0;
+      border-bottom: 3px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 800;
+      padding: 9px 14px 8px;
+    }
+    .duplicate-workspace-tab:hover,
+    .comparison-result-tab:hover {
+      color: var(--accent-strong);
+      background: var(--soft-2);
+    }
+    .duplicate-workspace-tab.active,
+    .comparison-result-tab.active {
+      color: var(--accent-strong);
+      border-bottom-color: var(--accent);
+    }
+    .comparison-result-tab.active::before {
+      content: "\\2713";
+      margin-right: 7px;
+      color: var(--ok);
+    }
+    .duplicate-workspace-pane[hidden],
+    .comparison-result-pane[hidden] {
+      display: none;
+    }
+    .comparison-source-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+    .comparison-source {
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      padding: 16px 0;
+      min-width: 0;
+    }
+    .comparison-source-label {
+      color: var(--accent-strong);
+      font-size: 12px;
+      font-weight: 900;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+    .comparison-source select {
+      width: 100%;
+      min-height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 14px;
+    }
+    .comparison-source-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      min-height: 38px;
+    }
+    .comparison-swap {
+      align-self: center;
+      width: 44px;
+      height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background: white;
+      color: var(--accent-strong);
+      cursor: pointer;
+      font-size: 20px;
+      font-weight: 900;
+    }
+    .comparison-swap:hover {
+      border-color: var(--accent);
+      background: var(--soft);
+    }
+    .comparison-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+    .comparison-run-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .comparison-method-help {
+      position: relative;
+    }
+    .comparison-info-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background: white;
+      color: var(--accent-strong);
+      cursor: help;
+      font-size: 15px;
+      font-weight: 900;
+    }
+    .comparison-info-button:hover,
+    .comparison-info-button:focus-visible {
+      border-color: var(--accent);
+      outline: 2px solid rgba(194, 36, 55, 0.16);
+      outline-offset: 2px;
+    }
+    .comparison-method-tooltip {
+      position: absolute;
+      right: 0;
+      bottom: calc(100% + 10px);
+      z-index: 30;
+      width: min(340px, calc(100vw - 32px));
+      padding: 13px 14px;
+      border: 1px solid #5a3339;
+      background: #24191b;
+      box-shadow: 0 12px 28px rgba(45, 20, 25, 0.22);
+      color: white;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(4px);
+      visibility: hidden;
+      transition: opacity 140ms ease, transform 140ms ease, visibility 140ms ease;
+    }
+    .comparison-method-tooltip::after {
+      position: absolute;
+      right: 10px;
+      bottom: -7px;
+      width: 12px;
+      height: 12px;
+      border-right: 1px solid #5a3339;
+      border-bottom: 1px solid #5a3339;
+      background: #24191b;
+      content: "";
+      transform: rotate(45deg);
+    }
+    .comparison-method-help:hover .comparison-method-tooltip,
+    .comparison-method-help:focus-within .comparison-method-tooltip {
+      opacity: 1;
+      transform: translateY(0);
+      visibility: visible;
+    }
+    .comparison-method-title {
+      margin-bottom: 8px;
+      font-size: 13px;
+      font-weight: 900;
+    }
+    .comparison-method-row {
+      display: grid;
+      grid-template-columns: 88px minmax(0, 1fr);
+      gap: 8px;
+      padding: 4px 0;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    .comparison-method-row strong {
+      color: #ffd36a;
+    }
+    .comparison-method-note {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
+      color: #eadcdf;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .comparison-persist {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .comparison-persist input {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+    }
+    .comparison-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin: 16px 0;
+    }
+    .comparison-summary-item {
+      border-left: 3px solid var(--accent);
+      background: var(--soft-2);
+      padding: 10px 12px;
+      min-width: 0;
+    }
+    .comparison-summary-value {
+      display: block;
+      color: var(--text);
+      font-size: 20px;
+      font-weight: 900;
+      line-height: 1.1;
+    }
+    .comparison-summary-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .comparison-results {
+      border-top: 1px solid var(--line);
+    }
+    .comparison-row {
+      padding: 16px 0;
+      border-bottom: 1px solid #ead8dc;
+    }
+    .comparison-row.has-pdf-highlight {
+      border-left: 4px solid var(--pair-color);
+      padding-left: 12px;
+    }
+    .comparison-row-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .comparison-row-topic {
+      font-size: 15px;
+      font-weight: 900;
+      line-height: 1.35;
+    }
+    .comparison-row-summary {
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.55;
+      margin-top: 4px;
+    }
+    .comparison-evidence-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 12px;
+    }
+    .comparison-evidence {
+      border-left: 3px solid #df9da8;
+      background: #fffafa;
+      padding: 10px 12px;
+      min-width: 0;
+    }
+    .comparison-evidence-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--accent-strong);
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .comparison-evidence-text {
+      margin-top: 7px;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+    .comparison-open {
+      border: 0;
+      background: transparent;
+      color: var(--accent-strong);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 800;
+      padding: 2px 0;
+    }
+    .comparison-open:hover {
+      text-decoration: underline;
+    }
+    .comparison-open:disabled {
+      color: var(--muted);
+      cursor: default;
+      text-decoration: none;
+    }
+    .comparison-highlight-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .comparison-pair-marker {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--pair-color);
+      border-radius: 999px;
+      background: white;
+      box-shadow: inset 0 -3px 0 var(--pair-color);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 900;
+      padding: 4px 9px;
+      white-space: nowrap;
+    }
+    .comparison-pair-marker::before,
+    .comparison-highlight-swatch {
+      width: 11px;
+      height: 11px;
+      border: 1px solid rgba(32, 20, 22, 0.18);
+      border-radius: 3px;
+      background: var(--pair-color);
+      content: "";
+      flex: 0 0 auto;
+    }
+    .comparison-focus {
+      border: 0;
+      background: transparent;
+      color: var(--accent-strong);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 900;
+      padding: 4px 0;
+    }
+    .comparison-focus:hover {
+      text-decoration: underline;
+    }
+    .comparison-pdf-workspace {
+      border-top: 1px solid var(--line);
+      margin-top: 24px;
+      padding-top: 20px;
+    }
+    .comparison-pdf-head,
+    .comparison-pdf-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .comparison-pdf-head-actions {
+      display: flex;
+      align-items: flex-end;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .comparison-pair-fullscreen {
+      min-height: 36px;
+      padding: 7px 12px;
+      white-space: nowrap;
+    }
+    .comparison-highlight-legend {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .comparison-highlight-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .comparison-pdf-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .comparison-pdf-panel {
+      border: 1px solid var(--line);
+      background: #f7f4f5;
+      min-width: 0;
+    }
+    .comparison-pdf-toolbar {
+      min-height: 44px;
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--line);
+      background: white;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .comparison-pdf-frame {
+      display: block;
+      width: 100%;
+      height: 680px;
+      border: 0;
+      background: #e8e3e4;
+    }
+    .comparison-pdf-placeholder {
+      min-height: 220px;
+      padding: 28px 18px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
     .graph-layout {
       display: grid;
       grid-template-columns: 280px minmax(0, 1fr);
@@ -1265,6 +1854,12 @@ def upload_page() -> HTMLResponse:
     .chat-message-body {
       white-space: pre-wrap;
     }
+    .chat-message-meta {
+      color: #8a4c57;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: none;
+    }
     .chat-prompts {
       display: flex;
       flex-wrap: wrap;
@@ -1402,11 +1997,65 @@ def upload_page() -> HTMLResponse:
       .catalog-board,
       .graph-layout,
       .chat-layout,
+      .comparison-source-grid,
+      .comparison-evidence-grid,
+      .comparison-pdf-grid,
       .split {
         grid-template-columns: 1fr;
       }
+      .comparison-summary {
+        grid-template-columns: 1fr;
+      }
+      .comparison-swap {
+        justify-self: center;
+        transform: rotate(90deg);
+      }
+      .comparison-row-head {
+        flex-direction: column;
+      }
+      .comparison-row-head .tag {
+        align-self: flex-start;
+      }
+      .comparison-highlight-actions,
+      .comparison-highlight-legend {
+        justify-content: flex-start;
+      }
+      .comparison-pdf-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .comparison-pdf-head-actions {
+        align-items: flex-start;
+      }
+      .comparison-method-tooltip {
+        right: auto;
+        left: 0;
+        width: min(300px, calc(100vw - 96px));
+      }
+      .comparison-method-tooltip::after {
+        right: auto;
+        left: 10px;
+      }
+      .comparison-method-row {
+        grid-template-columns: 58px minmax(0, 1fr);
+      }
+      .comparison-pdf-frame {
+        height: 520px;
+      }
       .chat-input-row {
         grid-template-columns: 1fr;
+      }
+      .chat-toolbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .chat-toolbar-actions {
+        width: 100%;
+        flex-wrap: wrap;
+      }
+      .chat-toolbar-actions select {
+        flex: 1 1 140px;
+        min-width: 0;
       }
       .chat-message {
         max-width: 100%;
@@ -1432,6 +2081,7 @@ def upload_page() -> HTMLResponse:
             <h1>Big Agent</h1>
             <span class="version-pill">v__APP_VERSION__</span>
             <span class="version-pill">model: __MODEL_LABEL__</span>
+            <a class="logout-link" href="/logout">Cikis</a>
           </div>
           <p>Rapor havuzunu yonet, katalogla eslestir, kaynakli cevap al ve mukerrer adaylari ayni yerel sistemde incele.</p>
           <div class="module-switcher" aria-label="Modul secimi">
@@ -1450,41 +2100,29 @@ def upload_page() -> HTMLResponse:
           <div class="section-head">
             <div>
               <h2>Raporlar</h2>
-              <p>Tekli veya toplu PDF/DOCX/PPTX raporlarini sisteme ekle.</p>
+              <p>Bir veya birden fazla PDF/DOCX/PPTX raporunu ayni alandan sisteme ekle.</p>
             </div>
             <button class="expand-button" type="button" data-expand-module>Buyut</button>
           </div>
-          <div class="upload-grid">
+          <div class="upload-grid report-upload-grid">
             <div class="upload-card">
-              <h2>Tekli Rapor Yukleme</h2>
-              <p>Tek bir PDF veya DOCX eklemek istersen bu alani kullan.</p>
+              <h2>Rapor Yukle</h2>
+              <p>Tek dosya veya birden fazla rapor sec; hepsi ayni yukleme islemiyle islenir.</p>
               <div class="actions">
-                <label class="button secondary" for="singlePicker">Dosya Sec</label>
-                <button class="button primary" id="singleUploadButton" type="button">Tekli Yukleme Baslat</button>
-                <input id="singlePicker" type="file" accept=".pdf,.docx,.pptx" />
-              </div>
-              <div class="meta" id="singleSummary">Henuz tekli dosya secilmedi.</div>
-              <div class="status" id="singleStatusBox"></div>
-              <div class="upload-spacer" aria-hidden="true"></div>
-              <div class="result">
-                <pre id="singleResultBox">{}</pre>
-              </div>
-            </div>
-            <div class="upload-card">
-              <h2>Toplu Rapor Yukleme</h2>
-              <p>Klasor sec, icindeki PDF ve DOCX dosyalarini tek seferde yukle.</p>
-              <div class="actions">
-                <label class="button secondary" for="folderPicker">Klasor Sec</label>
+                <label class="button secondary" for="reportPicker">Rapor Sec</label>
                 <button class="button primary" id="uploadButton" type="button">Yuklemeyi Baslat</button>
-                <input id="folderPicker" type="file" webkitdirectory directory multiple />
+                <input id="reportPicker" type="file" accept=".pdf,.docx,.pptx" multiple />
               </div>
-              <div class="meta" id="summary">Henuz klasor secilmedi.</div>
+              <div class="meta" id="summary">Henuz rapor secilmedi.</div>
               <div class="files">
                 <ul id="filesList"><li>Dosya listesi burada gorunecek.</li></ul>
               </div>
               <div class="status" id="statusBox"></div>
-              <div class="result">
-                <pre id="resultBox">{}</pre>
+              <div class="result" id="uploadResults" hidden>
+                <div class="panel-title">Islem Sonucu</div>
+                <div class="files">
+                  <ul id="uploadResultList"></ul>
+                </div>
               </div>
             </div>
           </div>
@@ -1582,6 +2220,10 @@ def upload_page() -> HTMLResponse:
                     <option value="report">rapor</option>
                     <option value="general">genel</option>
                   </select>
+                  <select id="chatRetrievalVersion" aria-label="RAG surumu">
+                    <option value="v2">RAG v2 (Beta)</option>
+                    <option value="v1">RAG v1 (Klasik)</option>
+                  </select>
                   <select id="chatMode" aria-label="Chat arama modu">
                     <option value="hybrid">hybrid</option>
                     <option value="semantic">semantic</option>
@@ -1624,17 +2266,114 @@ def upload_page() -> HTMLResponse:
           <div class="section-head">
             <div>
               <h2>Mukerrer</h2>
-              <p>Icerideki raporlar arasinda birbirine cok benzeyen kayitli adaylari gor.</p>
+              <p>Mukerrer adaylarini tara veya iki teknik raporu kaynaklariyla karsilastir.</p>
             </div>
             <button class="expand-button" type="button" data-expand-module>Buyut</button>
           </div>
-          <div class="actions">
-            <button class="button primary" id="duplicateScanButton" type="button">Taramayi Baslat</button>
-            <button class="button secondary" id="duplicateRefreshButton" type="button">Kayitli Sonuclari Yenile</button>
+          <div class="duplicate-workspace-tabs" role="tablist" aria-label="Mukerrer calisma alani">
+            <button class="duplicate-workspace-tab active" id="duplicateCandidatesTab" type="button" role="tab" aria-selected="true" aria-controls="duplicateCandidatesPane">Mukerrer Adaylari</button>
+            <button class="duplicate-workspace-tab" id="reportComparisonTab" type="button" role="tab" aria-selected="false" aria-controls="reportComparisonPane">Rapor Karsilastirma</button>
           </div>
-          <div class="note" id="duplicateStatus">Mukerrer adaylari henuz yuklenmedi.</div>
-          <div id="duplicateList" class="cards" style="margin-top:16px;">
-            <div class="empty">Kayitli mukerrer adaylari burada listelenecek.</div>
+          <div class="duplicate-workspace-pane" id="duplicateCandidatesPane" role="tabpanel" aria-labelledby="duplicateCandidatesTab">
+            <div class="actions">
+              <button class="button primary" id="duplicateScanButton" type="button">Taramayi Baslat</button>
+              <button class="button secondary" id="duplicateRefreshButton" type="button">Kayitli Sonuclari Yenile</button>
+            </div>
+            <div class="note" id="duplicateStatus">Mukerrer adaylari henuz yuklenmedi.</div>
+            <div id="duplicateList" class="cards" style="margin-top:16px;">
+              <div class="empty">Kayitli mukerrer adaylari burada listelenecek.</div>
+            </div>
+          </div>
+          <div class="duplicate-workspace-pane" id="reportComparisonPane" role="tabpanel" aria-labelledby="reportComparisonTab" hidden>
+            <div class="comparison-source-grid">
+              <div class="comparison-source">
+                <div class="comparison-source-label">Rapor A</div>
+                <select id="comparisonLeftSelect" aria-label="Rapor A secimi">
+                  <option value="">Rapor sec...</option>
+                </select>
+                <div class="comparison-source-actions">
+                  <label class="button secondary" for="comparisonLeftUpload">Dosya Yukle</label>
+                  <input id="comparisonLeftUpload" type="file" accept=".pdf,.docx,.pptx" />
+                  <span class="small" id="comparisonLeftMeta">Kaynak secilmedi.</span>
+                </div>
+              </div>
+              <button class="comparison-swap" id="comparisonSwapButton" type="button" title="Raporlari degistir" aria-label="Raporlari degistir">&#8646;</button>
+              <div class="comparison-source">
+                <div class="comparison-source-label">Rapor B</div>
+                <select id="comparisonRightSelect" aria-label="Rapor B secimi">
+                  <option value="">Rapor sec...</option>
+                </select>
+                <div class="comparison-source-actions">
+                  <label class="button secondary" for="comparisonRightUpload">Dosya Yukle</label>
+                  <input id="comparisonRightUpload" type="file" accept=".pdf,.docx,.pptx" />
+                  <span class="small" id="comparisonRightMeta">Kaynak secilmedi.</span>
+                </div>
+              </div>
+            </div>
+            <div class="comparison-controls">
+              <label class="comparison-persist">
+                <input id="comparisonPersistUploads" type="checkbox" />
+                Yuklenen raporlari rapor havuzuna da ekle
+              </label>
+              <div class="comparison-run-actions">
+                <div class="comparison-method-help">
+                  <button class="comparison-info-button" type="button" aria-label="Eslesme yontemini goster" aria-describedby="comparisonMethodTooltip">i</button>
+                  <div class="comparison-method-tooltip" id="comparisonMethodTooltip" role="tooltip">
+                    <div class="comparison-method-title">Eslesme puani nasil hesaplanir?</div>
+                    <div class="comparison-method-row"><strong>%62</strong><span>Anlamsal benzerlik - Qwen embedding</span></div>
+                    <div class="comparison-method-row"><strong>%23</strong><span>Kelime ve teknik terim benzerligi</span></div>
+                    <div class="comparison-method-row"><strong>%10</strong><span>Bolum ve baslik benzerligi</span></div>
+                    <div class="comparison-method-row"><strong>%5</strong><span>Sayi, birim ve OK/NOK sinyalleri</span></div>
+                    <div class="comparison-method-note">Toplam puani 0.42'nin altinda kalan pasaj ciftleri elenir.</div>
+                  </div>
+                </div>
+                <button class="button primary" id="comparisonRunButton" type="button">Karsilastir</button>
+              </div>
+            </div>
+            <div class="note" id="comparisonStatus">Iki farkli rapor sec veya yukle.</div>
+            <div id="comparisonOutput" hidden>
+              <div class="comparison-summary" id="comparisonSummary"></div>
+              <div class="comparison-result-tabs" role="tablist" aria-label="Karsilastirma sonuclari">
+                <button class="comparison-result-tab active" id="comparisonSimilaritiesTab" type="button" role="tab" aria-selected="true">Benzerlikler</button>
+                <button class="comparison-result-tab" id="comparisonDifferencesTab" type="button" role="tab" aria-selected="false">Farkliliklar</button>
+              </div>
+              <div class="comparison-result-pane" id="comparisonSimilaritiesPane" role="tabpanel">
+                <div class="comparison-results" id="comparisonSimilarities"></div>
+              </div>
+              <div class="comparison-result-pane" id="comparisonDifferencesPane" role="tabpanel" hidden>
+                <div class="comparison-results" id="comparisonDifferences"></div>
+              </div>
+              <div class="comparison-pdf-workspace" id="comparisonPdfWorkspace" hidden>
+                <div class="comparison-pdf-head">
+                  <div>
+                    <div class="panel-title">PDF Eslesme Gorunumu</div>
+                    <div class="small" id="comparisonPdfStatus">Eslesen pasajlar iki PDF'de ayni renklerle isaretlenir.</div>
+                  </div>
+                  <div class="comparison-pdf-head-actions">
+                    <button class="button secondary comparison-pair-fullscreen" id="comparisonPairFullscreenOpen" type="button" disabled>Iki PDF'yi Tam Ekranda Ac</button>
+                    <div class="comparison-highlight-legend" id="comparisonHighlightLegend"></div>
+                  </div>
+                </div>
+                <div class="comparison-pdf-grid">
+                  <div class="comparison-pdf-panel">
+                    <div class="comparison-pdf-toolbar">
+                      <span id="comparisonLeftPdfTitle">Rapor A</span>
+                      <button class="comparison-open" id="comparisonLeftPdfOpen" type="button">Tum PDF'yi Ac</button>
+                    </div>
+                    <iframe class="comparison-pdf-frame" id="comparisonLeftPdfFrame" title="Rapor A renkli PDF onizlemesi" loading="lazy"></iframe>
+                    <div class="comparison-pdf-placeholder" id="comparisonLeftPdfPlaceholder" hidden></div>
+                  </div>
+                  <div class="comparison-pdf-panel">
+                    <div class="comparison-pdf-toolbar">
+                      <span id="comparisonRightPdfTitle">Rapor B</span>
+                      <button class="comparison-open" id="comparisonRightPdfOpen" type="button">Tum PDF'yi Ac</button>
+                    </div>
+                    <iframe class="comparison-pdf-frame" id="comparisonRightPdfFrame" title="Rapor B renkli PDF onizlemesi" loading="lazy"></iframe>
+                    <div class="comparison-pdf-placeholder" id="comparisonRightPdfPlaceholder" hidden></div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div class="section" data-module-title="Katalog" data-modal-layout="catalog-stack" data-module-key="catalog">
@@ -2025,17 +2764,13 @@ def upload_page() -> HTMLResponse:
   </div>
 
   <script>
-    const picker = document.getElementById("folderPicker");
+    const picker = document.getElementById("reportPicker");
     const uploadButton = document.getElementById("uploadButton");
     const summary = document.getElementById("summary");
     const filesList = document.getElementById("filesList");
     const statusBox = document.getElementById("statusBox");
-    const resultBox = document.getElementById("resultBox");
-    const singlePicker = document.getElementById("singlePicker");
-    const singleUploadButton = document.getElementById("singleUploadButton");
-    const singleSummary = document.getElementById("singleSummary");
-    const singleStatusBox = document.getElementById("singleStatusBox");
-    const singleResultBox = document.getElementById("singleResultBox");
+    const uploadResults = document.getElementById("uploadResults");
+    const uploadResultList = document.getElementById("uploadResultList");
     const uploadedDocumentsRefreshButton = document.getElementById("uploadedDocumentsRefreshButton");
     const uploadedDocumentsStatus = document.getElementById("uploadedDocumentsStatus");
     const uploadedDocumentsTable = document.getElementById("uploadedDocumentsTable");
@@ -2088,9 +2823,44 @@ def upload_page() -> HTMLResponse:
     const duplicateRefreshButton = document.getElementById("duplicateRefreshButton");
     const duplicateStatus = document.getElementById("duplicateStatus");
     const duplicateList = document.getElementById("duplicateList");
+    const duplicateCandidatesTab = document.getElementById("duplicateCandidatesTab");
+    const reportComparisonTab = document.getElementById("reportComparisonTab");
+    const duplicateCandidatesPane = document.getElementById("duplicateCandidatesPane");
+    const reportComparisonPane = document.getElementById("reportComparisonPane");
+    const comparisonLeftSelect = document.getElementById("comparisonLeftSelect");
+    const comparisonRightSelect = document.getElementById("comparisonRightSelect");
+    const comparisonLeftUpload = document.getElementById("comparisonLeftUpload");
+    const comparisonRightUpload = document.getElementById("comparisonRightUpload");
+    const comparisonLeftMeta = document.getElementById("comparisonLeftMeta");
+    const comparisonRightMeta = document.getElementById("comparisonRightMeta");
+    const comparisonPersistUploads = document.getElementById("comparisonPersistUploads");
+    const comparisonSwapButton = document.getElementById("comparisonSwapButton");
+    const comparisonRunButton = document.getElementById("comparisonRunButton");
+    const comparisonStatus = document.getElementById("comparisonStatus");
+    const comparisonOutput = document.getElementById("comparisonOutput");
+    const comparisonSummary = document.getElementById("comparisonSummary");
+    const comparisonSimilaritiesTab = document.getElementById("comparisonSimilaritiesTab");
+    const comparisonDifferencesTab = document.getElementById("comparisonDifferencesTab");
+    const comparisonSimilaritiesPane = document.getElementById("comparisonSimilaritiesPane");
+    const comparisonDifferencesPane = document.getElementById("comparisonDifferencesPane");
+    const comparisonSimilarities = document.getElementById("comparisonSimilarities");
+    const comparisonDifferences = document.getElementById("comparisonDifferences");
+    const comparisonPdfWorkspace = document.getElementById("comparisonPdfWorkspace");
+    const comparisonPdfStatus = document.getElementById("comparisonPdfStatus");
+    const comparisonHighlightLegend = document.getElementById("comparisonHighlightLegend");
+    const comparisonPairFullscreenOpen = document.getElementById("comparisonPairFullscreenOpen");
+    const comparisonLeftPdfTitle = document.getElementById("comparisonLeftPdfTitle");
+    const comparisonRightPdfTitle = document.getElementById("comparisonRightPdfTitle");
+    const comparisonLeftPdfOpen = document.getElementById("comparisonLeftPdfOpen");
+    const comparisonRightPdfOpen = document.getElementById("comparisonRightPdfOpen");
+    const comparisonLeftPdfFrame = document.getElementById("comparisonLeftPdfFrame");
+    const comparisonRightPdfFrame = document.getElementById("comparisonRightPdfFrame");
+    const comparisonLeftPdfPlaceholder = document.getElementById("comparisonLeftPdfPlaceholder");
+    const comparisonRightPdfPlaceholder = document.getElementById("comparisonRightPdfPlaceholder");
     const chatMessages = document.getElementById("chatMessages");
     const chatInput = document.getElementById("chatInput");
     const chatAssistantMode = document.getElementById("chatAssistantMode");
+    const chatRetrievalVersion = document.getElementById("chatRetrievalVersion");
     const chatMode = document.getElementById("chatMode");
     const chatSendButton = document.getElementById("chatSendButton");
     const chatClearButton = document.getElementById("chatClearButton");
@@ -2133,18 +2903,22 @@ def upload_page() -> HTMLResponse:
     const moduleSections = Array.from(document.querySelectorAll(".section[data-module-key]"));
 
     let selectedFiles = [];
-    let selectedSingleFile = null;
     let selectedCatalogFile = null;
     let lastCatalogQuestion = "";
     let lastCatalogMatches = [];
     let chatHistory = [];
+    let chatContextDocumentIds = [];
     let lastDraftPayload = null;
     let lastDraftData = null;
     let lastAutoReportNo = "";
+    let selectedDraftDocumentIds = [];
     let graphState = { categories: [], documents: [], selectedCategoryId: "all", search: "" };
     let activeTimerId = null;
     let activeModule = null;
     let selectedModuleFilter = "upload";
+    let duplicateWorkspaceView = "candidates";
+    let comparisonDocumentsLoaded = false;
+    let latestComparisonData = null;
 
     function applyModuleFilter(filterKey) {
       selectedModuleFilter = filterKey || "upload";
@@ -2167,7 +2941,11 @@ def upload_page() -> HTMLResponse:
         refreshGraph();
       }
       if (selectedModuleFilter === "duplicates") {
-        refreshDuplicates();
+        if (duplicateWorkspaceView === "comparison") {
+          refreshComparisonDocuments();
+        } else {
+          refreshDuplicates();
+        }
       }
     }
 
@@ -2241,7 +3019,11 @@ def upload_page() -> HTMLResponse:
         refreshGraph();
       }
       if (section.dataset.moduleKey === "duplicates") {
-        refreshDuplicates();
+        if (duplicateWorkspaceView === "comparison") {
+          refreshComparisonDocuments();
+        } else {
+          refreshDuplicates();
+        }
       }
     }
 
@@ -2262,7 +3044,7 @@ def upload_page() -> HTMLResponse:
       filesList.innerHTML = "";
       if (selectedFiles.length === 0) {
         filesList.innerHTML = "<li>Dosya listesi burada gorunecek.</li>";
-        summary.textContent = "Henuz klasor secilmedi.";
+        summary.textContent = "Henuz rapor secilmedi.";
         return;
       }
 
@@ -2271,7 +3053,9 @@ def upload_page() -> HTMLResponse:
         return lower.endsWith(".pdf") || lower.endsWith(".docx") || lower.endsWith(".pptx");
       });
 
-      summary.textContent = `${selectedFiles.length} dosya secildi, ${supported.length} tanesi desteklenen turde.`;
+      summary.textContent = supported.length === 1
+        ? "1 rapor secildi."
+        : `${supported.length} rapor secildi.`;
       supported.slice(0, 12).forEach(file => {
         const item = document.createElement("li");
         item.textContent = file.webkitRelativePath || file.name;
@@ -2282,6 +3066,31 @@ def upload_page() -> HTMLResponse:
         more.textContent = `... ve ${supported.length - 12} dosya daha`;
         filesList.appendChild(more);
       }
+    }
+
+    function renderUploadResults(items) {
+      uploadResultList.innerHTML = "";
+      if (!items || items.length === 0) {
+        uploadResults.hidden = true;
+        return;
+      }
+      items.forEach(result => {
+        const item = document.createElement("li");
+        const statusLabels = {
+          ingested: "Yeni eklendi",
+          duplicate: "Zaten mevcut",
+          error: "Hata",
+        };
+        const details = [];
+        if (result.pages) details.push(`${result.pages} sayfa`);
+        if (result.chunks) details.push(`${result.chunks} parca`);
+        if (result.embeddings_created) details.push(`${result.embeddings_created} embedding`);
+        if (result.error) details.push(result.error);
+        const detailText = details.length ? ` | ${details.join(" | ")}` : "";
+        item.textContent = `${result.file_name}: ${statusLabels[result.status] || result.status}${detailText}`;
+        uploadResultList.appendChild(item);
+      });
+      uploadResults.hidden = false;
     }
 
     function renderUploadedDocuments(items) {
@@ -2327,11 +3136,6 @@ def upload_page() -> HTMLResponse:
     function setStatus(kind, message) {
       statusBox.className = `status show ${kind}`;
       statusBox.textContent = message;
-    }
-
-    function setSingleStatus(kind, message) {
-      singleStatusBox.className = `status show ${kind}`;
-      singleStatusBox.textContent = message;
     }
 
     function setCatalogStatus(kind, message) {
@@ -2574,12 +3378,502 @@ def upload_page() -> HTMLResponse:
       }
     }
 
-    function appendChatMessage(role, content) {
+    function setDuplicateWorkspace(view) {
+      duplicateWorkspaceView = view === "comparison" ? "comparison" : "candidates";
+      const comparisonActive = duplicateWorkspaceView === "comparison";
+      duplicateCandidatesTab.classList.toggle("active", !comparisonActive);
+      reportComparisonTab.classList.toggle("active", comparisonActive);
+      duplicateCandidatesTab.setAttribute("aria-selected", String(!comparisonActive));
+      reportComparisonTab.setAttribute("aria-selected", String(comparisonActive));
+      duplicateCandidatesPane.hidden = comparisonActive;
+      reportComparisonPane.hidden = !comparisonActive;
+      if (comparisonActive) {
+        refreshComparisonDocuments();
+      } else {
+        refreshDuplicates();
+      }
+    }
+
+    function temporaryOptionSnapshot(select) {
+      const option = select.selectedOptions[0];
+      if (!option || !option.value.startsWith("temp:")) {
+        return null;
+      }
+      return { value: option.value, text: option.textContent };
+    }
+
+    function fillComparisonSelect(select, items, preserved) {
+      const previousValue = select.value;
+      select.innerHTML = '<option value="">Rapor sec...</option>';
+      items.forEach(item => {
+        const option = document.createElement("option");
+        option.value = `doc:${item.document_id}`;
+        option.textContent = `${item.title} | ${item.file_name}`;
+        select.appendChild(option);
+      });
+      if (preserved && !Array.from(select.options).some(option => option.value === preserved.value)) {
+        const option = document.createElement("option");
+        option.value = preserved.value;
+        option.textContent = preserved.text;
+        option.dataset.temporary = "true";
+        select.appendChild(option);
+      }
+      if (Array.from(select.options).some(option => option.value === previousValue)) {
+        select.value = previousValue;
+      } else if (preserved) {
+        select.value = preserved.value;
+      }
+    }
+
+    async function refreshComparisonDocuments(force = false) {
+      if (comparisonDocumentsLoaded && !force) {
+        return;
+      }
+      const leftTemporary = temporaryOptionSnapshot(comparisonLeftSelect);
+      const rightTemporary = temporaryOptionSnapshot(comparisonRightSelect);
+      try {
+        const response = await fetch("/documents/list?limit=500");
+        const data = await response.json();
+        if (!response.ok) {
+          comparisonStatus.textContent = data.detail || "Rapor listesi alinamadi.";
+          return;
+        }
+        fillComparisonSelect(comparisonLeftSelect, data.items || [], leftTemporary);
+        fillComparisonSelect(comparisonRightSelect, data.items || [], rightTemporary);
+        comparisonDocumentsLoaded = true;
+      } catch (error) {
+        comparisonStatus.textContent = `Rapor listesi alinamadi: ${error}`;
+      }
+    }
+
+    function setTemporaryComparisonSelection(select, data) {
+      const value = `temp:${data.upload_token}`;
+      let option = Array.from(select.options).find(item => item.value === value);
+      if (!option) {
+        option = document.createElement("option");
+        option.value = value;
+        option.dataset.temporary = "true";
+        select.appendChild(option);
+      }
+      option.textContent = `${data.title} | gecici yukleme`;
+      select.value = value;
+    }
+
+    function updateComparisonSourceMeta(select, meta) {
+      const option = select.selectedOptions[0];
+      if (!option || !option.value) {
+        meta.textContent = "Kaynak secilmedi.";
+        return;
+      }
+      meta.textContent = option.value.startsWith("temp:")
+        ? "Gecici rapor, havuza eklenmedi."
+        : "Rapor havuzundan secildi.";
+    }
+
+    async function uploadComparisonSource(side, input) {
+      const file = input.files && input.files[0];
+      if (!file) {
+        return;
+      }
+      const select = side === "left" ? comparisonLeftSelect : comparisonRightSelect;
+      const meta = side === "left" ? comparisonLeftMeta : comparisonRightMeta;
+      comparisonRunButton.disabled = true;
+      input.disabled = true;
+      const persist = comparisonPersistUploads.checked;
+      const startedAt = startTimer(
+        message => { comparisonStatus.textContent = message; },
+        persist ? "Rapor havuza ekleniyor..." : "Gecici rapor yukleniyor..."
+      );
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const endpoint = persist ? "/ingest" : "/report-comparison/upload";
+        const response = await fetch(endpoint, { method: "POST", body: formData });
+        const data = await response.json();
+        if (!response.ok) {
+          stopTimer(
+            startedAt,
+            message => { comparisonStatus.textContent = message; },
+            data.detail || "Rapor yuklenemedi."
+          );
+          return;
+        }
+        if (persist) {
+          comparisonDocumentsLoaded = false;
+          await refreshComparisonDocuments(true);
+          select.value = `doc:${data.document_id}`;
+          meta.textContent = "Rapor havuzuna eklendi ve secildi.";
+        } else {
+          setTemporaryComparisonSelection(select, data);
+          meta.textContent = "Gecici rapor yuklendi; rapor havuzuna eklenmedi.";
+        }
+        stopTimer(
+          startedAt,
+          message => { comparisonStatus.textContent = message; },
+          `${file.name} karsilastirma icin hazir.`
+        );
+      } catch (error) {
+        stopTimer(
+          startedAt,
+          message => { comparisonStatus.textContent = message; },
+          `Rapor yuklenemedi: ${error}`
+        );
+      } finally {
+        input.value = "";
+        input.disabled = false;
+        comparisonRunButton.disabled = false;
+      }
+    }
+
+    function comparisonSourcePayload(value) {
+      if (value.startsWith("doc:")) {
+        return { document_id: Number(value.slice(4)) };
+      }
+      if (value.startsWith("temp:")) {
+        return { upload_token: value.slice(5) };
+      }
+      return null;
+    }
+
+    function ensureComparisonOption(target, source, value) {
+      if (!value || Array.from(target.options).some(option => option.value === value)) {
+        return;
+      }
+      const sourceOption = Array.from(source.options).find(option => option.value === value);
+      if (sourceOption) {
+        target.appendChild(sourceOption.cloneNode(true));
+      }
+    }
+
+    function swapComparisonSources() {
+      const leftValue = comparisonLeftSelect.value;
+      const rightValue = comparisonRightSelect.value;
+      ensureComparisonOption(comparisonLeftSelect, comparisonRightSelect, rightValue);
+      ensureComparisonOption(comparisonRightSelect, comparisonLeftSelect, leftValue);
+      comparisonLeftSelect.value = rightValue;
+      comparisonRightSelect.value = leftValue;
+      updateComparisonSourceMeta(comparisonLeftSelect, comparisonLeftMeta);
+      updateComparisonSourceMeta(comparisonRightSelect, comparisonRightMeta);
+    }
+
+    function comparisonTypeLabel(type) {
+      const labels = {
+        value_change: "Deger degisikligi",
+        result_change: "Sonuc degisikligi",
+        contradiction: "Celiski",
+        content_change: "Icerik farki",
+        only_left: "Yalniz Rapor A",
+        only_right: "Yalniz Rapor B",
+      };
+      return labels[type] || "Farklilik";
+    }
+
+    function comparisonHighlightColor(value) {
+      const color = String(value || "").trim();
+      return /^#[0-9a-fA-F]{6}$/.test(color) ? color : "";
+    }
+
+    function renderComparisonEvidence(source, label) {
+      const page = source.page_start
+        ? `Sayfa ${source.page_start}${source.page_end && source.page_end !== source.page_start ? "-" + source.page_end : ""}`
+        : "Eslesen kaynak yok";
+      const section = source.section_title ? ` | ${escapeHtml(source.section_title)}` : "";
+      const openButton = Number.isInteger(source.document_id)
+        ? `<button class="comparison-open" type="button" onclick="openDocumentFile(${source.document_id})">Raporu Ac</button>`
+        : "";
+      return `
+        <div class="comparison-evidence">
+          <div class="comparison-evidence-title">
+            <span>${label} | ${escapeHtml(source.document_title)}</span>
+            ${openButton}
+          </div>
+          <div class="small">${page}${section}</div>
+          <div class="comparison-evidence-text">${escapeHtml(source.excerpt)}</div>
+        </div>
+      `;
+    }
+
+    function renderComparisonRows(container, items, emptyMessage) {
+      if (!items || items.length === 0) {
+        container.innerHTML = `<div class="empty" style="padding:16px 0;">${escapeHtml(emptyMessage)}</div>`;
+        return;
+      }
+      container.innerHTML = items.map(item => {
+        const tag = item.kind === "difference"
+          ? comparisonTypeLabel(item.difference_type)
+          : "Ortak bulgu";
+        const confidence = Math.round((Number(item.confidence) || 0) * 100);
+        const highlightColor = comparisonHighlightColor(item.highlight_color);
+        const highlightNumber = Number(item.highlight_number) || 0;
+        const highlighted = Boolean(highlightColor && highlightNumber);
+        const highlightActions = highlighted
+          ? `
+            <span class="comparison-pair-marker" style="--pair-color:${highlightColor}">Eslesme ${highlightNumber}</span>
+            <button class="comparison-focus" type="button" data-comparison-focus="${escapeHtml(item.id)}">PDF'de Goster</button>
+          `
+          : "";
+        return `
+          <article class="comparison-row${highlighted ? " has-pdf-highlight" : ""}"${highlighted ? ` style="--pair-color:${highlightColor}"` : ""}>
+            <div class="comparison-row-head">
+              <div>
+                <div class="comparison-row-topic">${escapeHtml(item.topic)}</div>
+                <div class="comparison-row-summary">${escapeHtml(item.summary)}</div>
+              </div>
+              <div class="comparison-highlight-actions">
+                ${highlightActions}
+                <span class="tag">${escapeHtml(tag)} | %${confidence}</span>
+              </div>
+            </div>
+            <div class="comparison-evidence-grid">
+              ${renderComparisonEvidence(item.left, "Rapor A")}
+              ${renderComparisonEvidence(item.right, "Rapor B")}
+            </div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function setComparisonResultView(view) {
+      const showDifferences = view === "differences";
+      comparisonSimilaritiesTab.classList.toggle("active", !showDifferences);
+      comparisonDifferencesTab.classList.toggle("active", showDifferences);
+      comparisonSimilaritiesTab.setAttribute("aria-selected", String(!showDifferences));
+      comparisonDifferencesTab.setAttribute("aria-selected", String(showDifferences));
+      comparisonSimilaritiesPane.hidden = showDifferences;
+      comparisonDifferencesPane.hidden = !showDifferences;
+    }
+
+    function comparisonItems() {
+      if (!latestComparisonData) return [];
+      return [
+        ...(latestComparisonData.similarities || []),
+        ...(latestComparisonData.differences || []),
+      ];
+    }
+
+    function comparisonPdfPageUrl(url, page) {
+      const safePage = Math.max(Number(page) || 1, 1);
+      return `${url}#page=${safePage}&zoom=page-width`;
+    }
+
+    function setComparisonPdfSide(side, preview, documentData, page) {
+      const leftSide = side === "left";
+      const frame = leftSide ? comparisonLeftPdfFrame : comparisonRightPdfFrame;
+      const placeholder = leftSide ? comparisonLeftPdfPlaceholder : comparisonRightPdfPlaceholder;
+      const title = leftSide ? comparisonLeftPdfTitle : comparisonRightPdfTitle;
+      const openButton = leftSide ? comparisonLeftPdfOpen : comparisonRightPdfOpen;
+      const label = leftSide ? "Rapor A" : "Rapor B";
+      title.textContent = `${label} | ${documentData?.title || documentData?.file_name || "PDF"}`;
+      if (preview?.available && preview.url) {
+        const targetUrl = comparisonPdfPageUrl(preview.url, page);
+        frame.hidden = false;
+        placeholder.hidden = true;
+        if (frame.getAttribute("src") !== targetUrl) {
+          frame.setAttribute("src", targetUrl);
+        }
+        openButton.disabled = false;
+        openButton.dataset.url = targetUrl;
+        return;
+      }
+      frame.hidden = true;
+      frame.removeAttribute("src");
+      placeholder.hidden = false;
+      placeholder.textContent = preview?.reason || "Bu kaynak icin PDF onizlemesi bulunmuyor.";
+      openButton.disabled = true;
+      delete openButton.dataset.url;
+    }
+
+    function focusComparisonPdf(itemId, scrollToViewer = true) {
+      if (!latestComparisonData) return;
+      const item = comparisonItems().find(row => row.id === itemId);
+      if (!item) return;
+      const leftPage = item.left?.highlight_page || item.left?.page_start || 1;
+      const rightPage = item.right?.highlight_page || item.right?.page_start || 1;
+      setComparisonPdfSide("left", latestComparisonData.left_pdf, latestComparisonData.left, leftPage);
+      setComparisonPdfSide("right", latestComparisonData.right_pdf, latestComparisonData.right, rightPage);
+      const number = Number(item.highlight_number) || "";
+      comparisonPdfStatus.textContent = number
+        ? `Eslesme ${number} secildi. PDF'lerin tamami acik; ayni renk eslestirilen pasaj ciftini gosterir.`
+        : "PDF'lerin tamami renkli isaretlemelerle acildi.";
+      if (scrollToViewer) {
+        comparisonPdfWorkspace.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+
+    function renderComparisonPdfWorkspace(data) {
+      comparisonPdfWorkspace.hidden = false;
+      const pairViewerAvailable = Boolean(
+        data.comparison_id && data.left_pdf?.available && data.right_pdf?.available
+      );
+      comparisonPairFullscreenOpen.disabled = !pairViewerAvailable;
+      if (pairViewerAvailable) {
+        comparisonPairFullscreenOpen.dataset.url =
+          `/report-comparison/${encodeURIComponent(data.comparison_id)}/viewer`;
+        comparisonPairFullscreenOpen.title = "Renkli iki PDF'yi yeni sekmede yan yana ac";
+      } else {
+        delete comparisonPairFullscreenOpen.dataset.url;
+        comparisonPairFullscreenOpen.title = "Tam ekran icin iki kaynagin da PDF olmasi gerekir";
+      }
+      const highlightedItems = comparisonItems().filter(
+        item => comparisonHighlightColor(item.highlight_color) && Number(item.highlight_number)
+      );
+      const legendItems = [];
+      const seenNumbers = new Set();
+      highlightedItems.forEach(item => {
+        const number = Number(item.highlight_number);
+        if (seenNumbers.has(number)) return;
+        seenNumbers.add(number);
+        legendItems.push(item);
+      });
+      comparisonHighlightLegend.innerHTML = legendItems.map(item => {
+        const color = comparisonHighlightColor(item.highlight_color);
+        return `
+          <span class="comparison-highlight-legend-item" title="${escapeHtml(item.topic)}">
+            <span class="comparison-highlight-swatch" style="--pair-color:${color}"></span>
+            ${Number(item.highlight_number)}
+          </span>
+        `;
+      }).join("");
+
+      const leftCount = Number(data.left_pdf?.highlighted_passages) || 0;
+      const rightCount = Number(data.right_pdf?.highlighted_passages) || 0;
+      comparisonPdfStatus.textContent = highlightedItems.length
+        ? `Rapor A: ${leftCount}, Rapor B: ${rightCount} pasaj isaretlendi. Bir sonuc uzerinden PDF'de Goster'e basabilirsin.`
+        : "PDF'ler acildi ancak eslesen pasaj koordinati bulunamadi.";
+
+      const initialItem = highlightedItems[0];
+      const leftPage = initialItem?.left?.highlight_page || initialItem?.left?.page_start || 1;
+      const rightPage = initialItem?.right?.highlight_page || initialItem?.right?.page_start || 1;
+      setComparisonPdfSide("left", data.left_pdf, data.left, leftPage);
+      setComparisonPdfSide("right", data.right_pdf, data.right, rightPage);
+    }
+
+    function renderComparison(data) {
+      latestComparisonData = data;
+      comparisonOutput.hidden = false;
+      comparisonSummary.innerHTML = `
+        <div class="comparison-summary-item">
+          <span class="comparison-summary-value">${data.similarity_count}</span>
+          <span class="comparison-summary-label">Benzerlik</span>
+        </div>
+        <div class="comparison-summary-item">
+          <span class="comparison-summary-value">${data.difference_count}</span>
+          <span class="comparison-summary-label">Farklilik</span>
+        </div>
+        <div class="comparison-summary-item">
+          <span class="comparison-summary-value">%${Math.round((Number(data.coverage) || 0) * 100)}</span>
+          <span class="comparison-summary-label">Eslesen icerik kapsami</span>
+        </div>
+      `;
+      comparisonSimilaritiesTab.textContent = `Benzerlikler (${data.similarity_count})`;
+      comparisonDifferencesTab.textContent = `Farkliliklar (${data.difference_count})`;
+      renderComparisonRows(
+        comparisonSimilarities,
+        data.similarities || [],
+        "Guvenilir ortak teknik bulgu bulunamadi."
+      );
+      renderComparisonRows(
+        comparisonDifferences,
+        data.differences || [],
+        "Guvenilir farklilik bulunamadi."
+      );
+      renderComparisonPdfWorkspace(data);
+      setComparisonResultView(data.similarity_count > 0 ? "similarities" : "differences");
+    }
+
+    async function runReportComparison() {
+      const left = comparisonSourcePayload(comparisonLeftSelect.value);
+      const right = comparisonSourcePayload(comparisonRightSelect.value);
+      if (!left || !right) {
+        comparisonStatus.textContent = "Karsilastirma icin Rapor A ve Rapor B secilmeli.";
+        return;
+      }
+      if (comparisonLeftSelect.value === comparisonRightSelect.value) {
+        comparisonStatus.textContent = "Iki farkli rapor sec.";
+        return;
+      }
+      comparisonRunButton.disabled = true;
+      comparisonOutput.hidden = true;
+      comparisonPdfWorkspace.hidden = true;
+      comparisonPairFullscreenOpen.disabled = true;
+      delete comparisonPairFullscreenOpen.dataset.url;
+      comparisonLeftPdfFrame.removeAttribute("src");
+      comparisonRightPdfFrame.removeAttribute("src");
+      const startedAt = startTimer(
+        message => { comparisonStatus.textContent = message; },
+        "Raporlar eslestiriliyor ve farklar dogrulaniyor..."
+      );
+      try {
+        const response = await fetch("/report-comparison", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ left, right, use_llm: true }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          stopTimer(
+            startedAt,
+            message => { comparisonStatus.textContent = message; },
+            data.detail || "Raporlar karsilastirilamadi."
+          );
+          return;
+        }
+        renderComparison(data);
+        const generation = data.llm_used ? data.generation_provider : "kural tabanli";
+        const cacheText = data.cache_hit ? " | onbellek" : "";
+        stopTimer(
+          startedAt,
+          message => { comparisonStatus.textContent = message; },
+          `Karsilastirma tamamlandi. Benzerlik: ${data.similarity_count}, farklilik: ${data.difference_count} | ${generation}${cacheText}`
+        );
+      } catch (error) {
+        stopTimer(
+          startedAt,
+          message => { comparisonStatus.textContent = message; },
+          `Raporlar karsilastirilamadi: ${error}`
+        );
+      } finally {
+        comparisonRunButton.disabled = false;
+      }
+    }
+
+    function compactChatProvider(provider) {
+      const value = String(provider || "");
+      if (!value) return "";
+      if (value.includes("Qwen3-Embedding")) return "Qwen3 Embedding";
+      if (value.includes("ollama:")) return value.split("ollama:").pop();
+      if (value === "document-analysis:status") return "Kural tabanli";
+      if (value === "database") return "Veritabani";
+      if (value === "keyword-only") return "Keyword";
+      return value.split(":").pop();
+    }
+
+    function chatEngineLabel(data) {
+      if (!data.retrieval_used) {
+        return `Genel LLM${data.embedding_provider ? ` • ${compactChatProvider(data.embedding_provider)}` : ""}`;
+      }
+      const version = data.retrieval_version === "v1" ? "RAG v1 • Klasik" : "RAG v2 • Beta";
+      const providers = [
+        compactChatProvider(data.retrieval_provider),
+        compactChatProvider(data.embedding_provider),
+      ].filter((value, index, items) => value && items.indexOf(value) === index);
+      return [version, ...providers].join(" • ");
+    }
+
+    function appendChatMessage(role, content, meta = "") {
       const node = document.createElement("div");
       node.className = `chat-message ${role}`;
       const label = document.createElement("div");
       label.className = "chat-message-label";
-      label.textContent = role === "user" ? "Sen" : "Big Agent";
+      const labelText = document.createElement("span");
+      labelText.textContent = role === "user" ? "Sen" : "Big Agent";
+      label.appendChild(labelText);
+      if (meta) {
+        const metaNode = document.createElement("span");
+        metaNode.className = "chat-message-meta";
+        metaNode.textContent = meta;
+        label.appendChild(metaNode);
+      }
       const body = document.createElement("div");
       body.className = "chat-message-body";
       body.textContent = content;
@@ -2591,6 +3885,7 @@ def upload_page() -> HTMLResponse:
 
     function resetChat() {
       chatHistory = [];
+      chatContextDocumentIds = [];
       chatMessages.innerHTML = "";
       appendChatMessage("assistant", "Merhaba. Raporlar uzerinden soru sorabilir, ben de kaynaklariyla birlikte cevaplayabilirim.");
       chatSources.innerHTML = '<div class="empty">Kaynaklar cevap geldikce burada listelenecek.</div>';
@@ -2626,8 +3921,10 @@ def upload_page() -> HTMLResponse:
             message,
             history: chatHistory.slice(-8),
             assistant_mode: chatAssistantMode.value,
+            retrieval_version: chatRetrievalVersion.value,
             mode: chatMode.value,
             limit: 5,
+            document_ids: chatContextDocumentIds.slice(0, 8),
           }),
         });
         const data = await response.json();
@@ -2636,16 +3933,21 @@ def upload_page() -> HTMLResponse:
           appendChatMessage("assistant", data.detail || "Cevap olusturulamadi.");
           return;
         }
-        appendChatMessage("assistant", data.answer);
+        const engineLabel = chatEngineLabel(data);
+        appendChatMessage("assistant", data.answer, engineLabel);
         chatHistory = data.history || [
           ...chatHistory,
           { role: "assistant", content: data.answer },
         ];
+        chatContextDocumentIds = [...new Set((data.sources || [])
+          .map(item => Number(item.document_id))
+          .filter(value => Number.isInteger(value) && value > 0)
+        )].slice(0, 8);
         renderChatSources(data.sources || []);
         stopTimer(
           startedAt,
           text => { chatStatus.textContent = text; },
-          `Cevap hazir. Guven: ${formatScore(data.confidence)} | Kaynak: ${(data.sources || []).length}`
+          `${engineLabel} | Guven: ${formatScore(data.confidence)} | Kaynak: ${(data.sources || []).length}`
         );
       } catch (error) {
         stopTimer(startedAt, text => { chatStatus.textContent = text; }, `Chatbot hata verdi: ${error}`);
@@ -2692,16 +3994,40 @@ def upload_page() -> HTMLResponse:
     function renderDraftSources(items) {
       if (!items || items.length === 0) {
         draftSources.innerHTML = '<div class="empty">Referans kaynak bulunamadi.</div>';
+        selectedDraftDocumentIds = [];
         return;
       }
 
+      const previousSelection = new Set(selectedDraftDocumentIds.map(Number));
+      const hasPreviousSelection = previousSelection.size > 0;
+      const sourceDocumentIds = [...new Set(items.map(item => Number(item.document_id)).filter(value => Number.isInteger(value) && value > 0))];
+      selectedDraftDocumentIds = hasPreviousSelection
+        ? sourceDocumentIds.filter(value => previousSelection.has(value))
+        : sourceDocumentIds;
+
       draftSources.innerHTML = items.map(item => `
-        <article class="source-card" onclick="openDocumentFile(${item.document_id})" style="cursor:pointer;">
+        <article class="source-card">
           <div class="title">${escapeHtml(item.document_title)}</div>
-          <div class="small">Sayfa ${item.page_start}-${item.page_end}${item.section_title ? " | " + escapeHtml(item.section_title) : ""}</div>
+          <div class="small">Belge ID: ${item.document_id} | Sayfa ${item.page_start}-${item.page_end}${item.section_title ? " | " + escapeHtml(item.section_title) : ""}</div>
+          <label class="small" style="display:flex;gap:8px;align-items:center;margin:8px 0;">
+            <input type="checkbox" class="draft-source-check" value="${item.document_id}" ${selectedDraftDocumentIds.includes(Number(item.document_id)) ? "checked" : ""} />
+            Rapor taslaginda kullan
+          </label>
           <div class="excerpt">${escapeHtml(item.chunk_text)}</div>
+          <button class="button secondary" type="button" onclick="openDocumentFile(${item.document_id})" style="margin-top:8px;">Raporu Gor</button>
         </article>
       `).join("");
+
+      draftSources.querySelectorAll(".draft-source-check").forEach(input => {
+        input.addEventListener("change", updateSelectedDraftSources);
+      });
+      updateSelectedDraftSources();
+    }
+
+    function updateSelectedDraftSources() {
+      selectedDraftDocumentIds = Array.from(draftSources.querySelectorAll(".draft-source-check:checked"))
+        .map(input => Number(input.value))
+        .filter(value => Number.isInteger(value) && value > 0);
     }
 
     function renderCatalogMatches(items) {
@@ -3592,6 +4918,10 @@ def upload_page() -> HTMLResponse:
         mode: draftMode.value,
         limit: 5,
       };
+      updateSelectedDraftSources();
+      if (selectedDraftDocumentIds.length > 0) {
+        payload.document_ids = selectedDraftDocumentIds;
+      }
 
       draftQuickButton.disabled = true;
       draftDetailedButton.disabled = true;
@@ -3617,7 +4947,7 @@ def upload_page() -> HTMLResponse:
         stopTimer(
           startedAt,
           message => { draftMeta.textContent = message; },
-          `Tur: ${data.detail_level} | Arama: ${data.embedding_provider} | Yazim: ${data.generation_provider || "template"} | Anahtar kelime: ${data.refined_keywords.length} | Kaynak: ${data.sources.length}`
+          `Tur: ${data.detail_level} | Arama: ${data.embedding_provider} | Yazim: ${data.generation_provider || "template"} | Anahtar kelime: ${data.refined_keywords.length} | Kaynak: ${data.sources.length}${payload.document_ids ? " | Secili belge: " + payload.document_ids.length : ""}`
         );
         draftOutput.textContent = data.draft;
         renderDraftSources(data.sources);
@@ -3731,6 +5061,7 @@ def upload_page() -> HTMLResponse:
       draftMeta.textContent = "Taslak uretilmedi.";
       lastDraftPayload = null;
       lastDraftData = null;
+      selectedDraftDocumentIds = [];
       draftCopyButton.disabled = true;
       draftPdfButton.disabled = true;
     }
@@ -3738,17 +5069,10 @@ def upload_page() -> HTMLResponse:
     picker.addEventListener("change", () => {
       selectedFiles = Array.from(picker.files || []);
       renderFiles();
-      setStatus("ok", "Klasor secildi. Istersen simdi yuklemeyi baslatabilirsin.");
-    });
-
-    singlePicker.addEventListener("change", () => {
-      selectedSingleFile = (singlePicker.files && singlePicker.files[0]) ? singlePicker.files[0] : null;
-      if (!selectedSingleFile) {
-        singleSummary.textContent = "Henuz tekli dosya secilmedi.";
-        return;
+      renderUploadResults([]);
+      if (selectedFiles.length > 0) {
+        setStatus("ok", "Raporlar secildi. Yuklemeyi baslatabilirsin.");
       }
-      singleSummary.textContent = `Secilen dosya: ${selectedSingleFile.name}`;
-      setSingleStatus("ok", "Dosya secildi. Istersen simdi yuklemeyi baslatabilirsin.");
     });
 
     catalogPicker.addEventListener("change", () => {
@@ -3761,45 +5085,6 @@ def upload_page() -> HTMLResponse:
       setCatalogStatus("ok", "Katalog secildi. Istersen simdi yukleyebilirsin.");
     });
 
-    singleUploadButton.addEventListener("click", async () => {
-      if (!selectedSingleFile) {
-        setSingleStatus("error", "Yuklemek icin once bir dosya sec.");
-        return;
-      }
-      const lower = selectedSingleFile.name.toLowerCase();
-      if (!(lower.endsWith(".pdf") || lower.endsWith(".docx") || lower.endsWith(".pptx"))) {
-        setSingleStatus("error", "Sadece PDF ve DOCX desteklenir.");
-        return;
-      }
-
-      const formData = new FormData();
-      formData.append("file", selectedSingleFile, selectedSingleFile.name);
-
-      singleUploadButton.disabled = true;
-      const startedAt = startTimer(message => setSingleStatus("ok", message), "Dosya yukleniyor...");
-
-      try {
-        const response = await fetch("/ingest", {
-          method: "POST",
-          body: formData,
-        });
-        const data = await response.json();
-        singleResultBox.textContent = JSON.stringify(data, null, 2);
-        if (response.ok) {
-          stopTimer(startedAt, message => setSingleStatus("ok", message), `Islem tamamlandi. Durum: ${data.status}.`);
-          if (activeModule && activeModule.dataset.moduleKey === "upload") {
-            await refreshUploadedDocuments();
-          }
-        } else {
-          stopTimer(startedAt, message => setSingleStatus("error", message), data.detail || "Yukleme basarisiz oldu.");
-        }
-      } catch (error) {
-        stopTimer(startedAt, message => setSingleStatus("error", message), `Istek basarisiz oldu: ${error}`);
-      } finally {
-        singleUploadButton.disabled = false;
-      }
-    });
-
     uploadButton.addEventListener("click", async () => {
       const supported = selectedFiles.filter(file => {
         const lower = file.name.toLowerCase();
@@ -3807,7 +5092,7 @@ def upload_page() -> HTMLResponse:
       });
 
       if (supported.length === 0) {
-        setStatus("error", "Yuklenecek PDF veya DOCX bulunamadi.");
+        setStatus("error", "Yuklemek icin en az bir PDF, DOCX veya PPTX sec.");
         return;
       }
 
@@ -3815,7 +5100,10 @@ def upload_page() -> HTMLResponse:
       supported.forEach(file => formData.append("files", file, file.name));
 
       uploadButton.disabled = true;
-      const startedAt = startTimer(message => setStatus("ok", message), "Dosyalar yukleniyor...");
+      const startedAt = startTimer(
+        message => setStatus("ok", message),
+        supported.length === 1 ? "Rapor yukleniyor..." : "Raporlar yukleniyor..."
+      );
 
       try {
         const response = await fetch("/ingest/batch", {
@@ -3823,12 +5111,12 @@ def upload_page() -> HTMLResponse:
           body: formData,
         });
         const data = await response.json();
-        resultBox.textContent = JSON.stringify(data, null, 2);
+        renderUploadResults(data.items || []);
         if (response.ok) {
           stopTimer(
             startedAt,
             message => setStatus("ok", message),
-            `Yukleme tamamlandi. ${data.ingested_count} yeni dosya islendi, ${data.duplicate_count} duplicate bulundu.`
+            `Yukleme tamamlandi. Yeni: ${data.ingested_count}, zaten mevcut: ${data.duplicate_count}, hata: ${data.error_count}.`
           );
           if (activeModule && activeModule.dataset.moduleKey === "upload") {
             await refreshUploadedDocuments();
@@ -3886,6 +5174,11 @@ def upload_page() -> HTMLResponse:
     searchButton.addEventListener("click", runSearch);
     chatSendButton.addEventListener("click", sendChatMessage);
     chatClearButton.addEventListener("click", resetChat);
+    chatRetrievalVersion.addEventListener("change", () => {
+      const selectedLabel = chatRetrievalVersion.value === "v1" ? "RAG v1 (Klasik)" : "RAG v2 (Beta)";
+      resetChat();
+      chatStatus.textContent = `${selectedLabel} secildi. Yeni sohbet baglami hazir.`;
+    });
     chatPromptButtons.forEach(button => {
       button.addEventListener("click", () => {
         chatInput.value = button.dataset.chatPrompt || "";
@@ -3900,6 +5193,41 @@ def upload_page() -> HTMLResponse:
     });
     duplicateScanButton.addEventListener("click", runDuplicateScan);
     duplicateRefreshButton.addEventListener("click", refreshDuplicates);
+    duplicateCandidatesTab.addEventListener("click", () => setDuplicateWorkspace("candidates"));
+    reportComparisonTab.addEventListener("click", () => setDuplicateWorkspace("comparison"));
+    comparisonLeftSelect.addEventListener("change", () => {
+      updateComparisonSourceMeta(comparisonLeftSelect, comparisonLeftMeta);
+    });
+    comparisonRightSelect.addEventListener("change", () => {
+      updateComparisonSourceMeta(comparisonRightSelect, comparisonRightMeta);
+    });
+    comparisonLeftUpload.addEventListener("change", () => {
+      uploadComparisonSource("left", comparisonLeftUpload);
+    });
+    comparisonRightUpload.addEventListener("change", () => {
+      uploadComparisonSource("right", comparisonRightUpload);
+    });
+    comparisonSwapButton.addEventListener("click", swapComparisonSources);
+    comparisonRunButton.addEventListener("click", runReportComparison);
+    comparisonSimilaritiesTab.addEventListener("click", () => setComparisonResultView("similarities"));
+    comparisonDifferencesTab.addEventListener("click", () => setComparisonResultView("differences"));
+    [comparisonSimilarities, comparisonDifferences].forEach(container => {
+      container.addEventListener("click", event => {
+        const button = event.target.closest("[data-comparison-focus]");
+        if (!button) return;
+        focusComparisonPdf(button.dataset.comparisonFocus);
+      });
+    });
+    [comparisonLeftPdfOpen, comparisonRightPdfOpen].forEach(button => {
+      button.addEventListener("click", () => {
+        const url = button.dataset.url;
+        if (url) window.open(url, "_blank", "noopener,noreferrer");
+      });
+    });
+    comparisonPairFullscreenOpen.addEventListener("click", () => {
+      const url = comparisonPairFullscreenOpen.dataset.url;
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+    });
     searchQuery.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
@@ -4170,6 +5498,235 @@ def scan_duplicate_report_pairs(
     return DuplicateReportScanResponse(**service.scan(threshold=threshold, dry_run=dry_run))
 
 
+@app.post("/report-comparison/upload", response_model=ReportComparisonUploadResponse)
+def upload_report_for_comparison(
+    file: Annotated[UploadFile, File(...)],
+    session: Session = Depends(get_session),
+) -> ReportComparisonUploadResponse:
+    try:
+        service = ReportComparisonService(session)
+        result = service.store_temporary_upload(file.filename or "report", file.file.read())
+        return ReportComparisonUploadResponse(**result)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Temporary report comparison upload failed.")
+        raise HTTPException(status_code=500, detail="Gecici rapor yuklenemedi.") from exc
+
+
+@app.post("/report-comparison", response_model=ReportComparisonResponse)
+def compare_reports(
+    payload: ReportComparisonRequest,
+    session: Session = Depends(get_session),
+) -> ReportComparisonResponse:
+    left = payload.left.model_dump()
+    right = payload.right.model_dump()
+    for source in (left, right):
+        selected_count = int(bool(source.get("document_id"))) + int(bool(source.get("upload_token")))
+        if selected_count != 1:
+            raise HTTPException(status_code=400, detail="Her taraf icin tek bir rapor kaynagi sec.")
+    try:
+        service = ReportComparisonService(session)
+        return ReportComparisonResponse(
+            **service.compare(left, right, use_llm=payload.use_llm)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Report comparison failed.")
+        raise HTTPException(status_code=500, detail="Rapor karsilastirmasi tamamlanamadi.") from exc
+
+
+@app.get("/report-comparison/{comparison_id}/pdf/{side}")
+def comparison_highlighted_pdf(
+    comparison_id: str,
+    side: Literal["left", "right"],
+) -> FileResponse:
+    try:
+        pdf_path = resolve_comparison_pdf_path(comparison_id, side)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FileResponse(
+        path=pdf_path,
+        filename=f"karsilastirma-{side}.pdf",
+        media_type="application/pdf",
+        content_disposition_type="inline",
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
+
+
+@app.get("/report-comparison/{comparison_id}/viewer", response_class=HTMLResponse)
+def comparison_fullscreen_viewer(comparison_id: str) -> HTMLResponse:
+    try:
+        resolve_comparison_pdf_path(comparison_id, "left")
+        resolve_comparison_pdf_path(comparison_id, "right")
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    viewer_html = """
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Renkli Rapor Karsilastirma</title>
+  <style>
+    :root {
+      --text: #261b1d;
+      --muted: #715f63;
+      --line: #d8c8cb;
+      --accent: #c22437;
+      --surface: #f2edef;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--surface);
+      color: var(--text);
+      font-family: "Segoe UI", Tahoma, sans-serif;
+    }
+    .viewer-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      height: 62px;
+      padding: 9px 16px;
+      border-bottom: 1px solid var(--line);
+      background: white;
+    }
+    .viewer-title {
+      min-width: 0;
+    }
+    .viewer-title strong {
+      display: block;
+      font-size: 16px;
+    }
+    .viewer-title span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .fullscreen-button {
+      min-height: 38px;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: white;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 800;
+      padding: 8px 13px;
+      white-space: nowrap;
+    }
+    .fullscreen-button:hover {
+      background: #9f1d2c;
+    }
+    .viewer-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      height: calc(100vh - 62px);
+    }
+    .pdf-pane {
+      display: grid;
+      grid-template-rows: 36px minmax(0, 1fr);
+      min-width: 0;
+      min-height: 0;
+      border-right: 1px solid var(--line);
+      background: #ded7d9;
+    }
+    .pdf-pane:last-child {
+      border-right: 0;
+    }
+    .pdf-label {
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--line);
+      background: #fbf9fa;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .pdf-frame {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #d8d1d3;
+    }
+    @media (max-width: 900px) {
+      html, body {
+        overflow: auto;
+      }
+      .viewer-bar {
+        height: auto;
+        min-height: 62px;
+      }
+      .viewer-title span {
+        display: none;
+      }
+      .viewer-grid {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+      .pdf-pane {
+        height: calc(100vh - 62px);
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="viewer-bar">
+    <div class="viewer-title">
+      <strong>Renkli Rapor Karsilastirma</strong>
+      <span>Eslesen pasajlar iki PDF'de ayni renklerle isaretlidir.</span>
+    </div>
+    <button class="fullscreen-button" id="browserFullscreenButton" type="button">Tarayici Tam Ekran</button>
+  </header>
+  <main class="viewer-grid">
+    <section class="pdf-pane">
+      <div class="pdf-label">Rapor A</div>
+      <iframe class="pdf-frame" title="Rapor A renkli tam PDF" src="/report-comparison/__COMPARISON_ID__/pdf/left#page=1&zoom=page-width"></iframe>
+    </section>
+    <section class="pdf-pane">
+      <div class="pdf-label">Rapor B</div>
+      <iframe class="pdf-frame" title="Rapor B renkli tam PDF" src="/report-comparison/__COMPARISON_ID__/pdf/right#page=1&zoom=page-width"></iframe>
+    </section>
+  </main>
+  <script>
+    const fullscreenButton = document.getElementById("browserFullscreenButton");
+    fullscreenButton.addEventListener("click", async () => {
+      try {
+        if (document.fullscreenElement) {
+          await document.exitFullscreen();
+        } else {
+          await document.documentElement.requestFullscreen();
+        }
+      } catch (error) {
+        fullscreenButton.textContent = "Tam Ekran Kullanilamiyor";
+      }
+    });
+    document.addEventListener("fullscreenchange", () => {
+      fullscreenButton.textContent = document.fullscreenElement
+        ? "Tam Ekrandan Cik"
+        : "Tarayici Tam Ekran";
+    });
+  </script>
+</body>
+</html>
+    """.replace("__COMPARISON_ID__", comparison_id)
+    return HTMLResponse(
+        viewer_html,
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
 @app.post("/ask", response_model=AskResponse)
 def ask(
     payload: AskRequest,
@@ -4192,14 +5749,21 @@ def chat(
     payload: ChatRequest,
     session: Session = Depends(get_session),
 ) -> ChatResponse:
+    history = [
+        item.model_dump()
+        for item in payload.history[-8:]
+        if item.content.strip()
+    ]
+    if (
+        history
+        and history[-1]["role"] == "user"
+        and history[-1]["content"].strip() == payload.message.strip()
+    ):
+        history.pop()
+
     if payload.assistant_mode == "general" or (
         payload.assistant_mode == "auto" and _is_general_chat_message(payload.message)
     ):
-        history = [
-            item.model_dump()
-            for item in payload.history[-8:]
-            if item.content.strip()
-        ]
         answer_text, provider_name, confidence = _chat_general_answer(payload.message, history)
         history.append({"role": "user", "content": payload.message})
         history.append({"role": "assistant", "content": answer_text})
@@ -4209,23 +5773,23 @@ def chat(
             answer_found=True,
             confidence=confidence,
             embedding_provider=provider_name,
+            retrieval_provider=None,
+            retrieval_version=payload.retrieval_version,
+            retrieval_used=False,
             sources=[],
             history=history[-10:],
         )
 
-    service = QAService(session)
+    service = DocumentIntelligenceService(session)
     answer = service.answer_question(
         payload.message,
+        history=history,
         mode=payload.mode,
         limit=payload.limit,
         document_id=payload.document_id,
-        use_llm_answer=payload.use_llm_answer,
+        context_document_ids=payload.document_ids,
+        retrieval_version=payload.retrieval_version,
     )
-    history = [
-        item.model_dump()
-        for item in payload.history[-8:]
-        if item.content.strip()
-    ]
     history.append({"role": "user", "content": payload.message})
     history.append({"role": "assistant", "content": answer["answer"]})
     return ChatResponse(
@@ -4234,6 +5798,9 @@ def chat(
         answer_found=answer["answer_found"],
         confidence=answer["confidence"],
         embedding_provider=answer["embedding_provider"],
+        retrieval_provider=service.search_service.embedding_provider_name(),
+        retrieval_version=payload.retrieval_version,
+        retrieval_used=True,
         sources=answer["sources"],
         history=history[-10:],
     )
@@ -4333,6 +5900,16 @@ def _is_report_focused_message(normalized: str) -> bool:
         "citi",
         "citibus",
         "goupil",
+        "tasarim",
+        "dayanikli",
+        "gerilme",
+        "stres",
+        "karsilastir",
+        "kiyasla",
+        "ozetle",
+        "ana konu",
+        "kapsam",
+        "sonuc",
     }
     if any(term in normalized for term in report_terms):
         return True
@@ -4645,6 +6222,7 @@ def draft_report(
             detail_level=payload.detail_level,
             mode=payload.mode,
             limit=payload.limit,
+            document_ids=payload.document_ids,
         )
     )
 
@@ -4670,6 +6248,7 @@ def draft_report_pdf(
         detail_level=payload.detail_level,
         mode=payload.mode,
         limit=payload.limit,
+        document_ids=payload.document_ids,
     )
     pdf_bytes = service.build_pdf_bytes(draft_payload)
     safe_title = _safe_download_name(draft_payload["title"])

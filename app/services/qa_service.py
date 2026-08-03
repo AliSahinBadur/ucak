@@ -5,7 +5,7 @@ import re
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from ..db.models import DocumentChunk
+from ..db.models import Document, DocumentChunk
 from .answer_generation_service import AnswerGenerationService
 from .search_service import SearchService
 
@@ -50,6 +50,7 @@ class QAService:
         document_id: int | None = None,
         document_ids: list[int] | None = None,
         use_llm_answer: bool = False,
+        retrieval_version: str = "v2",
     ) -> dict:
         cleaned_question = " ".join(question.split())
         scoped_document_ids = self._resolve_document_scope(document_id=document_id, document_ids=document_ids)
@@ -59,6 +60,7 @@ class QAService:
             limit=limit,
             document_id=document_id,
             document_ids=scoped_document_ids,
+            retrieval_version=retrieval_version,
         )
         if not results:
             return {
@@ -71,8 +73,11 @@ class QAService:
                 "sources": [],
             }
 
-        answer, answer_score = self._build_answer(cleaned_question, results)
-        generated_answer = self._generate_llm_answer(cleaned_question, results[:5]) if use_llm_answer else None
+        question_tokens = self.search_service.embedding_service.tokenize(cleaned_question)
+        question_profile = self._question_profile(cleaned_question)
+        ranked_results = self._prioritize_results_for_question(question_tokens, question_profile, results)
+        answer, answer_score = self._build_answer(cleaned_question, ranked_results)
+        generated_answer = self._generate_llm_answer(cleaned_question, ranked_results[:5]) if use_llm_answer else None
         answer_found = answer_score >= self.MIN_ANSWER_SCORE
         return {
             "question": cleaned_question,
@@ -82,7 +87,7 @@ class QAService:
             "answer_found": bool(generated_answer) or answer_found,
             "confidence": round(self._normalize_confidence(answer_score), 3),
             "embedding_provider": self.search_service.embedding_provider_name(),
-            "sources": results[:3],
+            "sources": ranked_results[:3],
         }
 
     def _generate_llm_answer(self, question: str, sources: list[dict]) -> str | None:
@@ -98,35 +103,63 @@ class QAService:
         limit: int,
         document_id: int | None = None,
         document_ids: list[int] | None = None,
+        retrieval_version: str = "v2",
     ) -> list[dict]:
         candidate_limit = max(limit * self.QA_CANDIDATE_MULTIPLIER, limit)
         question_profile = self._question_profile(question)
         scoped_document_ids = self._resolve_document_scope(document_id=document_id, document_ids=document_ids)
+        report_key = SearchService._query_report_key(question)
+        if not scoped_document_ids and report_key:
+            scoped_document_ids = self._document_ids_for_report_key(report_key)
+            if not scoped_document_ids:
+                return []
+
+        search_document_ids = scoped_document_ids or None
+        search_tokens = SearchService._tokenize(question)
+        search_profile = SearchService._query_profile(question, search_tokens)
         base_results: list[dict] = []
         for query_variant in self._question_variants(question, question_profile):
             if mode == "keyword":
                 variant_results = self.search_service.keyword_search(
                     query_variant,
                     limit=candidate_limit,
-                    document_ids=scoped_document_ids,
+                    document_ids=search_document_ids,
                 )
             elif mode == "semantic":
                 variant_results = self.search_service.semantic_search(
                     query_variant,
                     limit=candidate_limit,
-                    document_ids=scoped_document_ids,
+                    document_ids=search_document_ids,
+                    retrieval_version=retrieval_version,
                 )
             else:
                 variant_results = self.search_service.hybrid_search(
                     query_variant,
                     limit=candidate_limit,
-                    document_ids=scoped_document_ids,
+                    document_ids=search_document_ids,
+                    retrieval_version=retrieval_version,
+                )
+            if mode in {"keyword", "semantic"} and search_profile["strict_identity"]:
+                variant_results = self.search_service._metadata_rerank_results(
+                    query_variant,
+                    SearchService._tokenize(query_variant),
+                    variant_results,
+                    candidate_limit,
                 )
             base_results = self._merge_result_lists(base_results, variant_results)
+
+        if not scoped_document_ids and search_profile["strict_identity"] and not base_results:
+            return []
+
+        supplemental_document_ids = scoped_document_ids
+        if not supplemental_document_ids and search_profile["strict_identity"]:
+            supplemental_document_ids = SearchService._normalize_document_ids(
+                [int(item.get("document_id", 0) or 0) for item in base_results]
+            )
         supplemental_results = self._supplemental_chunk_candidates(
             question_profile,
             document_id=document_id,
-            document_ids=scoped_document_ids,
+            document_ids=supplemental_document_ids or None,
         )
         merged_results = self._merge_result_lists(base_results, supplemental_results)
         if not scoped_document_ids:
@@ -137,11 +170,29 @@ class QAService:
             return self._document_chunk_candidates(question_profile, document_id=scoped_document_ids[0])
         return self._documents_chunk_candidates(question_profile, document_ids=scoped_document_ids)
 
+    def _document_ids_for_report_key(self, report_key: str) -> list[int]:
+        if not report_key:
+            return []
+        rows = self.session.execute(select(Document.id, Document.title, Document.file_name)).all()
+        matches = []
+        for row in rows:
+            metadata_key = SearchService._compact_search_text(
+                SearchService._normalize_search_text(f"{row.title} {row.file_name}")
+            )
+            if report_key in metadata_key:
+                matches.append(int(row.id))
+        return SearchService._normalize_document_ids(matches)
+
     def _build_answer(self, question: str, results: list[dict]) -> tuple[str, float]:
         question_tokens = self.search_service.embedding_service.tokenize(question)
         question_profile = self._question_profile(question)
         ranked_results = self._prioritize_results_for_question(question_tokens, question_profile, results)
         contexts = self._build_candidate_contexts(question_tokens, ranked_results, question_profile)
+
+        if question_profile["wants_summary"]:
+            summary_answer, summary_score = self._build_summary_answer(contexts)
+            if summary_answer:
+                return summary_answer, summary_score
 
         if question_profile["wants_list"]:
             list_answer, list_score = self._build_list_answer(contexts)
@@ -319,6 +370,119 @@ class QAService:
 
         answer = "\n".join(f"{index + 1}. {item}" for index, item in enumerate(best_items[:8]))
         return answer, best_score
+
+    def _build_summary_answer(self, contexts: list[dict]) -> tuple[str, float]:
+        best_summary = ""
+        best_score = -1.0
+        best_source = None
+
+        for context in contexts[:6]:
+            text = context["text"]
+            summary = self._extract_report_summary_text(text)
+            if not summary:
+                continue
+
+            score = (
+                float(context["result"].get("combined_score", 0.0) or 0.0)
+                + context["section_match"] * 0.35
+                + (0.25 if context["scope"] == "section" else 0.0)
+                + (0.25 if "kapsam" in self._normalize_text(text) else 0.0)
+                + (0.15 if "amac" in self._normalize_text(text) else 0.0)
+                - max(len(summary) - 520, 0) / 1400
+            )
+            if score > best_score:
+                best_score = score
+                best_summary = summary
+                best_source = context["result"]
+
+        if not best_summary or not best_source:
+            return "", -1.0
+
+        title = str(best_source.get("document_title") or "").strip()
+        prefix = f"{title} raporu" if title else "Bu rapor"
+        answer = f"{prefix}, kaynak pasajlara gore {best_summary}"
+        if not answer.endswith("."):
+            answer += "."
+        page_start = best_source.get("page_start", "?")
+        page_end = best_source.get("page_end", "?")
+        answer += f" Kaynak: sayfa {page_start}-{page_end}."
+        return answer, max(best_score, self.MIN_ANSWER_SCORE + 0.12)
+
+    @classmethod
+    def _extract_report_summary_text(cls, text: str) -> str:
+        cleaned = cls._clean_report_text_for_summary(text)
+        if not cleaned:
+            return ""
+
+        labeled = cls._extract_labeled_summary_section(cleaned)
+        candidate = labeled or cleaned
+        sentences = cls._split_sentences(candidate)
+        meaningful = [
+            cls._clean_summary_sentence(sentence)
+            for sentence in sentences
+            if cls._is_meaningful_summary_sentence(sentence)
+        ]
+        meaningful = [sentence for sentence in meaningful if sentence]
+        if not meaningful:
+            return ""
+
+        summary = " ".join(meaningful[:3])
+        if len(summary) > 520:
+            summary = summary[:517].rstrip(" ,;:") + "..."
+        return summary.strip()
+
+    @classmethod
+    def _clean_report_text_for_summary(cls, text: str) -> str:
+        cleaned = " ".join(str(text or "").split())
+        cleaned = re.sub(r"\bPage\s+\d+\s*/\s*\d+\b", " ", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\bV:\\RAPORLAR\\[^\s]+", " ", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\bGENEL\s*/\s*PUBLIC\b", " ", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\bDEVELOPMENT STATEMENT\b", " ", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\bTARIH\s*:?\s*\d{1,2}[./-]\d{1,2}[./-]\d{2,4}", " ", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\bRAPOR NO\.?\s*:?\s*[A-Za-z0-9_.-]+", " ", cleaned, flags=re.IGNORECASE)
+        return " ".join(cleaned.split())
+
+    @classmethod
+    def _extract_labeled_summary_section(cls, text: str) -> str:
+        label_match = re.search(r"\b(KAPSAM|AMAC|AMAÇ|ÖZET|OZET)\s*:", text, flags=re.IGNORECASE)
+        if not label_match:
+            return ""
+
+        start = label_match.end()
+        stop_match = re.search(
+            r"\b(SONUCLAR|SONUÇLAR|HAZIRLAYAN|TALEP EDEN|KONTROL|REFERANS|EKLER)\s*:",
+            text[start:],
+            flags=re.IGNORECASE,
+        )
+        end = start + stop_match.start() if stop_match else len(text)
+        section = text[start:end].strip(" -:;")
+        return " ".join(section.split())
+
+    @staticmethod
+    def _clean_summary_sentence(sentence: str) -> str:
+        cleaned = " ".join(sentence.split()).strip(" -:;")
+        cleaned = re.sub(r"^(KAPSAM|AMAC|AMAÇ|OZET|ÖZET)\s*:?\s*", "", cleaned, flags=re.IGNORECASE)
+        return cleaned.strip(" -:;")
+
+    @classmethod
+    def _is_meaningful_summary_sentence(cls, sentence: str) -> bool:
+        cleaned = cls._clean_summary_sentence(sentence)
+        if len(cleaned) < 35:
+            return False
+        normalized = cls._normalize_text(cleaned)
+        blocked = (
+            "hazirlayan",
+            "talep eden",
+            "kontrol",
+            "rapor no",
+            "development statement",
+            "genel public",
+        )
+        if any(token in normalized for token in blocked):
+            return False
+        if cleaned.rstrip().endswith(":"):
+            return False
+        return True
 
     def _supplemental_chunk_candidates(
         self,
@@ -700,6 +864,23 @@ class QAService:
             "expects_number": any(token in raw_token_set for token in ("kac", "maksimum", "minimum", "mpa", "mm", "oran")),
             "wants_reason": any(token in lowered for token in ("neden", "niye", "sebep", "gerekce")),
             "wants_purpose": any(token in lowered for token in ("amac", "hedef", "kapsam")),
+            "wants_summary": any(
+                phrase in lowered
+                for phrase in (
+                    "ne anlatiyor",
+                    "ne anlatıyor",
+                    "neyi anlatiyor",
+                    "neyi anlatıyor",
+                    "ozetle",
+                    "özetle",
+                    "ozeti",
+                    "özeti",
+                    "konusu ne",
+                    "hakkinda ne",
+                    "hakkında ne",
+                    "bu rapor ne",
+                )
+            ),
             "wants_measurement": any(
                 token in raw_token_set
                 for token in ("olcul", "olculmektedir", "olculecektir", "deger", "degerler")

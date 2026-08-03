@@ -23,7 +23,7 @@ class EmbeddingReindexService:
 
         embeddings_created = 0
         for chunk in chunks:
-            vector = self.embedding_service.embed_text(chunk.chunk_text)
+            vector = self.embedding_service.embed_document(chunk.chunk_text)
             if not self.embedding_service.has_signal(vector):
                 continue
             self.session.add(

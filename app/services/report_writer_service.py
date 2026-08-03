@@ -59,6 +59,7 @@ class ReportWriterService:
         detail_level: str = "detailed",
         mode: str = "hybrid",
         limit: int = 5,
+        document_ids: list[int] | None = None,
     ) -> dict:
         cleaned_title = " ".join(title.split())
         cleaned_report_type = " ".join(report_type.split()) or "Genel Teknik Rapor"
@@ -72,7 +73,12 @@ class ReportWriterService:
         cleaned_notes = self._clean_notes(raw_notes)
         refined_keywords = self._refine_keywords(keywords, cleaned_title, cleaned_objective, cleaned_notes)
         retrieval_query = self._build_retrieval_query(cleaned_title, cleaned_objective, refined_keywords, cleaned_notes)
-        sources = self._run_search(retrieval_query, mode=mode, limit=limit) if retrieval_query else []
+        scoped_document_ids = self._normalize_document_ids(document_ids)
+        sources = (
+            self._run_search(retrieval_query, mode=mode, limit=limit, document_ids=scoped_document_ids)
+            if retrieval_query
+            else []
+        )
         template_draft = self._compose_draft(
             title=cleaned_title,
             report_type=cleaned_report_type,
@@ -119,7 +125,7 @@ class ReportWriterService:
             "cleaned_notes": cleaned_notes,
             "embedding_provider": self.search_service.embedding_provider_name(),
             "generation_provider": generation_provider,
-            "sources": sources[:3],
+            "sources": sources[:limit],
         }
 
     def build_pdf_bytes(self, draft_payload: dict) -> bytes:
@@ -368,12 +374,32 @@ class ReportWriterService:
 
         cls._FONT_READY = True
 
-    def _run_search(self, query: str, mode: str, limit: int) -> list[dict]:
+    def _run_search(
+        self,
+        query: str,
+        mode: str,
+        limit: int,
+        document_ids: list[int] | None = None,
+    ) -> list[dict]:
         if mode == "keyword":
-            return self.search_service.keyword_search(query, limit=limit)
+            return self.search_service.keyword_search(query, limit=limit, document_ids=document_ids)
         if mode == "semantic":
-            return self.search_service.semantic_search(query, limit=limit)
-        return self.search_service.hybrid_search(query, limit=limit)
+            return self.search_service.semantic_search(query, limit=limit, document_ids=document_ids)
+        return self.search_service.hybrid_search(query, limit=limit, document_ids=document_ids)
+
+    @staticmethod
+    def _normalize_document_ids(document_ids: list[int] | None) -> list[int] | None:
+        if document_ids is None:
+            return None
+        normalized: list[int] = []
+        for value in document_ids:
+            try:
+                document_id = int(value)
+            except (TypeError, ValueError):
+                continue
+            if document_id > 0 and document_id not in normalized:
+                normalized.append(document_id)
+        return normalized[:10]
 
     @staticmethod
     def _guess_report_no(title: str) -> str:

@@ -64,7 +64,13 @@ class SearchService:
             self._embedding_service = build_embedding_service()
         return self._embedding_service
 
-    def keyword_search(self, query: str, limit: int = 5, document_ids: list[int] | None = None) -> list[dict]:
+    def keyword_search(
+        self,
+        query: str,
+        limit: int = 5,
+        document_ids: list[int] | None = None,
+        max_results_per_document: int | None = None,
+    ) -> list[dict]:
         raw_query = query.strip()
         tokens = self._tokenize(raw_query)
         if not raw_query:
@@ -131,13 +137,30 @@ class SearchService:
             )
 
         results.sort(key=lambda item: item["keyword_score"], reverse=True)
-        return self._limit_results_per_document(results, limit)
+        return self._limit_results_per_document(
+            results,
+            limit,
+            max_results_per_document=max_results_per_document,
+        )
 
-    def semantic_search(self, query: str, limit: int = 5, document_ids: list[int] | None = None) -> list[dict]:
+    def semantic_search(
+        self,
+        query: str,
+        limit: int = 5,
+        document_ids: list[int] | None = None,
+        max_results_per_document: int | None = None,
+        retrieval_version: str = "v2",
+    ) -> list[dict]:
         query_tokens = self._tokenize(query.strip())
-        query_vector = self.embedding_service.embed_text(query)
+        normalized_retrieval_version = self._normalize_retrieval_version(retrieval_version)
+        query_vector = (
+            self.embedding_service.embed_text(query)
+            if normalized_retrieval_version == "v1"
+            else self.embedding_service.embed_query(query)
+        )
         if not self.embedding_service.has_signal(query_vector):
             return []
+        query_profile = self._query_profile(query, query_tokens)
         scoped_document_ids = self._normalize_document_ids(document_ids)
         if document_ids is not None and not scoped_document_ids:
             return []
@@ -169,7 +192,11 @@ class SearchService:
                 for value in (row.document_title, row.file_name, row.section_title or "", row.chunk_text)
                 if value
             )
-            if not self._passes_required_token_gate(query_tokens, searchable_text):
+            requires_token_gate = (
+                normalized_retrieval_version == "v1"
+                or bool(query_profile["strict_identity"])
+            )
+            if requires_token_gate and not self._passes_required_token_gate(query_tokens, searchable_text):
                 continue
             chunk_vector = self._resolve_chunk_vector(row.embedding, expected_dimensions=expected_dimensions)
             if not self.embedding_service.has_signal(chunk_vector):
@@ -201,14 +228,42 @@ class SearchService:
             )
 
         results.sort(key=lambda item: item["semantic_score"], reverse=True)
-        return self._limit_results_per_document(results, limit)
+        return self._limit_results_per_document(
+            results,
+            limit,
+            max_results_per_document=max_results_per_document,
+        )
 
-    def hybrid_search(self, query: str, limit: int = 5, document_ids: list[int] | None = None) -> list[dict]:
+    def hybrid_search(
+        self,
+        query: str,
+        limit: int = 5,
+        document_ids: list[int] | None = None,
+        max_results_per_document: int | None = None,
+        retrieval_version: str = "v2",
+    ) -> list[dict]:
         query_tokens = self._tokenize(query.strip())
-        keyword_results = self.keyword_search(query, limit=max(limit * 4, 12), document_ids=document_ids)
-        semantic_results = self.semantic_search(query, limit=max(limit * 3, 10), document_ids=document_ids)
+        keyword_results = self.keyword_search(
+            query,
+            limit=max(limit * 4, 12),
+            document_ids=document_ids,
+            max_results_per_document=max_results_per_document,
+        )
+        semantic_results = self.semantic_search(
+            query,
+            limit=max(limit * 3, 10),
+            document_ids=document_ids,
+            max_results_per_document=max_results_per_document,
+            retrieval_version=retrieval_version,
+        )
         if not semantic_results:
-            return self._metadata_rerank_results(query, query_tokens, keyword_results, limit)
+            return self._metadata_rerank_results(
+                query,
+                query_tokens,
+                keyword_results,
+                limit,
+                max_results_per_document=max_results_per_document,
+            )
 
         keyword_max = max((item["keyword_score"] for item in keyword_results), default=1.0)
         semantic_max = max((item["semantic_score"] for item in semantic_results), default=1.0)
@@ -251,7 +306,13 @@ class SearchService:
             key=lambda item: item["combined_score"],
             reverse=True,
         )
-        return self._metadata_rerank_results(query, query_tokens, ranked, limit)
+        return self._metadata_rerank_results(
+            query,
+            query_tokens,
+            ranked,
+            limit,
+            max_results_per_document=max_results_per_document,
+        )
 
     def report_search(self, query: str, limit: int = 5, document_ids: list[int] | None = None) -> list[dict]:
         raw_query = query.strip()
@@ -395,6 +456,10 @@ class SearchService:
             normalized.append(document_id)
         return normalized
 
+    @staticmethod
+    def _normalize_retrieval_version(value: str | None) -> str:
+        return "v1" if str(value or "").strip().casefold() == "v1" else "v2"
+
     def similar_documents_for_document(self, document_id: int, limit: int = 3) -> list[dict]:
         source_chunks = self.session.execute(
             select(DocumentChunk.id, DocumentChunk.chunk_text, ChunkEmbedding.embedding)
@@ -418,8 +483,12 @@ class SearchService:
         )
 
     def semantic_available(self) -> bool:
-        chunk_id = self.session.scalar(select(DocumentChunk.id).limit(1))
-        return chunk_id is not None
+        embedding_chunk_id = self.session.scalar(
+            select(ChunkEmbedding.chunk_id)
+            .where(ChunkEmbedding.embedding.is_not(None), ChunkEmbedding.embedding != "")
+            .limit(1)
+        )
+        return embedding_chunk_id is not None
 
     def embedding_provider_name(self) -> str:
         if self._embedding_service is None:
@@ -463,6 +532,7 @@ class SearchService:
         tokens: list[str],
         results: list[dict],
         limit: int,
+        max_results_per_document: int | None = None,
     ) -> list[dict]:
         if not results:
             return []
@@ -484,7 +554,11 @@ class SearchService:
             reranked.append(adjusted)
 
         reranked.sort(key=lambda item: item["combined_score"], reverse=True)
-        return self._limit_results_per_document(reranked, limit)
+        return self._limit_results_per_document(
+            reranked,
+            limit,
+            max_results_per_document=max_results_per_document,
+        )
 
     @classmethod
     def _query_profile(cls, query: str, tokens: list[str]) -> dict:
@@ -873,12 +947,21 @@ class SearchService:
             item.pop("best_chunk_score", None)
         return ranked[:limit]
 
-    def _limit_results_per_document(self, results: list[dict], limit: int) -> list[dict]:
+    def _limit_results_per_document(
+        self,
+        results: list[dict],
+        limit: int,
+        *,
+        max_results_per_document: int | None = None,
+    ) -> list[dict]:
+        per_document_limit = self.MAX_RESULTS_PER_DOCUMENT
+        if max_results_per_document is not None:
+            per_document_limit = max(1, min(int(max_results_per_document), max(limit, 1)))
         limited: list[dict] = []
         counts: dict[int, int] = {}
         for item in results:
             document_id = int(item.get("document_id", 0) or 0)
-            if document_id > 0 and counts.get(document_id, 0) >= self.MAX_RESULTS_PER_DOCUMENT:
+            if document_id > 0 and counts.get(document_id, 0) >= per_document_limit:
                 continue
             if document_id > 0:
                 counts[document_id] = counts.get(document_id, 0) + 1

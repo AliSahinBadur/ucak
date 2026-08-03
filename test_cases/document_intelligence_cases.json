@@ -1,0 +1,78 @@
+[
+  {
+    "name": "En uzun rapor",
+    "question": "En uzun rapor hangisidir?",
+    "expected_intent": "metadata",
+    "expected_contains": ["2021-Citivolt-TASE03", "27 sayfa"],
+    "expected_source_titles": ["2021-Citivolt-TASE03"],
+    "only_expected_sources": true
+  },
+  {
+    "name": "Tek rapor ozeti",
+    "question": "2025-BIG-E-DUR-01 raporunu ozetler misin?",
+    "expected_intent": "summary",
+    "expected_source_titles": ["2025-BIG-E-DUR-01"],
+    "only_expected_sources": true
+  },
+  {
+    "name": "Raporun ana konusu",
+    "question": "2025-BIG-e-DUR-02 raporunun ana konusu nedir?",
+    "expected_intent": "summary",
+    "expected_source_titles": ["2025-BIG-e-DUR-02"],
+    "only_expected_sources": true
+  },
+  {
+    "name": "Rapor sonucu",
+    "question": "2025-BIG-E-TEST-13 raporunun sonucu nedir?",
+    "expected_intent": "result",
+    "expected_source_titles": ["2025-BIG-E-TEST-13"],
+    "only_expected_sources": true
+  },
+  {
+    "name": "Iki rapor karsilastirma",
+    "question": "2025-BIG-E-DUR-01 ve 2025-BIG-e-DUR-03 raporlarini amac, yontem ve sonuc acisindan karsilastir",
+    "expected_intent": "comparison",
+    "expected_source_titles": ["2025-BIG-E-DUR-01", "2025-BIG-e-DUR-03"],
+    "only_expected_sources": true,
+    "minimum_source_documents": 2
+  },
+  {
+    "name": "Sayisal dayaniklilik siralamasi",
+    "question": "Fren pedalinda en dayanikli tasarim hangisidir?",
+    "expected_intent": "ranking",
+    "expected_contains": ["Tasarim-2", "309.4 MPa"],
+    "expected_source_titles": ["2025-BIG-e-DUR-03"],
+    "only_expected_sources": true
+  },
+  {
+    "name": "Devam sorusu belge baglami",
+    "question": "Peki sonucu ne?",
+    "context_titles": ["2025-BIG-e-NVH-02"],
+    "expected_intent": "result",
+    "expected_source_titles": ["2025-BIG-e-NVH-02"],
+    "only_expected_sources": true
+  },
+  {
+    "name": "Baglamdaki iki raporu karsilastirma",
+    "question": "Bu 2 raporu karsilastir",
+    "context_titles": ["2025-BIG-E-DUR-01", "2025-BIG-e-DUR-03"],
+    "expected_intent": "comparison",
+    "expected_source_titles": ["2025-BIG-E-DUR-01", "2025-BIG-e-DUR-03"],
+    "only_expected_sources": true,
+    "minimum_source_documents": 2
+  },
+  {
+    "name": "Olmayan yil ve arac",
+    "question": "2026 CITIBUS raporlari ne anlatiyor?",
+    "expected_intent": "summary",
+    "must_find_answer": false,
+    "only_expected_sources": true
+  },
+  {
+    "name": "Kaynakta olmayan konu",
+    "question": "Raporlarda Ay yuzeyindeki sicaklik kac derece olculdu?",
+    "expected_intent": "qa",
+    "must_find_answer": false,
+    "only_expected_sources": true
+  }
+]

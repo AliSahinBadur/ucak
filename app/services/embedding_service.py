@@ -17,6 +17,7 @@ from ..config import (
     EMBEDDING_LOCAL_FILES_ONLY,
     EMBEDDING_MODEL_NAME,
     EMBEDDING_PROVIDER,
+    EMBEDDING_SHOW_PROGRESS,
 )
 
 
@@ -28,6 +29,12 @@ class EmbeddingService(Protocol):
     provider_name: str
 
     def embed_text(self, text: str) -> list[float]:
+        ...
+
+    def embed_query(self, text: str) -> list[float]:
+        ...
+
+    def embed_document(self, text: str) -> list[float]:
         ...
 
     @staticmethod
@@ -52,6 +59,12 @@ class EmbeddingService(Protocol):
 
 
 class BaseEmbeddingService:
+    def embed_query(self, text: str) -> list[float]:
+        return self.embed_text(text)
+
+    def embed_document(self, text: str) -> list[float]:
+        return self.embed_text(text)
+
     @staticmethod
     def serialize(vector: list[float]) -> str:
         return json.dumps(vector)
@@ -117,8 +130,9 @@ class TokenHashEmbeddingService(BaseEmbeddingService):
 
 class SentenceTransformerEmbeddingService(BaseEmbeddingService):
     def __init__(self, model_name: str, device: str = "cpu", local_files_only: bool = False) -> None:
-        os.environ.setdefault("TQDM_DISABLE", "1")
-        os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+        if not EMBEDDING_SHOW_PROGRESS:
+            os.environ.setdefault("TQDM_DISABLE", "1")
+            os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError as exc:
@@ -130,6 +144,7 @@ class SentenceTransformerEmbeddingService(BaseEmbeddingService):
         self.device = device
         self.provider_name = f"sentence-transformers:{model_name}"
         self.local_files_only = local_files_only
+        self._encode_lock = threading.Lock()
         self.model = SentenceTransformer(
             self.model_name,
             device=device,
@@ -137,16 +152,38 @@ class SentenceTransformerEmbeddingService(BaseEmbeddingService):
         )
 
     def embed_text(self, text: str) -> list[float]:
-        normalized = unicodedata.normalize("NFC", text).strip()
+        return self.embed_document(text)
+
+    def embed_query(self, text: str) -> list[float]:
+        normalized = self._normalize_input(text)
         if not normalized:
             return []
+        return list(self._embed_query_cached(normalized))
 
-        vector = self.model.encode(
-            normalized,
-            normalize_embeddings=True,
-            show_progress_bar=False,
-        )
+    def embed_document(self, text: str) -> list[float]:
+        normalized = self._normalize_input(text)
+        if not normalized:
+            return []
+        return self._encode(normalized, role="document")
+
+    @lru_cache(maxsize=128)
+    def _embed_query_cached(self, normalized: str) -> tuple[float, ...]:
+        return tuple(self._encode(normalized, role="query"))
+
+    def _encode(self, normalized: str, *, role: str) -> list[float]:
+        encoder = self.model.encode_query if role == "query" else self.model.encode_document
+        with self._encode_lock:
+            vector = encoder(
+                normalized,
+                normalize_embeddings=True,
+                show_progress_bar=EMBEDDING_SHOW_PROGRESS,
+            )
         return [float(value) for value in vector.tolist()]
+
+    @staticmethod
+    def _normalize_input(text: str) -> str:
+        normalized = unicodedata.normalize("NFC", text).strip()
+        return normalized
 
 
 _EMBEDDING_SERVICE_LOCK = threading.Lock()

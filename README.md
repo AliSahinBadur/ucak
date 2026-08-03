@@ -2,7 +2,7 @@
 
 Big_Agent is a local-first report assistant for vehicle test and analysis documents. It ingests PDF, DOCX, and PPTX files, stores searchable chunks, links catalog records to report files, and answers questions with source passages.
 
-Current version: `v0.50.88`
+Current version: `v0.50.96`
 
 ## What Works
 
@@ -65,6 +65,52 @@ Health check:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8000/health
+```
+
+## Local Network Test Login
+
+For sharing the app with two test teams on the same local network:
+
+```powershell
+$env:APP_AUTH_ENABLED = "true"
+$env:APP_USERS = "analiz:Sifre1;test:Sifre2"
+$env:APP_SESSION_SECRET = "change-this-to-a-long-random-local-secret"
+& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Share the IPv4 address from `ipconfig`:
+
+```text
+http://YOUR-IPV4:8000/
+```
+
+For isolated team tests, run separate app instances with separate data folders:
+
+```powershell
+# Analiz
+$env:BIG_AGENT_DATA_DIR = "C:\Users\ISU34977\PyCharmMiscProject\Big_Agent\data_analiz"
+$env:APP_AUTH_ENABLED = "true"
+$env:APP_USERS = "analiz:Sifre1"
+$env:APP_SESSION_SECRET = "change-this-to-a-long-random-local-secret"
+$env:APP_AUTH_COOKIE_NAME = "big_agent_analiz"
+& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' -m uvicorn app.main:app --host 0.0.0.0 --port 8001
+```
+
+```powershell
+# Test
+$env:BIG_AGENT_DATA_DIR = "C:\Users\ISU34977\PyCharmMiscProject\Big_Agent\data_test"
+$env:APP_AUTH_ENABLED = "true"
+$env:APP_USERS = "test:Sifre2"
+$env:APP_SESSION_SECRET = "change-this-to-another-long-random-local-secret"
+$env:APP_AUTH_COOKIE_NAME = "big_agent_test"
+& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' -m uvicorn app.main:app --host 0.0.0.0 --port 8002
+```
+
+Share separate links:
+
+```text
+Analiz: http://YOUR-IPV4:8001/
+Test: http://YOUR-IPV4:8002/
 ```
 
 ## Embeddings

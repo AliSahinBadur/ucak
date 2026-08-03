@@ -97,6 +97,90 @@ class DuplicateReportScanResponse(BaseModel):
     items: list[DuplicateReportPairResponse]
 
 
+class ReportComparisonSourceRequest(BaseModel):
+    document_id: int | None = Field(default=None, ge=1)
+    upload_token: str | None = Field(default=None, min_length=20, max_length=40)
+
+
+class ReportComparisonRequest(BaseModel):
+    left: ReportComparisonSourceRequest
+    right: ReportComparisonSourceRequest
+    use_llm: bool = True
+
+
+class ReportComparisonUploadResponse(BaseModel):
+    upload_token: str
+    source_ref: str
+    title: str
+    file_name: str
+    temporary: bool
+    expires_in_seconds: int
+
+
+class ReportComparisonDocumentResponse(BaseModel):
+    source_ref: str
+    document_id: int | None = None
+    title: str
+    file_name: str
+    temporary: bool
+    chunk_count: int
+
+
+class ReportComparisonEvidenceResponse(BaseModel):
+    source_ref: str
+    document_id: int | None = None
+    document_title: str
+    file_name: str
+    temporary: bool
+    page_start: int | None = None
+    page_end: int | None = None
+    highlight_page: int | None = None
+    section_title: str | None = None
+    excerpt: str
+
+
+class ReportComparisonPdfPreviewResponse(BaseModel):
+    available: bool
+    url: str | None = None
+    file_name: str
+    highlighted_passages: int = 0
+    reason: str | None = None
+
+
+class ReportComparisonItemResponse(BaseModel):
+    id: str
+    pair_id: str | None = None
+    kind: Literal["similarity", "difference"]
+    difference_type: str | None = None
+    topic: str
+    summary: str
+    left: ReportComparisonEvidenceResponse
+    right: ReportComparisonEvidenceResponse
+    semantic_score: float
+    lexical_score: float
+    confidence: float
+    highlight_number: int | None = None
+    highlight_color: str | None = None
+
+
+class ReportComparisonResponse(BaseModel):
+    comparison_id: str
+    left: ReportComparisonDocumentResponse
+    right: ReportComparisonDocumentResponse
+    left_pdf: ReportComparisonPdfPreviewResponse
+    right_pdf: ReportComparisonPdfPreviewResponse
+    similarities: list[ReportComparisonItemResponse]
+    differences: list[ReportComparisonItemResponse]
+    similarity_count: int
+    difference_count: int
+    matched_pair_count: int
+    coverage: float
+    embedding_provider: str
+    generation_provider: str
+    llm_used: bool
+    cache_hit: bool
+
+
 class SearchResponse(BaseModel):
     mode: Literal["keyword", "semantic", "hybrid"]
     semantic_available: bool
@@ -124,8 +208,10 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage] = Field(default_factory=list)
     mode: Literal["keyword", "semantic", "hybrid"] = "hybrid"
     assistant_mode: Literal["auto", "report", "general"] = "auto"
+    retrieval_version: Literal["v1", "v2"] = "v2"
     limit: int = Field(default=5, ge=1, le=10)
     document_id: int | None = Field(default=None, ge=1)
+    document_ids: list[int] = Field(default_factory=list, max_length=8)
     use_llm_answer: bool = False
 
 
@@ -159,6 +245,9 @@ class ChatResponse(BaseModel):
     answer_found: bool
     confidence: float = Field(default=0.0)
     embedding_provider: str
+    retrieval_provider: str | None = None
+    retrieval_version: Literal["v1", "v2"] = "v2"
+    retrieval_used: bool = False
     sources: list[AnswerSourceResponse]
     history: list[ChatMessage]
 
@@ -178,6 +267,7 @@ class DraftReportRequest(BaseModel):
     detail_level: Literal["quick", "detailed"] = "detailed"
     mode: Literal["keyword", "semantic", "hybrid"] = "hybrid"
     limit: int = Field(default=5, ge=1, le=10)
+    document_ids: list[int] = Field(default_factory=list, max_length=10)
 
 
 class DraftReportResponse(BaseModel):
