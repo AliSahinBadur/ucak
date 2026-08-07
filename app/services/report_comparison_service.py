@@ -29,6 +29,7 @@ from ..parsers.pptx_parser import parse_pptx
 from ..processing.chunker import chunk_sections
 from ..processing.text_cleaner import normalize_sections
 from .embedding_service import EmbeddingService, build_embedding_service
+from .document_path_service import resolve_document_file_path
 from .llm_provider import DisabledLLMProvider, LLMProvider, OllamaLLMProvider
 from .pdf_highlight_service import PdfHighlightRequest, PdfHighlightService
 
@@ -320,11 +321,12 @@ class ReportComparisonService:
                     vector=vector,
                 )
             )
+        resolved_source_path = resolve_document_file_path(document.file_path)
         return ComparisonDocument(
             source_ref=f"document:{document.id}",
             title=document.title,
             file_name=document.file_name,
-            source_path=Path(document.file_path),
+            source_path=resolved_source_path or Path(document.file_path),
             content_hash=document.file_hash,
             document_id=document.id,
             temporary=False,

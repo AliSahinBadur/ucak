@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from ..db.models import Document, DocumentChunk
 from .answer_generation_service import AnswerGenerationService
+from .haystack_retrieval_service import HaystackRetrievalService
 from .search_service import SearchService
 
 
@@ -40,6 +41,10 @@ class QAService:
     def __init__(self, session: Session) -> None:
         self.session = session
         self.search_service = SearchService(session)
+        self.haystack_retrieval_service = HaystackRetrievalService(
+            session,
+            search_service=self.search_service,
+        )
         self.answer_generation_service = AnswerGenerationService()
 
     def answer_question(
@@ -69,7 +74,7 @@ class QAService:
                 "answer": "Bu soruya dayanarak yeterince guclu bir kaynak pasaj bulunamadi.",
                 "answer_found": False,
                 "confidence": 0.0,
-                "embedding_provider": self.search_service.embedding_provider_name(),
+                "embedding_provider": self._retrieval_provider_name(retrieval_version),
                 "sources": [],
             }
 
@@ -86,7 +91,7 @@ class QAService:
             or (answer if answer_found else "Bu soruya yakin gorunen pasajlar bulundu ama guvenilir bir kisa cevap secilemedi."),
             "answer_found": bool(generated_answer) or answer_found,
             "confidence": round(self._normalize_confidence(answer_score), 3),
-            "embedding_provider": self.search_service.embedding_provider_name(),
+            "embedding_provider": self._retrieval_provider_name(retrieval_version),
             "sources": ranked_results[:3],
         }
 
@@ -119,7 +124,14 @@ class QAService:
         search_profile = SearchService._query_profile(question, search_tokens)
         base_results: list[dict] = []
         for query_variant in self._question_variants(question, question_profile):
-            if mode == "keyword":
+            if retrieval_version == "v3":
+                variant_results = self.haystack_retrieval_service.retrieve(
+                    query_variant,
+                    mode=mode,
+                    limit=candidate_limit,
+                    document_ids=search_document_ids,
+                )
+            elif mode == "keyword":
                 variant_results = self.search_service.keyword_search(
                     query_variant,
                     limit=candidate_limit,
@@ -169,6 +181,11 @@ class QAService:
         if len(scoped_document_ids) == 1:
             return self._document_chunk_candidates(question_profile, document_id=scoped_document_ids[0])
         return self._documents_chunk_candidates(question_profile, document_ids=scoped_document_ids)
+
+    def _retrieval_provider_name(self, retrieval_version: str) -> str:
+        if str(retrieval_version or "").strip().casefold() == "v3":
+            return self.haystack_retrieval_service.provider_name
+        return self.search_service.embedding_provider_name()
 
     def _document_ids_for_report_key(self, report_key: str) -> list[int]:
         if not report_key:

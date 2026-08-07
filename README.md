@@ -1,21 +1,21 @@
-# Big_Agent
+# SmartCAE AI
 
-Big_Agent is a local-first report assistant for vehicle test and analysis documents. It ingests PDF, DOCX, and PPTX files, stores searchable chunks, links catalog records to report files, and answers questions with source passages.
+SmartCAE AI is a local-first report assistant for vehicle test and analysis documents. It ingests PDF, DOCX, and PPTX files, stores searchable chunks, links catalog records to report files, and answers questions with source passages.
 
-Current version: `v0.50.109`
+Current version: `v0.50.114`
 
-## Big Agent and RaporHub
+## SmartCAE AI and RaporHub
 
-Big Agent is now the canonical codebase for both products. The API, RAG, ingestion,
+SmartCAE AI is now the canonical codebase for both products. The API, RAG, ingestion,
 catalog, comparison, and report-writing services are shared. `APP_VARIANT` selects
 the product identity and theme, while each instance keeps its own data directory.
 
-Run Big Agent:
+Run SmartCAE AI:
 
 ```powershell
 $env:APP_VARIANT = "big_agent"
 $env:BIG_AGENT_DATA_DIR = "C:\Users\ISU34977\PyCharmMiscProject\Big_Agent\data"
-& 'C:\Users\ISU34977\PyCharmMiscProject\.venv312\Scripts\python.exe' -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+& 'C:\Users\ISU34977\PyCharmMiscProject\.venv312\Scripts\python.exe' -m uvicorn app.main:app --host 127.0.0.1 --port 8002
 ```
 
 Run RaporHub from the same codebase in another terminal:
@@ -24,7 +24,7 @@ Run RaporHub from the same codebase in another terminal:
 $env:APP_VARIANT = "raporhub"
 $env:RAPORHUB_DATA_DIR = "C:\Users\ISU34977\PyCharmMiscProject\Big_Agent\data_raporhub"
 $env:APP_AUTH_COOKIE_NAME = "raporhub_session"
-& 'C:\Users\ISU34977\PyCharmMiscProject\.venv312\Scripts\python.exe' -m uvicorn app.main:app --host 127.0.0.1 --port 8001
+& 'C:\Users\ISU34977\PyCharmMiscProject\.venv312\Scripts\python.exe' -m uvicorn app.main:app --host 127.0.0.1 --port 8003
 ```
 
 The old standalone `RaporHub` folder is not modified by this setup. New shared
@@ -75,23 +75,33 @@ Optional embedding dependency:
 
 ## Run
 
+Sabit portlarla başlatmak için:
+
+```bat
+start_big_agent.bat
+start_raporhub.bat
+```
+
+SmartCAE AI `8002`, ReportHub `8003` portunda açılır. Smart AIOS klasöründeki
+`start_all_apps.bat` üç uygulamayı birlikte başlatır.
+
 From the project folder:
 
 ```powershell
 cd C:\Users\ISU34977\PyCharmMiscProject\Big_Agent
-& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' -m uvicorn app.main:app --host 127.0.0.1 --port 8002
 ```
 
 Open:
 
 ```text
-http://127.0.0.1:8000/
+http://127.0.0.1:8002/
 ```
 
 Health check:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8000/health
+Invoke-RestMethod http://127.0.0.1:8002/health
 ```
 
 ## Local Network Test Login
@@ -102,13 +112,13 @@ For sharing the app with two test teams on the same local network:
 $env:APP_AUTH_ENABLED = "true"
 $env:APP_USERS = "analiz:Sifre1;test:Sifre2"
 $env:APP_SESSION_SECRET = "change-this-to-a-long-random-local-secret"
-& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' -m uvicorn app.main:app --host 0.0.0.0 --port 8002
 ```
 
 Share the IPv4 address from `ipconfig`:
 
 ```text
-http://YOUR-IPV4:8000/
+http://YOUR-IPV4:8002/
 ```
 
 For isolated team tests, run separate app instances with separate data folders:
@@ -120,7 +130,7 @@ $env:APP_AUTH_ENABLED = "true"
 $env:APP_USERS = "analiz:Sifre1"
 $env:APP_SESSION_SECRET = "change-this-to-a-long-random-local-secret"
 $env:APP_AUTH_COOKIE_NAME = "big_agent_analiz"
-& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' -m uvicorn app.main:app --host 0.0.0.0 --port 8001
+& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' -m uvicorn app.main:app --host 0.0.0.0 --port 8011
 ```
 
 ```powershell
@@ -130,14 +140,14 @@ $env:APP_AUTH_ENABLED = "true"
 $env:APP_USERS = "test:Sifre2"
 $env:APP_SESSION_SECRET = "change-this-to-another-long-random-local-secret"
 $env:APP_AUTH_COOKIE_NAME = "big_agent_test"
-& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' -m uvicorn app.main:app --host 0.0.0.0 --port 8002
+& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' -m uvicorn app.main:app --host 0.0.0.0 --port 8012
 ```
 
 Share separate links:
 
 ```text
-Analiz: http://YOUR-IPV4:8001/
-Test: http://YOUR-IPV4:8002/
+Analiz: http://YOUR-IPV4:8011/
+Test: http://YOUR-IPV4:8012/
 ```
 
 ## Embeddings
@@ -165,7 +175,7 @@ If CUDA-enabled PyTorch is installed, the app can auto-select `cuda`; otherwise 
 After changing embedding model/provider:
 
 ```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8000/embeddings/rebuild
+Invoke-RestMethod -Method Post http://127.0.0.1:8002/embeddings/rebuild
 ```
 
 ## Ollama Chat LLM

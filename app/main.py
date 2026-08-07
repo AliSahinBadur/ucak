@@ -17,6 +17,7 @@ from typing import Annotated, Literal
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -60,8 +61,14 @@ from .services.catalog_ingest_service import CatalogIngestService
 from .services.catalog_service import CatalogService
 from .services.duplicate_detection_service import DuplicateDetectionService
 from .services.document_intelligence_service import DocumentIntelligenceService
+from .services.document_path_service import resolve_document_file_path
 from .services.general_chat_service import GeneralChatService
 from .services.graph_service import GraphService
+from .services.haystack_retrieval_service import (
+    HaystackRetrievalError,
+    HaystackRetrievalService,
+    HaystackUnavailableError,
+)
 from .services.ingest_service import IngestService
 from .services.multi_document_qa_service import MultiDocumentQAService
 from .services.qa_service import QAService
@@ -73,6 +80,7 @@ from .services.report_writer_service import ReportWriterService
 from .services.retrieval_orchestrator import RetrievalOrchestrator
 from .services.search_service import SearchService
 from .services.storage_service import StorageService
+from .ui.variant_styles import get_variant_css
 from .version import APP_VERSION
 from .config import (
     APP_AUTH_COOKIE_NAME,
@@ -88,8 +96,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 #dfgasdgfasdfasdfasdfasdf
 app = FastAPI(title=APP_BRAND.api_title, version=APP_VERSION)
+RAPORHUB_LANDING_DIR = Path(__file__).resolve().parent / "ui" / "raporhub_landing"
+app.mount(
+    "/raporhub-landing",
+    StaticFiles(directory=str(RAPORHUB_LANDING_DIR)),
+    name="raporhub-landing",
+)
 AUTH_COOKIE_NAME = APP_AUTH_COOKIE_NAME
 AUTH_SESSION_SECONDS = 8 * 60 * 60
+FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<text x="50" y="52" dy="0.35em" text-anchor="middle" font-size="86" font-family="Segoe UI Emoji, Apple Color Emoji, sans-serif">🤖</text>
+</svg>"""
 
 
 def _parse_app_users(raw_value: str) -> dict[str, str]:
@@ -148,6 +165,10 @@ def _auth_enabled() -> bool:
     return APP_AUTH_ENABLED and bool(APP_USERS)
 
 
+def _application_home_path() -> str:
+    return "/app" if APP_VARIANT == "raporhub" else "/"
+
+
 def _login_html(error: str = "") -> str:
     error_html = f'<div class="error">{escape(error)}</div>' if error else ""
     return f"""<!doctype html>
@@ -155,6 +176,7 @@ def _login_html(error: str = "") -> str:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="/favicon.ico" type="image/svg+xml" />
   <title>{APP_BRAND.display_name} Login</title>
   <style>
     body {{ margin:0; min-height:100vh; display:grid; place-items:center; font-family:Arial,sans-serif; background:{APP_BRAND.background}; color:{APP_BRAND.text}; }}
@@ -191,6 +213,10 @@ async def auth_middleware(request: Request, call_next):
 
     path = request.url.path
     if path in {"/health", "/login", "/logout", "/favicon.ico"}:
+        return await call_next(request)
+    if APP_VARIANT == "raporhub" and (
+        path == "/" or path.startswith("/raporhub-landing/")
+    ):
         return await call_next(request)
 
     username = _read_session_user(request)
@@ -259,10 +285,19 @@ def _display_model_name() -> str:
     return candidate
 
 
+def _display_embedding_device() -> tuple[str, str]:
+    service = build_embedding_service()
+    raw_device = str(getattr(service, "device", "cpu")).strip().casefold()
+    is_gpu = raw_device.startswith(("cuda", "mps", "xpu"))
+    return ("GPU", "gpu") if is_gpu else ("CPU", "cpu")
+
+
 def _apply_brand_tokens(html: str) -> str:
     replacements = {
         "__BRAND_NAME__": escape(APP_BRAND.display_name),
+        "__BRAND_INITIALS__": escape(APP_BRAND.initials),
         "__APP_VARIANT__": APP_VARIANT,
+        "__VARIANT_CSS__": get_variant_css(APP_VARIANT),
         "__THEME_BG__": APP_BRAND.background,
         "__THEME_PANEL__": APP_BRAND.panel,
         "__THEME_LINE__": APP_BRAND.line,
@@ -300,17 +335,32 @@ def healthcheck() -> HealthResponse:
     )
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> Response:
+    if APP_VARIANT == "raporhub":
+        return FileResponse(
+            RAPORHUB_LANDING_DIR / "assets" / "raporhub-favicon.ico",
+            media_type="image/x-icon",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+    return Response(
+        content=FAVICON_SVG,
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     if _auth_enabled() and _read_session_user(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse(_application_home_path(), status_code=303)
     return HTMLResponse(_login_html())
 
 
 @app.post("/login")
 async def login(request: Request):
     if not _auth_enabled():
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse(_application_home_path(), status_code=303)
 
     form = await request.form()
     username = str(form.get("username", "")).strip()
@@ -319,7 +369,7 @@ async def login(request: Request):
     if not expected or not secrets.compare_digest(password, expected):
         return HTMLResponse(_login_html("Kullanici adi veya sifre hatali."), status_code=401)
 
-    response = RedirectResponse("/", status_code=303)
+    response = RedirectResponse(_application_home_path(), status_code=303)
     response.set_cookie(
         AUTH_COOKIE_NAME,
         _create_session_cookie(username),
@@ -337,15 +387,27 @@ def logout():
     return response
 
 
+@app.get("/app/", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/app", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/", response_class=HTMLResponse)
-def upload_page() -> HTMLResponse:
+def upload_page(request: Request) -> HTMLResponse:
+    if APP_VARIANT == "raporhub" and request.url.path == "/":
+        return HTMLResponse(
+            RAPORHUB_LANDING_DIR.joinpath("index.html").read_text(encoding="utf-8"),
+            headers={"Cache-Control": "no-cache"},
+        )
+
     model_label = escape(_display_model_name())
+    device_label, device_kind = _display_embedding_device()
+    device_label = escape(device_label)
+    device_kind = escape(device_kind)
     html = """
 <!doctype html>
 <html lang="tr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="/favicon.ico" type="image/svg+xml" />
   <title>__BRAND_NAME__</title>
   <style>
     :root {
@@ -426,6 +488,22 @@ def upload_page() -> HTMLResponse:
       font-size: 12px;
       font-weight: 800;
       letter-spacing: 0.02em;
+    }
+    .compute-pill {
+      gap: 7px;
+    }
+    .compute-pill::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      flex: 0 0 8px;
+      border-radius: 50%;
+      background: #b87517;
+      box-shadow: 0 0 0 3px rgba(184, 117, 23, 0.12);
+    }
+    .compute-pill.compute-gpu::before {
+      background: #16834f;
+      box-shadow: 0 0 0 3px rgba(22, 131, 79, 0.14);
     }
     .logout-link {
       margin-left: auto;
@@ -1901,6 +1979,10 @@ def upload_page() -> HTMLResponse:
       font-weight: 700;
       text-transform: none;
     }
+    .chat-prompts-shell {
+      position: relative;
+      min-width: 0;
+    }
     .chat-prompts {
       display: flex;
       flex-wrap: wrap;
@@ -1920,6 +2002,57 @@ def upload_page() -> HTMLResponse:
     .chat-prompt:hover {
       border-color: #d85a6b;
       color: var(--accent-strong);
+    }
+    .chat-prompt-help {
+      position: relative;
+      display: inline-flex;
+    }
+    .chat-prompt.chat-prompt-feature {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: white;
+    }
+    .chat-prompt.chat-prompt-feature:hover,
+    .chat-prompt.chat-prompt-feature:focus-visible {
+      border-color: var(--accent-strong);
+      background: var(--accent-strong);
+      color: white;
+    }
+    .chat-prompt-tooltip {
+      position: absolute;
+      bottom: calc(100% + 10px);
+      left: 0;
+      z-index: 40;
+      width: min(300px, calc(100vw - 32px));
+      visibility: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 6px;
+      background: #17201e;
+      color: #f4fbf8;
+      padding: 10px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.45;
+      text-align: left;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(4px);
+      transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
+      box-shadow: 0 10px 28px rgba(13, 31, 24, 0.2);
+    }
+    .chat-prompt-tooltip::after {
+      content: "";
+      position: absolute;
+      top: 100%;
+      left: 22px;
+      border: 6px solid transparent;
+      border-top-color: #17201e;
+    }
+    .chat-prompts-shell:has(.chat-prompt-feature:hover) .chat-prompt-tooltip,
+    .chat-prompts-shell:has(.chat-prompt-feature:focus-visible) .chat-prompt-tooltip {
+      visibility: visible;
+      opacity: 1;
+      transform: translateY(0);
     }
     .chat-input-row {
       display: grid;
@@ -2111,6 +2244,7 @@ def upload_page() -> HTMLResponse:
         flex-direction: column;
       }
     }
+__VARIANT_CSS__
   </style>
 </head>
 <body data-app-variant="__APP_VARIANT__">
@@ -2120,22 +2254,121 @@ def upload_page() -> HTMLResponse:
         <div class="hero">
           <div class="hero-title-row">
             <h1>__BRAND_NAME__</h1>
-            <span class="version-pill">v__APP_VERSION__</span>
-            <span class="version-pill">model: __MODEL_LABEL__</span>
+            <button class="raporhub-sidebar-toggle" id="raporhubSidebarToggle" type="button" aria-label="Sol menuyu daralt" aria-expanded="true" title="Sol menuyu daralt" data-raporhub-only hidden>
+              <span class="raporhub-sidebar-toggle-icon" aria-hidden="true"></span>
+            </button>
+            <span class="version-pill app-version-pill">v__APP_VERSION__</span>
+            <span class="version-pill compute-pill compute-__DEVICE_KIND__" title="Embedding islemleri __DEVICE_LABEL__ ile calisiyor">__DEVICE_LABEL__</span>
+            <span class="version-pill model-pill">model: __MODEL_LABEL__</span>
             <a class="logout-link" href="/logout">Cikis</a>
           </div>
+          <div class="raporhub-brand-subtitle" data-raporhub-only hidden>Muhendislik rapor zekasi</div>
           <p>Rapor havuzunu yonet, katalogla eslestir, kaynakli cevap al ve mukerrer adaylari ayni yerel sistemde incele.</p>
           <div class="module-switcher" aria-label="Modul secimi">
-            <button class="module-filter active" type="button" data-module-filter="upload">Raporlar</button>
-            <button class="module-filter" type="button" data-module-filter="catalog">Katalog</button>
-            <button class="module-filter" type="button" data-module-filter="search">Arama</button>
-            <button class="module-filter" type="button" data-module-filter="chat">Chatbot</button>
-            <button class="module-filter" type="button" data-module-filter="duplicates">Mukerrer</button>
-            <button class="module-filter" type="button" data-module-filter="graph">Kategoriler</button>
-            <button class="module-filter" type="button" data-module-filter="qa">Q&A</button>
-            <button class="module-filter" type="button" data-module-filter="writing">Yazim</button>
-            <button class="module-filter" type="button" data-module-filter="all">Her sey</button>
+            <div class="raporhub-nav-label" data-raporhub-only hidden>Calisma Alani</div>
+            <button class="module-filter" type="button" data-module-filter="home" data-nav-label="Genel Bakis" data-nav-short="GB" title="Genel Bakis" data-raporhub-only hidden>Genel Bakis</button>
+            <button class="module-filter active" type="button" data-module-filter="upload" data-nav-label="Raporlar" data-nav-short="RP" title="Raporlar">Raporlar</button>
+            <button class="module-filter" type="button" data-module-filter="catalog" data-nav-label="Katalog" data-nav-short="KT" title="Katalog">Katalog</button>
+            <div class="raporhub-nav-label" data-raporhub-only hidden>Bilgi Analizi</div>
+            <button class="module-filter" type="button" data-module-filter="search" data-nav-label="Arama" data-nav-short="AR" title="Arama">Arama</button>
+            <button class="module-filter" type="button" data-module-filter="chat" data-nav-label="Chatbot" data-nav-short="AI" title="Chatbot">Chatbot</button>
+            <button class="module-filter" type="button" data-module-filter="duplicates" data-nav-label="Mukerrer" data-nav-short="MK" title="Mukerrer">Mukerrer</button>
+            <button class="module-filter" type="button" data-module-filter="graph" data-nav-label="Kategoriler" data-nav-short="KG" title="Kategoriler">Kategoriler</button>
+            <div class="raporhub-nav-label" data-raporhub-only hidden>Rapor Uretimi</div>
+            <button class="module-filter" type="button" data-module-filter="qa" data-nav-label="Q&A" data-nav-short="QA" title="Q&A" data-raporhub-hide>Q&A</button>
+            <button class="module-filter" type="button" data-module-filter="writing" data-nav-label="Yazim" data-nav-short="YZ" title="Yazim">Yazim</button>
+            <button class="module-filter" type="button" data-module-filter="all" data-raporhub-hide>Her sey</button>
           </div>
+          <div class="raporhub-sidebar-footer" data-raporhub-only hidden>
+            <div class="raporhub-local-status"><span></span>Yerel calisma alani hazir</div>
+            <a href="/logout">Oturumu kapat</a>
+          </div>
+        </div>
+        <header class="raporhub-topbar" data-raporhub-only hidden>
+          <button class="raporhub-theme-toggle" id="raporhubThemeToggle" type="button" aria-label="Karanlik moda gec" aria-pressed="false" title="Karanlik moda gec">
+            <span class="raporhub-theme-icon" aria-hidden="true"></span>
+          </button>
+          <details class="raporhub-system-menu">
+            <summary title="Sistem durumunu goster">
+              <span class="raporhub-device-dot compute-__DEVICE_KIND__"></span>
+              <strong>__DEVICE_LABEL__</strong>
+              <span>v__APP_VERSION__</span>
+            </summary>
+            <div class="raporhub-system-popover">
+              <div><span>Embedding</span><strong>__DEVICE_LABEL__</strong></div>
+              <div><span>Model</span><strong>__MODEL_LABEL__</strong></div>
+              <div><span>Surum</span><strong>v__APP_VERSION__</strong></div>
+            </div>
+          </details>
+        </header>
+        <div class="section raporhub-home" data-module-title="Genel Bakis" data-module-key="home" data-raporhub-only hidden>
+          <div class="raporhub-welcome-band">
+            <div>
+              <div class="raporhub-eyebrow">RAPOR ZEKA CALISMA ALANI</div>
+              <h2>Bugun hangi raporu inceleyecegiz?</h2>
+              <p>Rapor havuzunda ara, kaynakli cevap al veya yeni belgeleri calisma alanina ekle.</p>
+            </div>
+            <button class="button secondary" id="raporhubUploadShortcut" type="button">Rapor Yukle</button>
+          </div>
+
+          <div class="raporhub-question-workspace">
+            <div class="raporhub-question-copy">
+              <span>RaporHub'a sor</span>
+              <strong>Belgelerden kanitli bir cevap olustur</strong>
+            </div>
+            <div class="raporhub-question-row">
+              <textarea id="raporhubHomeQuestion" rows="2" placeholder="Ornek: BIG-E konfor raporunu ozetle veya iki raporun sonuclarini karsilastir"></textarea>
+              <button class="button primary" id="raporhubHomeAskButton" type="button">Asistana Sor</button>
+            </div>
+            <div class="raporhub-starters" aria-label="Ornek sorular">
+              <button type="button" data-home-prompt="En son yuklenen raporun ana konusu nedir?">Son raporun konusu</button>
+              <button type="button" data-home-prompt="En uzun rapor hangisidir?">En uzun rapor</button>
+              <button type="button" data-home-action="comparison">Iki raporu karsilastir</button>
+            </div>
+          </div>
+
+          <div class="raporhub-metric-strip" aria-label="Calisma alani ozeti">
+            <div><span>Toplam rapor</span><strong id="raporhubDocumentCount">-</strong></div>
+            <div><span>Metin parcasi</span><strong id="raporhubChunkCount">-</strong></div>
+            <div><span>Embedding kapsami</span><strong id="raporhubEmbeddingCoverage">-</strong></div>
+            <div><span>Son yukleme</span><strong id="raporhubLastUpload">-</strong></div>
+          </div>
+
+          <div class="raporhub-overview-grid">
+            <section class="raporhub-recent-workspace">
+              <div class="raporhub-panel-heading">
+                <div>
+                  <span>RAPOR HAVUZU</span>
+                  <h3>Son eklenen raporlar</h3>
+                </div>
+                <button type="button" data-home-action="upload">Tumunu gor</button>
+              </div>
+              <div class="raporhub-recent-list" id="raporhubRecentDocuments">
+                <div class="raporhub-skeleton-row"></div>
+                <div class="raporhub-skeleton-row"></div>
+                <div class="raporhub-skeleton-row"></div>
+              </div>
+            </section>
+
+            <aside class="raporhub-readiness-panel">
+              <div class="raporhub-panel-heading">
+                <div>
+                  <span>SISTEM DURUMU</span>
+                  <h3>Aramaya hazirlik</h3>
+                </div>
+                <span class="raporhub-ready-badge" id="raporhubReadinessLabel">Kontrol ediliyor</span>
+              </div>
+              <div class="raporhub-coverage-track"><span id="raporhubCoverageBar"></span></div>
+              <div class="raporhub-readiness-copy" id="raporhubReadinessCopy">Rapor ve embedding bilgileri yukleniyor.</div>
+              <dl class="raporhub-system-facts">
+                <div><dt>Calisma birimi</dt><dd>__DEVICE_LABEL__</dd></div>
+                <div><dt>Embedding modeli</dt><dd>__MODEL_LABEL__</dd></div>
+                <div><dt>Dosya turleri</dt><dd id="raporhubFileTypes">-</dd></div>
+              </dl>
+              <button class="raporhub-text-action" type="button" data-home-action="search">Raporlarda arama yap</button>
+            </aside>
+          </div>
+          <div class="raporhub-overview-status" id="raporhubOverviewStatus">Calisma alani verileri yukleniyor.</div>
         </div>
         <div class="section" data-module-title="Raporlar" data-module-key="upload">
           <div class="section-head">
@@ -2249,7 +2482,7 @@ def upload_page() -> HTMLResponse:
             <div class="panel chat-panel">
               <div class="chat-toolbar">
                 <div class="chat-agent">
-                  <div class="chat-avatar">BA</div>
+                  <div class="chat-avatar">__BRAND_INITIALS__</div>
                   <div>
                     <div class="chat-agent-title">Rapor Asistani</div>
                     <div class="chat-agent-subtitle">Kaynakli cevap ve rapor bulma</div>
@@ -2263,6 +2496,7 @@ def upload_page() -> HTMLResponse:
                   </select>
                   <select id="chatRetrievalVersion" aria-label="RAG surumu">
                     <option value="v2">RAG v2 (Beta)</option>
+                    <option value="v3">RAG v3 (Haystack)</option>
                     <option value="v1">RAG v1 (Klasik)</option>
                   </select>
                   <select id="chatMode" aria-label="Chat arama modu">
@@ -2270,23 +2504,42 @@ def upload_page() -> HTMLResponse:
                     <option value="semantic">semantic</option>
                     <option value="keyword">keyword</option>
                   </select>
-                  <button class="button secondary" id="chatClearButton" type="button">Yeni Sohbet</button>
+                  <button class="button secondary" id="chatClearButton" type="button" data-raporhub-hide>Yeni Sohbet</button>
                 </div>
               </div>
               <div id="chatMessages" class="chat-messages">
                 <div class="chat-message assistant">Merhaba. Icerideki raporlar uzerinden soru sorabilirsin.</div>
               </div>
-              <div class="chat-prompts">
-                <button class="chat-prompt" type="button" data-chat-prompt="__BRAND_NAME__ ne yapar?">__BRAND_NAME__ ne yapar?</button>
-                <button class="chat-prompt" type="button" data-chat-prompt="Bu uygulama ne yapar?">Uygulama nedir?</button>
-                <button class="chat-prompt" type="button" data-chat-prompt="Kendinden bahset">Kendinden bahset</button>
-                <button class="chat-prompt" type="button" data-chat-prompt="BIG-E konfor raporunda hangi parkurlar var?">BIG-E konfor parkurlari</button>
-                <button class="chat-prompt" type="button" data-chat-prompt="Alternator braket raporunda dogal frekans kac Hz?">Alternator braket</button>
-                <button class="chat-prompt" type="button" data-chat-prompt="TASE sicaklik testinde kac sensor kullanildi?">TASE sensor</button>
+              <div class="chat-prompts-shell">
+                <div class="chat-prompts">
+                  <div class="chat-prompt-help">
+                    <button
+                      class="chat-prompt chat-prompt-feature"
+                      type="button"
+                      data-chat-prompt="RAPOR-KODU raporundaki tablo ve sekil numaralandirmasi dogru mu yapilmis?"
+                      data-chat-select="RAPOR-KODU"
+                      data-chat-assistant-mode="report"
+                      aria-describedby="qualityPromptTooltip"
+                    >Tablo / Sekil Kontrolu</button>
+                  </div>
+                  <button class="chat-prompt" type="button" data-chat-prompt="__BRAND_NAME__ ne yapar?" data-chat-assistant-mode="auto">__BRAND_NAME__ ne yapar?</button>
+                  <button class="chat-prompt" type="button" data-chat-prompt="Bu uygulama ne yapar?" data-chat-assistant-mode="auto">Uygulama nedir?</button>
+                  <button class="chat-prompt" type="button" data-chat-prompt="Kendinden bahset" data-chat-assistant-mode="auto">Kendinden bahset</button>
+                  <button class="chat-prompt" type="button" data-chat-prompt="BIG-E konfor raporunda hangi parkurlar var?" data-chat-assistant-mode="report">BIG-E konfor parkurlari</button>
+                  <button class="chat-prompt" type="button" data-chat-prompt="Alternator braket raporunda dogal frekans kac Hz?" data-chat-assistant-mode="report">Alternator braket</button>
+                  <button class="chat-prompt" type="button" data-chat-prompt="TASE sicaklik testinde kac sensor kullanildi?" data-chat-assistant-mode="report">TASE sensor</button>
+                </div>
+                <div class="chat-prompt-tooltip" id="qualityPromptTooltip" role="tooltip">
+                  Rapordaki tablo, sekil ve resim numaralarinda eksik, tekrar veya sira bozuklugunu kontrol eder.
+                  Tiklayip secili RAPOR-KODU alanini degistirmen yeterli.
+                </div>
               </div>
               <div class="chat-input-row">
                 <textarea id="chatInput" rows="2" placeholder="Rapor, test veya analiz hakkinda soru sor..."></textarea>
-                <button class="button primary" id="chatSendButton" type="button">Gonder</button>
+                <div class="chat-composer-footer" id="raporhubChatComposerFooter" data-raporhub-only hidden>
+                  <div class="chat-composer-options" id="raporhubChatComposerOptions"></div>
+                </div>
+                <button class="button primary" id="chatSendButton" type="button" aria-label="Mesaj gonder" title="Mesaj gonder">Gonder</button>
               </div>
               <div class="note" id="chatStatus">Chatbot hazir.</div>
             </div>
@@ -2805,6 +3058,53 @@ def upload_page() -> HTMLResponse:
   </div>
 
   <script>
+    const isRaporHub = document.body.dataset.appVariant === "raporhub";
+    const raporhubSidebarPreferenceKey = "raporhubSidebarCollapsed";
+    const raporhubThemePreferenceKey = "raporhubColorMode";
+    let raporhubSidebarCollapsedPreference = false;
+    let raporhubThemePreference = "light";
+    if (isRaporHub) {
+      document.querySelectorAll("[data-raporhub-only]").forEach(element => {
+        element.hidden = false;
+      });
+      document.querySelectorAll("[data-raporhub-hide]").forEach(element => {
+        element.hidden = true;
+      });
+      const raporhubModuleSwitcher = document.querySelector(".module-switcher");
+      const raporhubChatButton = document.querySelector('[data-module-filter="chat"]');
+      if (raporhubModuleSwitcher && raporhubChatButton) {
+        raporhubModuleSwitcher.prepend(raporhubChatButton);
+      }
+      const raporhubComposerFooter = document.getElementById("raporhubChatComposerFooter");
+      const raporhubComposerOptions = document.getElementById("raporhubChatComposerOptions");
+      const raporhubSendButton = document.getElementById("chatSendButton");
+      const raporhubChatInput = document.getElementById("chatInput");
+      ["chatAssistantMode", "chatRetrievalVersion", "chatMode"].forEach(id => {
+        const control = document.getElementById(id);
+        if (raporhubComposerOptions && control) {
+          raporhubComposerOptions.append(control);
+        }
+      });
+      if (raporhubComposerFooter && raporhubSendButton) {
+        raporhubComposerFooter.append(raporhubSendButton);
+      }
+      if (raporhubChatInput) {
+        raporhubChatInput.rows = 1;
+      }
+      try {
+        raporhubSidebarCollapsedPreference = localStorage.getItem(raporhubSidebarPreferenceKey) === "true";
+        raporhubThemePreference = localStorage.getItem(raporhubThemePreferenceKey) === "dark" ? "dark" : "light";
+      } catch (error) {
+        raporhubSidebarCollapsedPreference = false;
+        raporhubThemePreference = "light";
+      }
+      document.body.classList.toggle(
+        "raporhub-sidebar-collapsed",
+        raporhubSidebarCollapsedPreference && window.innerWidth > 980
+      );
+      document.body.classList.toggle("raporhub-dark", raporhubThemePreference === "dark");
+    }
+
     const picker = document.getElementById("reportPicker");
     const uploadButton = document.getElementById("uploadButton");
     const summary = document.getElementById("summary");
@@ -2815,6 +3115,21 @@ def upload_page() -> HTMLResponse:
     const uploadedDocumentsRefreshButton = document.getElementById("uploadedDocumentsRefreshButton");
     const uploadedDocumentsStatus = document.getElementById("uploadedDocumentsStatus");
     const uploadedDocumentsTable = document.getElementById("uploadedDocumentsTable");
+    const raporhubSidebarToggle = document.getElementById("raporhubSidebarToggle");
+    const raporhubThemeToggle = document.getElementById("raporhubThemeToggle");
+    const raporhubHomeQuestion = document.getElementById("raporhubHomeQuestion");
+    const raporhubHomeAskButton = document.getElementById("raporhubHomeAskButton");
+    const raporhubUploadShortcut = document.getElementById("raporhubUploadShortcut");
+    const raporhubDocumentCount = document.getElementById("raporhubDocumentCount");
+    const raporhubChunkCount = document.getElementById("raporhubChunkCount");
+    const raporhubEmbeddingCoverage = document.getElementById("raporhubEmbeddingCoverage");
+    const raporhubLastUpload = document.getElementById("raporhubLastUpload");
+    const raporhubRecentDocuments = document.getElementById("raporhubRecentDocuments");
+    const raporhubReadinessLabel = document.getElementById("raporhubReadinessLabel");
+    const raporhubCoverageBar = document.getElementById("raporhubCoverageBar");
+    const raporhubReadinessCopy = document.getElementById("raporhubReadinessCopy");
+    const raporhubFileTypes = document.getElementById("raporhubFileTypes");
+    const raporhubOverviewStatus = document.getElementById("raporhubOverviewStatus");
     const catalogPicker = document.getElementById("catalogPicker");
     const catalogImportButton = document.getElementById("catalogImportButton");
     const catalogSummary = document.getElementById("catalogSummary");
@@ -2956,13 +3271,51 @@ def upload_page() -> HTMLResponse:
     let graphState = { categories: [], documents: [], selectedCategoryId: "all", search: "" };
     let activeTimerId = null;
     let activeModule = null;
-    let selectedModuleFilter = "upload";
+    let selectedModuleFilter = isRaporHub ? "chat" : "upload";
     let duplicateWorkspaceView = "candidates";
     let comparisonDocumentsLoaded = false;
     let latestComparisonData = null;
 
+    function syncRaporHubSidebar() {
+      if (!isRaporHub) return;
+      const isCollapsed = raporhubSidebarCollapsedPreference && window.innerWidth > 980;
+      document.body.classList.toggle("raporhub-sidebar-collapsed", isCollapsed);
+      raporhubSidebarToggle.setAttribute("aria-expanded", String(!isCollapsed));
+      raporhubSidebarToggle.setAttribute("aria-label", isCollapsed ? "Sol menuyu genislet" : "Sol menuyu daralt");
+      raporhubSidebarToggle.title = isCollapsed ? "Sol menuyu genislet" : "Sol menuyu daralt";
+    }
+
+    function toggleRaporHubSidebar() {
+      raporhubSidebarCollapsedPreference = !raporhubSidebarCollapsedPreference;
+      try {
+        localStorage.setItem(raporhubSidebarPreferenceKey, String(raporhubSidebarCollapsedPreference));
+      } catch (error) {
+        // The sidebar still works when browser storage is unavailable.
+      }
+      syncRaporHubSidebar();
+    }
+
+    function syncRaporHubTheme() {
+      if (!isRaporHub) return;
+      const isDark = raporhubThemePreference === "dark";
+      document.body.classList.toggle("raporhub-dark", isDark);
+      raporhubThemeToggle.setAttribute("aria-pressed", String(isDark));
+      raporhubThemeToggle.setAttribute("aria-label", isDark ? "Aydinlik moda gec" : "Karanlik moda gec");
+      raporhubThemeToggle.title = isDark ? "Aydinlik moda gec" : "Karanlik moda gec";
+    }
+
+    function toggleRaporHubTheme() {
+      raporhubThemePreference = raporhubThemePreference === "dark" ? "light" : "dark";
+      try {
+        localStorage.setItem(raporhubThemePreferenceKey, raporhubThemePreference);
+      } catch (error) {
+        // The theme still works when browser storage is unavailable.
+      }
+      syncRaporHubTheme();
+    }
+
     function applyModuleFilter(filterKey) {
-      selectedModuleFilter = filterKey || "upload";
+      selectedModuleFilter = filterKey || (isRaporHub ? "chat" : "upload");
       if (activeModule) {
         closeModule();
       }
@@ -2980,6 +3333,12 @@ def upload_page() -> HTMLResponse:
 
       if (selectedModuleFilter === "graph") {
         refreshGraph();
+      }
+      if (selectedModuleFilter === "home" && isRaporHub) {
+        refreshRaporHubOverview();
+      }
+      if (selectedModuleFilter === "upload" && isRaporHub) {
+        refreshUploadedDocuments();
       }
       if (selectedModuleFilter === "duplicates") {
         if (duplicateWorkspaceView === "comparison") {
@@ -3125,6 +3484,7 @@ def upload_page() -> HTMLResponse:
         const details = [];
         if (result.pages) details.push(`${result.pages} sayfa`);
         if (result.chunks) details.push(`${result.chunks} parca`);
+        if (result.ocr_pages) details.push(`${result.ocr_pages} sayfa OCR`);
         if (result.embeddings_created) details.push(`${result.embeddings_created} embedding`);
         if (result.error) details.push(result.error);
         const detailText = details.length ? ` | ${details.join(" | ")}` : "";
@@ -3172,6 +3532,117 @@ def upload_page() -> HTMLResponse:
       } finally {
         uploadedDocumentsRefreshButton.disabled = false;
       }
+    }
+
+    function formatRaporHubDate(value) {
+      const datePart = String(value || "").split(" ")[0];
+      const parts = datePart.split("-");
+      if (parts.length !== 3) return value || "-";
+      return `${parts[2]}.${parts[1]}.${parts[0]}`;
+    }
+
+    function renderRaporHubRecentDocuments(items) {
+      const recentItems = (items || []).slice(0, 5);
+      if (recentItems.length === 0) {
+        raporhubRecentDocuments.innerHTML = `
+          <div class="raporhub-empty-state">
+            <strong>Calisma alaninda henuz rapor yok</strong>
+            <span>Ilk PDF, DOCX veya PPTX raporunu ekleyerek basla.</span>
+          </div>
+        `;
+        return;
+      }
+
+      raporhubRecentDocuments.innerHTML = recentItems.map(item => {
+        const fileType = ["pdf", "docx", "pptx"].includes(String(item.file_type).toLowerCase())
+          ? String(item.file_type).toLowerCase()
+          : "file";
+        return `
+          <button class="raporhub-document-row" type="button" data-home-document-id="${Number(item.document_id)}">
+            <span class="raporhub-file-badge type-${fileType}">${escapeHtml(fileType.toUpperCase())}</span>
+            <span class="raporhub-document-main">
+              <strong title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</strong>
+              <span title="${escapeHtml(item.file_name)}">${escapeHtml(item.file_name)}</span>
+            </span>
+            <span class="raporhub-document-meta">${Number(item.chunk_count || 0)} parca<br>${escapeHtml(formatRaporHubDate(item.created_at))}</span>
+            <span class="raporhub-document-open" aria-hidden="true">&gt;</span>
+          </button>
+        `;
+      }).join("");
+    }
+
+    async function refreshRaporHubOverview() {
+      if (!isRaporHub) return;
+      raporhubOverviewStatus.textContent = "Calisma alani verileri yenileniyor.";
+      try {
+        const response = await fetch("/documents/list?limit=300");
+        const data = await response.json();
+        if (!response.ok) {
+          raporhubOverviewStatus.textContent = data.detail || "Calisma alani verileri alinamadi.";
+          return;
+        }
+
+        const items = data.items || [];
+        const chunkCount = items.reduce((total, item) => total + Number(item.chunk_count || 0), 0);
+        const embeddingCount = items.reduce((total, item) => total + Number(item.embedding_count || 0), 0);
+        const coverage = chunkCount > 0 ? Math.min(100, Math.round(embeddingCount * 100 / chunkCount)) : 0;
+        const typeCounts = items.reduce((counts, item) => {
+          const key = String(item.file_type || "diger").toUpperCase();
+          counts[key] = (counts[key] || 0) + 1;
+          return counts;
+        }, {});
+
+        raporhubDocumentCount.textContent = Number(data.total || 0).toLocaleString("tr-TR");
+        raporhubChunkCount.textContent = chunkCount.toLocaleString("tr-TR");
+        raporhubEmbeddingCoverage.textContent = `%${coverage}`;
+        raporhubLastUpload.textContent = items.length ? formatRaporHubDate(items[0].created_at) : "-";
+        raporhubCoverageBar.style.width = `${coverage}%`;
+        raporhubFileTypes.textContent = Object.entries(typeCounts)
+          .map(([type, count]) => `${type} ${count}`)
+          .join(" / ") || "-";
+        renderRaporHubRecentDocuments(items);
+
+        raporhubReadinessLabel.classList.toggle("partial", coverage < 95);
+        if (!items.length) {
+          raporhubReadinessLabel.textContent = "Veri bekliyor";
+          raporhubReadinessCopy.textContent = "Arama ve kaynakli cevap icin once rapor eklenmeli.";
+        } else if (coverage >= 95) {
+          raporhubReadinessLabel.textContent = "Hazir";
+          raporhubReadinessCopy.textContent = `${embeddingCount.toLocaleString("tr-TR")} embedding arama icin hazir.`;
+        } else {
+          raporhubReadinessLabel.textContent = "Kismi hazir";
+          raporhubReadinessCopy.textContent = `${embeddingCount.toLocaleString("tr-TR")} / ${chunkCount.toLocaleString("tr-TR")} metin parcasi aramaya hazir.`;
+        }
+        raporhubOverviewStatus.textContent = `${Math.min(items.length, 5)} son rapor gosteriliyor. Toplam ${Number(data.total || 0)} rapor var.`;
+      } catch (error) {
+        raporhubOverviewStatus.textContent = `Calisma alani verileri alinamadi: ${error}`;
+        raporhubRecentDocuments.innerHTML = `
+          <div class="raporhub-empty-state">
+            <strong>Rapor listesine ulasilamadi</strong>
+            <span>Sunucu durumunu kontrol edip yeniden dene.</span>
+          </div>
+        `;
+      }
+    }
+
+    function openRaporHubAction(action) {
+      if (action === "comparison") {
+        applyModuleFilter("duplicates");
+        setDuplicateWorkspace("comparison");
+        return;
+      }
+      applyModuleFilter(action || "home");
+    }
+
+    function askFromRaporHubHome() {
+      const question = raporhubHomeQuestion.value.trim();
+      if (!question) {
+        raporhubHomeQuestion.focus();
+        return;
+      }
+      applyModuleFilter("chat");
+      chatInput.value = question;
+      sendChatMessage();
     }
 
     function setStatus(kind, message) {
@@ -3881,6 +4352,7 @@ def upload_page() -> HTMLResponse:
     function compactChatProvider(provider) {
       const value = String(provider || "");
       if (!value) return "";
+      if (value.startsWith("haystack:")) return `Haystack ${value.slice("haystack:".length)}`;
       if (value.includes("Qwen3-Embedding")) return "Qwen3 Embedding";
       if (value.includes("ollama:")) return value.split("ollama:").pop();
       if (value === "document-analysis:status") return "Kural tabanli";
@@ -3893,7 +4365,11 @@ def upload_page() -> HTMLResponse:
       if (!data.retrieval_used) {
         return `Genel LLM${data.embedding_provider ? ` • ${compactChatProvider(data.embedding_provider)}` : ""}`;
       }
-      const version = data.retrieval_version === "v1" ? "RAG v1 • Klasik" : "RAG v2 • Beta";
+      const version = data.retrieval_version === "v1"
+        ? "RAG v1 • Klasik"
+        : data.retrieval_version === "v3"
+          ? "RAG v3"
+          : "RAG v2 • Beta";
       const providers = [
         compactChatProvider(data.retrieval_provider),
         compactChatProvider(data.embedding_provider),
@@ -3924,6 +4400,11 @@ def upload_page() -> HTMLResponse:
       chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
+    function syncChatInputHeight() {
+      chatInput.style.height = "auto";
+      chatInput.style.height = `${Math.min(chatInput.scrollHeight, 150)}px`;
+    }
+
     function resetChat() {
       chatHistory = [];
       chatContextDocumentIds = [];
@@ -3933,6 +4414,7 @@ def upload_page() -> HTMLResponse:
       chatSourceMeta.textContent = "Cevap geldikce ilgili rapor pasajlari burada gorunur.";
       chatStatus.textContent = "Chatbot hazir.";
       chatInput.value = "";
+      syncChatInputHeight();
       chatInput.focus();
     }
 
@@ -3944,6 +4426,7 @@ def upload_page() -> HTMLResponse:
       }
 
       chatInput.value = "";
+      syncChatInputHeight();
       appendChatMessage("user", message);
       chatHistory.push({ role: "user", content: message });
       chatSendButton.disabled = true;
@@ -5107,6 +5590,34 @@ def upload_page() -> HTMLResponse:
       draftPdfButton.disabled = true;
     }
 
+    if (isRaporHub) {
+      raporhubSidebarToggle.addEventListener("click", toggleRaporHubSidebar);
+      raporhubThemeToggle.addEventListener("click", toggleRaporHubTheme);
+      window.addEventListener("resize", syncRaporHubSidebar);
+      chatInput.placeholder = "RaporHub'a mesaj yaz...";
+      raporhubHomeAskButton.addEventListener("click", askFromRaporHubHome);
+      raporhubHomeQuestion.addEventListener("keydown", event => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          askFromRaporHubHome();
+        }
+      });
+      raporhubUploadShortcut.addEventListener("click", () => openRaporHubAction("upload"));
+      document.querySelectorAll("[data-home-prompt]").forEach(button => {
+        button.addEventListener("click", () => {
+          raporhubHomeQuestion.value = button.dataset.homePrompt || "";
+          raporhubHomeQuestion.focus();
+        });
+      });
+      document.querySelectorAll("[data-home-action]").forEach(button => {
+        button.addEventListener("click", () => openRaporHubAction(button.dataset.homeAction));
+      });
+      raporhubRecentDocuments.addEventListener("click", event => {
+        const button = event.target.closest("[data-home-document-id]");
+        if (button) openDocumentFile(Number(button.dataset.homeDocumentId));
+      });
+    }
+
     picker.addEventListener("change", () => {
       selectedFiles = Array.from(picker.files || []);
       renderFiles();
@@ -5162,6 +5673,9 @@ def upload_page() -> HTMLResponse:
           if (activeModule && activeModule.dataset.moduleKey === "upload") {
             await refreshUploadedDocuments();
           }
+          if (isRaporHub) {
+            await refreshRaporHubOverview();
+          }
         } else {
           stopTimer(startedAt, message => setStatus("error", message), data.detail || "Yukleme basarisiz oldu.");
         }
@@ -5216,16 +5730,30 @@ def upload_page() -> HTMLResponse:
     chatSendButton.addEventListener("click", sendChatMessage);
     chatClearButton.addEventListener("click", resetChat);
     chatRetrievalVersion.addEventListener("change", () => {
-      const selectedLabel = chatRetrievalVersion.value === "v1" ? "RAG v1 (Klasik)" : "RAG v2 (Beta)";
+      const selectedLabel = chatRetrievalVersion.value === "v1"
+        ? "RAG v1 (Klasik)"
+        : chatRetrievalVersion.value === "v3"
+          ? "RAG v3 (Haystack)"
+          : "RAG v2 (Beta)";
       resetChat();
       chatStatus.textContent = `${selectedLabel} secildi. Yeni sohbet baglami hazir.`;
     });
     chatPromptButtons.forEach(button => {
       button.addEventListener("click", () => {
         chatInput.value = button.dataset.chatPrompt || "";
+        if (button.dataset.chatAssistantMode) {
+          chatAssistantMode.value = button.dataset.chatAssistantMode;
+        }
+        syncChatInputHeight();
         chatInput.focus();
+        const selectionText = button.dataset.chatSelect || "";
+        const selectionStart = selectionText ? chatInput.value.indexOf(selectionText) : -1;
+        if (selectionStart >= 0) {
+          chatInput.setSelectionRange(selectionStart, selectionStart + selectionText.length);
+        }
       });
     });
+    chatInput.addEventListener("input", syncChatInputHeight);
     chatInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
@@ -5371,7 +5899,9 @@ def upload_page() -> HTMLResponse:
     updateCatalogScope([], "");
     resetMultiDocumentWorkspace();
     resetChat();
-    applyModuleFilter("upload");
+    syncRaporHubSidebar();
+    syncRaporHubTheme();
+    applyModuleFilter(isRaporHub ? "chat" : "upload");
 
     function openDocumentFile(documentId) {
       window.open(`/documents/${documentId}/file`, "_blank");
@@ -5383,6 +5913,8 @@ def upload_page() -> HTMLResponse:
     """
     html = html.replace("__APP_VERSION__", APP_VERSION)
     html = html.replace("__MODEL_LABEL__", model_label)
+    html = html.replace("__DEVICE_LABEL__", device_label)
+    html = html.replace("__DEVICE_KIND__", device_kind)
     return HTMLResponse(_apply_brand_tokens(html))
 
 
@@ -5822,15 +6354,18 @@ def chat(
         )
 
     service = DocumentIntelligenceService(session)
-    answer = service.answer_question(
-        payload.message,
-        history=history,
-        mode=payload.mode,
-        limit=payload.limit,
-        document_id=payload.document_id,
-        context_document_ids=payload.document_ids,
-        retrieval_version=payload.retrieval_version,
-    )
+    try:
+        answer = service.answer_question(
+            payload.message,
+            history=history,
+            mode=payload.mode,
+            limit=payload.limit,
+            document_id=payload.document_id,
+            context_document_ids=payload.document_ids,
+            retrieval_version=payload.retrieval_version,
+        )
+    except (HaystackUnavailableError, HaystackRetrievalError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     history.append({"role": "user", "content": payload.message})
     history.append({"role": "assistant", "content": answer["answer"]})
     return ChatResponse(
@@ -5839,7 +6374,7 @@ def chat(
         answer_found=answer["answer_found"],
         confidence=answer["confidence"],
         embedding_provider=answer["embedding_provider"],
-        retrieval_provider=service.search_service.embedding_provider_name(),
+        retrieval_provider=service.retrieval_provider_name(payload.retrieval_version),
         retrieval_version=payload.retrieval_version,
         retrieval_used=True,
         sources=answer["sources"],
@@ -5851,6 +6386,8 @@ def _is_general_chat_message(message: str) -> bool:
     normalized = _fold_chat_text(message)
     if not normalized:
         return False
+    if _is_application_meta_message(normalized):
+        return True
     if _is_report_focused_message(normalized):
         return False
     if _is_simple_math_message(message):
@@ -5879,6 +6416,30 @@ def _is_general_chat_message(message: str) -> bool:
         return True
 
     return True
+
+
+def _is_application_meta_message(normalized: str) -> bool:
+    identity_phrases = {
+        "kendinden bahset",
+        "kendini tanit",
+        "sen kimsin",
+        "bu uygulama ne yapar",
+        "uygulama nedir",
+        "bu sistem nedir",
+    }
+    if any(phrase in normalized for phrase in identity_phrases):
+        return True
+
+    brand_names = {
+        _fold_chat_text(APP_BRAND.display_name),
+        "raporhub",
+        "smartcae ai",
+        "big agent",
+    }
+    capability_phrases = {"ne yapar", "ne ise yarar", "ne yapabilir"}
+    return any(name and name in normalized for name in brand_names) and any(
+        phrase in normalized for phrase in capability_phrases
+    )
 
 
 def _is_simple_math_message(message: str) -> bool:
@@ -5979,14 +6540,15 @@ def _chat_general_answer(message: str, history: list[dict] | None = None) -> tup
         or "ne ise yararsin" in normalized
         or "amacin ne" in normalized
         or "big agent ne yapar" in normalized
+        or "smartcae ai ne yapar" in normalized
         or "raporhub ne yapar" in normalized
         or "bu uygulama ne yapar" in normalized
         or "sistem ne yapar" in normalized
     ):
         return (
-            "Rapor iceriginde arama yapabilir, teknik sorulara kaynak pasajlarla cevap verebilir, ilgili raporlari ve "
-            "benzer dokumanlari gosterebilir, katalog kayitlarini icerdeki raporlarla eslestirebilir ve mukerrer rapor "
-            "adaylarini listeleyebilirim.",
+            f"{APP_BRAND.display_name}; muhendislik raporlarini yukleme, katalogdan ice aktarma, icerik ve anlamsal "
+            "arama, kaynakli soru-cevap, rapor karsilastirma, mukerrer tespiti, tablo/sekil numaralandirma kontrolu "
+            "ve rapor taslagi olusturma islemlerini tek yerde yapar.",
             "chat-direct",
             1.0,
         )
@@ -6360,7 +6922,7 @@ def document_detail(document_id: int, session: Session = Depends(get_session)) -
             """
         )
 
-    file_exists = Path(document.file_path).exists()
+    file_exists = resolve_document_file_path(document.file_path) is not None
     open_file_button = (
         f'<a class="button primary" href="/documents/{document_id}/file" target="_blank">Orijinal Dosyayi Ac</a>'
         if file_exists
@@ -6483,8 +7045,8 @@ def document_file(document_id: int, session: Session = Depends(get_session)):
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found.")
 
-    file_path = Path(document.file_path)
-    if not file_path.exists():
+    file_path = resolve_document_file_path(document.file_path)
+    if file_path is None:
         raise HTTPException(status_code=404, detail="Original file not found.")
 
     media_type = {
@@ -6509,4 +7071,6 @@ def storage_check(session: Session = Depends(get_session)) -> StorageCheckRespon
 @app.post("/embeddings/rebuild", response_model=ReindexEmbeddingsResponse)
 def rebuild_embeddings(session: Session = Depends(get_session)) -> ReindexEmbeddingsResponse:
     service = EmbeddingReindexService(session)
-    return ReindexEmbeddingsResponse(**service.rebuild())
+    result = service.rebuild()
+    HaystackRetrievalService.clear_cache()
+    return ReindexEmbeddingsResponse(**result)

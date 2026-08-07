@@ -15,6 +15,14 @@
     "only_expected_sources": true
   },
   {
+    "name": "Tablo numaralandirma kalite kontrolu",
+    "question": "2025-BIG-E-DUR-01 bu rapordaki tablo isimlendirmesi dogru mu yapilmis?",
+    "expected_intent": "quality",
+    "expected_contains": ["dogru gorunuyor", "1, 2, 3, 4, 5", "Eksik, tekrar veya sira bozuklugu yok"],
+    "expected_source_titles": ["2025-BIG-E-DUR-01"],
+    "only_expected_sources": true
+  },
+  {
     "name": "Raporun ana konusu",
     "question": "2025-BIG-e-DUR-02 raporunun ana konusu nedir?",
     "expected_intent": "summary",
@@ -26,6 +34,16 @@
     "question": "2025-BIG-E-TEST-13 raporunun sonucu nedir?",
     "expected_intent": "result",
     "expected_source_titles": ["2025-BIG-E-TEST-13"],
+    "only_expected_sources": true
+  },
+  {
+    "name": "BIG-E konfor parkurlari",
+    "question": "BIG-E konfor raporunda hangi parkurlar var?",
+    "mode": "hybrid",
+    "retrieval_version": "v1",
+    "expected_intent": "qa",
+    "expected_contains": ["Bozuk Yol", "Arnavut Kaldırım", "Otoban"],
+    "expected_source_titles": ["2025-BIG-e-NVH-01"],
     "only_expected_sources": true
   },
   {

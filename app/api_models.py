@@ -18,6 +18,7 @@ class IngestResponse(BaseModel):
     file_name: str | None = None
     pages: int | None = None
     chunks: int | None = None
+    ocr_pages: int = 0
     embeddings_created: int = 0
     embedding_provider: str
 
@@ -28,6 +29,7 @@ class BatchIngestItemResponse(BaseModel):
     document_id: int | None = None
     pages: int | None = None
     chunks: int | None = None
+    ocr_pages: int = 0
     embeddings_created: int = 0
     embedding_provider: str | None = None
     error: str | None = None
@@ -210,7 +212,7 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage] = Field(default_factory=list)
     mode: Literal["keyword", "semantic", "hybrid"] = "hybrid"
     assistant_mode: Literal["auto", "report", "general"] = "auto"
-    retrieval_version: Literal["v1", "v2"] = "v2"
+    retrieval_version: Literal["v1", "v2", "v3"] = "v2"
     limit: int = Field(default=5, ge=1, le=10)
     document_id: int | None = Field(default=None, ge=1)
     document_ids: list[int] = Field(default_factory=list, max_length=8)
@@ -248,7 +250,7 @@ class ChatResponse(BaseModel):
     confidence: float = Field(default=0.0)
     embedding_provider: str
     retrieval_provider: str | None = None
-    retrieval_version: Literal["v1", "v2"] = "v2"
+    retrieval_version: Literal["v1", "v2", "v3"] = "v2"
     retrieval_used: bool = False
     sources: list[AnswerSourceResponse]
     history: list[ChatMessage]

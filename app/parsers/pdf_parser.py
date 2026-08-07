@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..schemas import ParsedSection
+from ..services.ocr_service import SelectiveOCRService
 
 
 def parse_pdf(file_path: str | Path) -> list[ParsedSection]:
@@ -28,6 +29,10 @@ def parse_pdf(file_path: str | Path) -> list[ParsedSection]:
             )
         )
 
+    pages = SelectiveOCRService().enrich_sections(path, pages)
+    for page in pages:
+        if page.extraction_method == "ocr":
+            page.section_title = _detect_section_title(page.raw_text)
     return pages
 
 

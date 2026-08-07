@@ -8,6 +8,8 @@ import re
 import shutil
 import unicodedata
 
+from ..config import APP_BRAND
+
 
 @dataclass(frozen=True)
 class PdfHighlightRequest:
@@ -113,7 +115,7 @@ class PdfHighlightService:
                 quad_points=quad_points,
                 highlight_color=self._normalize_color(request.color),
                 printing=True,
-                title_bar="Big Agent",
+                title_bar=APP_BRAND.display_name,
             )
             annotation[NameObject("/Contents")] = TextStringObject(request.label[:240])
             annotation[NameObject("/CA")] = FloatObject(0.38)

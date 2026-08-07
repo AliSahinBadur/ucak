@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import (
+    APP_BRAND,
     CHAT_LLM_BACKEND,
     CHAT_LLM_ENABLED,
     CHAT_LLM_MODEL_NAME,
@@ -17,8 +18,14 @@ from ..config import (
     LLM_MAX_CONTEXT_TOKENS,
 )
 from ..db.models import Document, DocumentChunk, DocumentPage
+from .haystack_retrieval_service import (
+    HaystackRetrievalError,
+    HaystackRetrievalService,
+    HaystackUnavailableError,
+)
 from .llm_provider import DisabledLLMProvider, LLMProvider, OllamaLLMProvider
 from .qa_service import QAService
+from .report_quality_service import ReportQualityService
 from .search_service import SearchService
 
 
@@ -134,7 +141,12 @@ class DocumentIntelligenceService:
     def __init__(self, session: Session, llm_provider: LLMProvider | None = None) -> None:
         self.session = session
         self.search_service = SearchService(session)
+        self.haystack_retrieval_service = HaystackRetrievalService(
+            session,
+            search_service=self.search_service,
+        )
         self.qa_service = QAService(session)
+        self.report_quality_service = ReportQualityService(session)
         self.llm_provider = llm_provider or _build_document_chat_provider()
 
     def answer_question(
@@ -149,7 +161,14 @@ class DocumentIntelligenceService:
         retrieval_version: str = "v2",
     ) -> dict:
         cleaned_question = " ".join(question.split())
-        normalized_retrieval_version = SearchService._normalize_retrieval_version(retrieval_version)
+        requested_retrieval_version = str(retrieval_version or "").strip().casefold()
+        normalized_retrieval_version = (
+            "v3"
+            if requested_retrieval_version == "v3"
+            else SearchService._normalize_retrieval_version(retrieval_version)
+        )
+        if normalized_retrieval_version == "v3":
+            self.haystack_retrieval_service.ensure_available()
         intent = self._detect_intent(cleaned_question)
         explicit_document_ids = self._resolve_document_mentions(cleaned_question)
         if document_id is not None:
@@ -167,6 +186,17 @@ class DocumentIntelligenceService:
         if intent == "metadata":
             metadata_scope = selected_document_ids if uses_context or explicit_document_ids else []
             return self._metadata_answer(cleaned_question, metadata_scope)
+
+        if intent == "quality":
+            if not selected_document_ids:
+                selected_document_ids = self._search_document_ids(
+                    cleaned_question,
+                    mode=mode,
+                    limit=max(limit, 5),
+                    intent=intent,
+                    retrieval_version=normalized_retrieval_version,
+                )[:4]
+            return self.report_quality_service.answer_question(cleaned_question, selected_document_ids)
 
         if intent == "comparison":
             if len(selected_document_ids) < 2:
@@ -234,6 +264,19 @@ class DocumentIntelligenceService:
         if not has_explicit_scope and not self._evidence_supports_question(cleaned_question, sources):
             return self._empty_response(cleaned_question)
 
+        structured_list_answer = self._structured_list_answer(cleaned_question, sources)
+        if structured_list_answer:
+            return {
+                "question": cleaned_question,
+                "mode": mode,
+                "answer": structured_list_answer,
+                "answer_found": True,
+                "confidence": 1.0,
+                "embedding_provider": "document-analysis:structured-list",
+                "retrieval_version": normalized_retrieval_version,
+                "sources": sources[:8],
+            }
+
         if intent == "result":
             status_answer = self._status_answer(sources)
             if status_answer:
@@ -280,6 +323,11 @@ class DocumentIntelligenceService:
             retrieval_version=normalized_retrieval_version,
         )
 
+    def retrieval_provider_name(self, retrieval_version: str) -> str:
+        if str(retrieval_version or "").strip().casefold() == "v3":
+            return self.haystack_retrieval_service.provider_name
+        return self.search_service.embedding_provider_name()
+
     @classmethod
     def is_document_question(cls, message: str) -> bool:
         normalized = cls._normalize_text(message)
@@ -297,6 +345,10 @@ class DocumentIntelligenceService:
             "sonuc",
             "tasarim",
             "dayanikli",
+            "tablo",
+            "sekil",
+            "resim",
+            "numaralandirma",
             "gerilme",
             "stres",
             "mpa",
@@ -401,7 +453,13 @@ class DocumentIntelligenceService:
     ) -> list[int]:
         content_results: list[dict] = []
         try:
-            if mode == "keyword":
+            if retrieval_version == "v3":
+                content_results = self.haystack_retrieval_service.retrieve(
+                    question,
+                    mode=mode,
+                    limit=limit,
+                )
+            elif mode == "keyword":
                 content_results = self.search_service.keyword_search(question, limit=limit)
             elif mode == "semantic":
                 content_results = self.search_service.semantic_search(
@@ -415,20 +473,62 @@ class DocumentIntelligenceService:
                     limit=limit,
                     retrieval_version=retrieval_version,
                 )
+        except (HaystackUnavailableError, HaystackRetrievalError):
+            raise
         except Exception:
             logger.exception("Document content retrieval failed.")
 
+        if retrieval_version == "v3" and intent == "qa":
+            content_results = self._focus_v3_single_document_results(content_results)
+
         report_results: list[dict] = []
-        if intent in {"summary", "result", "scope", "comparison"}:
+        if intent in {"summary", "result", "scope", "comparison", "quality"}:
             try:
                 report_results = self.search_service.report_search(question, limit=limit)
             except Exception:
                 logger.exception("Document title retrieval failed.")
 
-        ordered_results = report_results + content_results if intent in {"summary", "scope"} else content_results + report_results
+        ordered_results = (
+            report_results + content_results
+            if intent in {"summary", "scope", "quality"}
+            else content_results + report_results
+        )
         return SearchService._normalize_document_ids(
             [int(item.get("document_id", 0) or 0) for item in ordered_results]
         )
+
+    @staticmethod
+    def _focus_v3_single_document_results(results: list[dict]) -> list[dict]:
+        if len(results) < 2:
+            return results
+        best_keyword_by_document: dict[int, float] = {}
+        for item in results:
+            document_id = int(item.get("document_id", 0) or 0)
+            if document_id <= 0:
+                continue
+            best_keyword_by_document[document_id] = max(
+                best_keyword_by_document.get(document_id, 0.0),
+                float(item.get("keyword_score", 0.0) or 0.0),
+            )
+        ranked_documents = sorted(
+            best_keyword_by_document.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        if len(ranked_documents) < 2:
+            return results
+        top_document_id, top_score = ranked_documents[0]
+        second_score = ranked_documents[1][1]
+        has_clear_lead = top_score >= 2.0 and (
+            second_score <= 0.0 or top_score >= second_score * 2.5
+        )
+        if not has_clear_lead:
+            return results
+        return [
+            item
+            for item in results
+            if int(item.get("document_id", 0) or 0) == top_document_id
+        ]
 
     def _collect_evidence(
         self,
@@ -442,21 +542,32 @@ class DocumentIntelligenceService:
         if not document_ids:
             return []
         retrieval_by_id: dict[int, dict] = {}
-        if retrieval_version == "v2":
+        if retrieval_version in {"v2", "v3"}:
             try:
                 candidate_limit = max(len(document_ids) * per_document_limit * 3, 12)
-                retrieval_results = self.search_service.hybrid_search(
-                    question,
-                    limit=candidate_limit,
-                    document_ids=document_ids,
-                    max_results_per_document=max(per_document_limit * 2, 4),
-                    retrieval_version=retrieval_version,
-                )
+                if retrieval_version == "v3":
+                    retrieval_results = self.haystack_retrieval_service.retrieve(
+                        question,
+                        mode="hybrid",
+                        limit=candidate_limit,
+                        document_ids=document_ids,
+                        max_results_per_document=max(per_document_limit * 2, 4),
+                    )
+                else:
+                    retrieval_results = self.search_service.hybrid_search(
+                        question,
+                        limit=candidate_limit,
+                        document_ids=document_ids,
+                        max_results_per_document=max(per_document_limit * 2, 4),
+                        retrieval_version=retrieval_version,
+                    )
                 retrieval_by_id = {
                     int(item["id"]): item
                     for item in retrieval_results
                     if int(item.get("id", 0) or 0) > 0
                 }
+            except (HaystackUnavailableError, HaystackRetrievalError):
+                raise
             except Exception:
                 logger.exception("Semantic evidence retrieval failed; using deterministic evidence scoring.")
 
@@ -756,6 +867,46 @@ class DocumentIntelligenceService:
         )
         return round(min(max(confidence, 0.0), 0.92), 3)
 
+    @classmethod
+    def _structured_list_answer(cls, question: str, sources: list[dict]) -> str | None:
+        normalized_question = cls._normalize_text(question)
+        if "parkur" not in normalized_question and "guzergah" not in normalized_question:
+            return None
+
+        for source_index, source in enumerate(sources, start=1):
+            text = " ".join(str(source.get("chunk_text", "")).split())
+            marker = re.search(
+                r"yol\s+datas[ıi]\s+toplama\s+parkurlar[ıi]\s*:",
+                text,
+                flags=re.IGNORECASE,
+            )
+            if not marker:
+                continue
+            block = text[marker.end():]
+            block_end = re.search(r"\s+(?:şekil|sekil)\s*-\s*\d+|\s+2\.2\s+", block, flags=re.IGNORECASE)
+            if block_end:
+                block = block[:block_end.start()]
+            listed_items = re.search(r"\bbunlar\s*:\s*(.+)$", block, flags=re.IGNORECASE)
+            if listed_items:
+                block = listed_items.group(1)
+            matches = re.findall(
+                r"(?:^|\s)(\d+)\.\s*(.+?)(?=\s+\d+\.\s*|$)",
+                block,
+                flags=re.IGNORECASE,
+            )
+            items = []
+            for _, value in matches:
+                cleaned = re.sub(r"\s+", " ", value).strip(" .;:-")
+                cleaned = re.sub(r"\bBozukYol\b", "Bozuk Yol", cleaned, flags=re.IGNORECASE)
+                if cleaned:
+                    items.append(cleaned)
+            if len(items) < 2:
+                continue
+            citation = f"[K{source_index}]"
+            lines = "\n".join(f"- {item} {citation}" for item in items)
+            return f"Raporda {len(items)} yol datası toplama parkuru belirtiliyor:\n{lines}"
+        return None
+
     def _status_answer(self, sources: list[dict]) -> str | None:
         overall_status = ""
         overall_source = 0
@@ -879,7 +1030,7 @@ class DocumentIntelligenceService:
                 f"[K{ranking_fact['source_index']}]. Bu dar olcut icin sonucu bununla uyumlu yaz."
             )
 
-        return f"""Sen Big Agent icindeki teknik rapor analiz asistanisin.
+        return f"""Sen {APP_BRAND.display_name} icindeki teknik rapor analiz asistanisin.
 Yalnizca verilen kaynaklara dayanarak Turkce cevap ver.
 {instruction}
 
@@ -1082,6 +1233,23 @@ Cevap:"""
             return "metadata"
         if ("kac sayfa" in normalized or "sayfa sayisi" in normalized) and "sayfa" in normalized:
             return "metadata"
+        quality_subject = any(term in normalized for term in ("tablo", "sekil", "resim", "figure", "table"))
+        quality_action = any(
+            term in normalized
+            for term in (
+                "isimlendirme",
+                "adlandirma",
+                "numaralandirma",
+                "numaralari dogru",
+                "sirali mi",
+                "sirayla mi",
+                "sira dogru",
+                "eksik numara",
+                "tekrar eden",
+            )
+        )
+        if quality_subject and quality_action:
+            return "quality"
         if any(term in normalized for term in cls.COMPARISON_TERMS) or "hangisi daha" in normalized:
             return "comparison"
         if any(term in normalized for term in ("en dayanikli", "en iyi", "en uygun", "en yuksek", "en dusuk")):

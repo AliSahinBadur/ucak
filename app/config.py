@@ -74,6 +74,13 @@ EMBEDDING_DEVICE = os.getenv("EMBEDDING_DEVICE", _default_embedding_device())
 EMBEDDING_LOCAL_FILES_ONLY = _env_bool("EMBEDDING_LOCAL_FILES_ONLY", default=False)
 EMBEDDING_SHOW_PROGRESS = _env_bool("EMBEDDING_SHOW_PROGRESS", default=False)
 
+OCR_ENABLED = _env_bool("OCR_ENABLED", default=True)
+OCR_LANGUAGES = os.getenv("OCR_LANGUAGES", "tur+eng").strip() or "tur+eng"
+OCR_DPI = max(150, min(int(os.getenv("OCR_DPI", "250")), 400))
+OCR_MIN_TEXT_CHARACTERS = max(20, int(os.getenv("OCR_MIN_TEXT_CHARACTERS", "100")))
+OCR_TESSDATA_DIR = os.getenv("OCR_TESSDATA_DIR", os.getenv("TESSDATA_PREFIX", "")).strip()
+OCR_TESSERACT_CMD = os.getenv("OCR_TESSERACT_CMD", os.getenv("TESSERACT_CMD", "")).strip()
+
 LLM_ENABLED = _env_bool("LLM_ENABLED", default=False)
 LLM_BACKEND = os.getenv("LLM_BACKEND", "disabled").strip().casefold()
 LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "")

@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="RaporHub, mühendislik raporlarını kaynaklı yapay zeka ve kurumsal hafızayla tek çalışma alanında buluşturur.">
+  <title>RaporHub | Mühendislik Rapor Zekası</title>
+  <link rel="icon" href="/raporhub-landing/assets/raporhub-favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/raporhub-landing/assets/raporhub-favicon-32.png">
+  <link rel="apple-touch-icon" href="/raporhub-landing/assets/raporhub-apple-touch-icon.png">
+  <link rel="stylesheet" href="/raporhub-landing/v7.css?v=2">
+  <link rel="stylesheet" href="/raporhub-landing/v7-memory.css?v=1">
+  <link rel="stylesheet" href="/raporhub-landing/v7-motion.css?v=1">
+  <script src="/raporhub-landing/v7.js?v=2" defer></script>
+  <script src="/raporhub-landing/v7-memory.js?v=1" defer></script>
+  <script src="/raporhub-landing/v7-motion.js?v=1" defer></script>
+</head>
+<body class="theme-onedocs">
+  <div class="app-launch-progress" id="app-launch-progress" role="progressbar" aria-label="RaporHub uygulamasi aciliyor" aria-hidden="true">
+    <span></span>
+  </div>
+  <header class="site-header" id="site-header">
+    <a class="brand" href="#top" aria-label="RaporHub ana sayfa">
+      <img class="brand-logo" src="/raporhub-landing/assets/raporhub-wordmark-light.png" alt="RaporHub">
+    </a>
+    <nav class="desktop-nav" aria-label="Ana menü">
+      <a href="#capabilities">Yetenekler</a>
+      <a href="#workspace">Ürün</a>
+      <a href="#memory">Kurumsal Hafıza</a>
+      <a href="#security">Güvenlik</a>
+    </nav>
+    <div class="header-actions">
+      <a class="button button-accent" href="/app">RaporHub'ı Aç</a>
+    </div>
+    <button class="menu-button" id="menu-button" type="button" aria-expanded="false" aria-controls="mobile-menu">Menü</button>
+    <nav class="mobile-menu" id="mobile-menu" aria-label="Mobil menü" hidden>
+      <a href="#capabilities">Yetenekler</a>
+      <a href="#workspace">Ürün</a>
+      <a href="#memory">Kurumsal Hafıza</a>
+      <a href="#security">Güvenlik</a>
+      <a href="/app">RaporHub'ı Aç</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero" id="top">
+      <video class="hero-video" autoplay muted loop playsinline preload="metadata" poster="/raporhub-landing/assets/hero-engineering.webp" data-playback-rate="1.25" aria-label="Araç doğrulama laboratuvarında teknik raporları inceleyen mühendislerin hareketli görüntüsü">
+        <source src="/raporhub-landing/assets/raporhub-bus-hero-loop.mp4" type="video/mp4">
+        <img src="/raporhub-landing/assets/hero-engineering.webp" alt="Modern bir araç doğrulama laboratuvarında teknik raporları inceleyen mühendisler" width="1536" height="864">
+      </video>
+      <div class="hero-shade" aria-hidden="true"></div>
+      <div class="hero-inner">
+        <div class="hero-copy">
+          <p class="eyebrow">YEREL MÜHENDİSLİK ZEKASI</p>
+          <h1>RaporHub</h1>
+          <p class="hero-statement">Mühendislik bilgisini kurumsal hafızaya dönüştürür.</p>
+          <p class="hero-description">Raporları bulur, karşılaştırır, kaynaklarıyla yanıtlar ve ekip bilgisini kaybolmadan yeniden kullanılabilir hale getirir.</p>
+          <div class="hero-actions">
+            <a class="button button-light" href="/app">RaporHub'ı Aç</a>
+            <a class="button button-outline-light" href="#workspace">Nasıl çalışır</a>
+          </div>
+        </div>
+        <div class="hero-note">
+          <strong>Veri dışarı çıkmaz.</strong>
+          <span>Cevaplar belge, sayfa ve pasaj düzeyinde izlenebilir kalır.</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="trust-strip" aria-label="RaporHub temel özellikleri">
+      <div>PDF · DOCX · PPTX</div>
+      <div>Kaynaklı RAG</div>
+      <div>Çoklu rapor karşılaştırma</div>
+      <div>Yerel model desteği</div>
+    </section>
+
+    <section class="proof-band dark-band">
+      <div class="section-shell">
+        <div class="section-heading reveal">
+          <p class="eyebrow">DAĞINIK BİLGİDEN TEK HAFIZAYA</p>
+          <h2>Bir raporu bulmaktan, geçmiş kararı yeniden kullanmaya kadar tek çalışma alanı.</h2>
+        </div>
+        <div class="proof-layout">
+          <figure class="proof-visual proof-visual-motion reveal">
+            <video class="proof-video" autoplay muted loop playsinline preload="metadata" poster="assets/knowledge-system.webp" aria-label="Raporların yerel işleme ve kaynaklı cevap akışında birleşmesini gösteren hareketli teknik görsel">
+              <source src="/raporhub-landing/assets/raporhub-knowledge-loop.mp4" type="video/mp4">
+              <img src="/raporhub-landing/assets/knowledge-system.webp" alt="Raporların yerel işleme ve kaynaklı cevap akışında birleşmesini gösteren teknik illüstrasyon" width="1536" height="1024">
+            </video>
+            <figcaption>Belge → yerel işleme → retrieval → kaynaklı çıktı</figcaption>
+          </figure>
+          <div class="proof-copy reveal">
+            <p class="section-kicker">Kurumsal rapor zekası</p>
+            <h3>Raporlar yalnızca arşivlenmez; birbirine bağlanır.</h3>
+            <p>Dosya yolu, araç, çalışma, kişi, yıl ve teknik konu aynı bilgi katmanında birleşir. Bir ekibin ürettiği sonuç, yıllar sonra başka bir ekip için bulunabilir ve açıklanabilir kalır.</p>
+            <ul class="check-list">
+              <li>Belge kodu, başlık ve içerikten otomatik metadata</li>
+              <li>Keyword, embedding ve metadata birlikte değerlendirilir</li>
+              <li>Her yanıt ilgili rapor pasajlarıyla doğrulanır</li>
+            </ul>
+            <a class="text-link" href="#memory-explorer">Kurumsal hafıza görünümünü aç <span aria-hidden="true">→</span></a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="capabilities light-band" id="capabilities">
+      <div class="section-shell">
+        <div class="split-heading reveal">
+          <div>
+            <p class="eyebrow dark-eyebrow">YAPAY ZEKA</p>
+            <h2>Okur. Karşılaştırır. Hatırlar.</h2>
+          </div>
+          <p>RaporHub, teknik belgeler üzerinde en çok zaman alan okuma, arama, kıyaslama ve ilk taslak hazırlama işlerini tek bir kaynaklı akışta toplar.</p>
+        </div>
+
+        <div class="capability-grid">
+          <article class="capability-card reveal">
+            <span class="feature-index">01</span>
+            <h3>Rapor Asistanı</h3>
+            <p>Doğal dilde soruyu anlar; yanıtı ilgili rapor, sayfa ve pasajlarla birlikte üretir.</p>
+            <div class="mini-diagram chat-diagram" aria-label="Kaynaklı yanıt örneği">
+              <span class="query-line">Tutma kolunun en dayanıklı tasarımı hangisi?</span>
+              <span class="answer-line">Tasarım B, üç yük senaryosunda en düşük deformasyonu gösteriyor.</span>
+              <span class="source-line">2024-CITIBUS-DUR-04 · Sayfa 7</span>
+            </div>
+          </article>
+
+          <article class="capability-card reveal">
+            <span class="feature-index">02</span>
+            <h3>Karşılaştırma</h3>
+            <p>İki rapordaki benzerlikleri ve farklılıkları anlamsal pasaj eşleştirmesiyle görünür kılar.</p>
+            <div class="mini-diagram compare-diagram" aria-label="İki rapor karşılaştırma örneği">
+              <div><strong>Rapor A</strong><span>Yük: 2.4 kN</span><span class="match">FOS: 2.1</span></div>
+              <div class="compare-link" aria-hidden="true">↔</div>
+              <div><strong>Rapor B</strong><span>Yük: 2.4 kN</span><span class="difference">FOS: 1.7</span></div>
+            </div>
+          </article>
+
+          <article class="capability-card reveal">
+            <span class="feature-index">03</span>
+            <h3>Kurumsal Hafıza</h3>
+            <p>Bir kök klasörü tarar; belgeleri çalışma, kişi, konu ve yıla göre otomatik dallandırır.</p>
+            <div class="mini-diagram tree-diagram" aria-label="Otomatik kategori ağacı örneği">
+              <div class="tree-root">RAPORLAR</div>
+              <div class="tree-row"><span>BIG-E</span><span>CITIBUS</span><span>CITIPORT</span></div>
+              <div class="tree-row tree-leaves"><span>Dayanım</span><span>Konfor</span><span>NVH</span></div>
+            </div>
+          </article>
+
+          <article class="capability-card reveal">
+            <span class="feature-index">04</span>
+            <h3>Rapor Yazımı</h3>
+            <p>Kaynak raporlardan kontrollü bulgular çıkarır ve şirket şablonunda ilk taslağı hazırlar.</p>
+            <div class="mini-diagram report-diagram" aria-label="Kurumsal rapor taslağı örneği">
+              <span class="report-label">GENEL / PUBLIC</span>
+              <strong>DEVELOPMENT STATEMENT</strong>
+              <div class="report-rule"></div>
+              <span>KAPSAM</span>
+              <span>SONUÇLAR</span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="workspace-section" id="workspace">
+      <div class="section-shell wide-shell">
+        <div class="section-heading reveal">
+          <p class="eyebrow dark-eyebrow">ÜRÜN</p>
+          <h2>Mühendislik raporlarının tamamı, aynı çalışma yüzeyinde.</h2>
+        </div>
+
+        <div class="product-tabs" role="tablist" aria-label="RaporHub ürün modülleri">
+          <button type="button" role="tab" aria-selected="false" aria-controls="panel-chatbot" id="tab-chatbot" data-product-tab="chatbot">Chatbot</button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="panel-compare" id="tab-compare" data-product-tab="compare">Karşılaştırma</button>
+          <button type="button" role="tab" aria-selected="true" aria-controls="panel-memory" id="tab-memory" data-product-tab="memory">Kurumsal Hafıza</button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="panel-writing" id="tab-writing" data-product-tab="writing">Rapor Yazımı</button>
+        </div>
+
+        <div class="product-stage reveal">
+          <section class="product-panel" id="panel-chatbot" role="tabpanel" aria-labelledby="tab-chatbot" data-product-panel="chatbot" hidden>
+            <div class="panel-copy">
+              <p class="section-kicker">Chatbot</p>
+              <h3>Yanıtı değil, dayanağını da görün.</h3>
+              <p>RAG v1, v2 veya v3 akışı seçilebilir; cevap her zaman bulunan kaynaklarla birlikte sunulur.</p>
+            </div>
+            <div class="app-window chat-window">
+              <div class="window-bar"><span>Rapor Asistanı</span><span>RAG v2 · Hybrid</span></div>
+              <div class="conversation">
+                <div class="user-message">BIG-E konfor raporunda hangi parkurlar var?</div>
+                <div class="assistant-message"><strong>RaporHub</strong><p>Raporda Arnavut kaldırımı, kasis ve bozuk yol parkurları yer alıyor.</p><span>[K1] Sayfa 4 · Test koşulları</span></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="product-panel" id="panel-compare" role="tabpanel" aria-labelledby="tab-compare" data-product-panel="compare" hidden>
+            <div class="panel-copy">
+              <p class="section-kicker">Karşılaştırma</p>
+              <h3>İki rapor arasındaki teknik farklar, pasaj seviyesinde.</h3>
+              <p>Benzer yöntemler, değişen sınır koşulları ve çelişen sonuçlar ayrı görünümlerde incelenir.</p>
+            </div>
+            <div class="app-window compare-window">
+              <div class="window-bar"><span>Rapor Karşılaştırma</span><span>%84 eşleşme</span></div>
+              <div class="dual-docs">
+                <article><strong>2024-CITIBUS-DUR-04</strong><p>Bağlantı bölgesinde maksimum gerilme 168 MPa ölçüldü.</p><mark>Emniyet katsayısı 2.1</mark></article>
+                <article><strong>2025-BIG-E-DUR-02</strong><p>Bağlantı bölgesinde maksimum gerilme 194 MPa ölçüldü.</p><mark>Emniyet katsayısı 1.7</mark></article>
+              </div>
+            </div>
+          </section>
+
+          <section class="product-panel active-panel" id="panel-memory" role="tabpanel" aria-labelledby="tab-memory" data-product-panel="memory">
+            <div class="panel-copy">
+              <p class="section-kicker">Kurumsal Hafıza</p>
+              <h3>Klasör yapısı, kendi kendini düzenleyen bilgi ağacına dönüşür.</h3>
+              <p>Çalışma, kişi ve yıl filtreleri birlikte çalışır. Düşük güvenli sınıflandırmalar saklanmaz; görünür biçimde işaretlenir.</p>
+              <a class="text-link" href="#memory-explorer">Canlı ağacı incele <span aria-hidden="true">→</span></a>
+            </div>
+            <div class="app-window memory-window">
+              <div class="window-bar"><span>V:\RAPORLAR</span><span>Otomatik tarama tamamlandı</span></div>
+              <div class="memory-filters"><span>Çalışma: Tümü</span><span>Kişi: Tümü</span><span>Yıl: 2025</span></div>
+              <div class="memory-layout">
+                <div class="memory-tree">
+                  <strong>Otomatik kategoriler</strong>
+                  <div>▾ BIG-E <small>12</small></div>
+                  <div class="indent">▾ Dayanım <small>5</small></div>
+                  <div class="indent-2 selected-doc">2025-BIG-E-DUR-01</div>
+                  <div class="indent">▸ Konfor <small>4</small></div>
+                  <div>▸ CITIBUS <small>8</small></div>
+                  <div>▸ CITIPORT <small>6</small></div>
+                </div>
+                <div class="memory-detail">
+                  <span>2025-BIG-E-DUR-01</span>
+                  <strong>Detay stok regalleri statik analiz raporu</strong>
+                  <dl><div><dt>Çalışma</dt><dd>BIG-E</dd></div><div><dt>Kişi</dt><dd>Ali Şahin</dd></div><div><dt>Yıl</dt><dd>2025</dd></div><div><dt>Güven</dt><dd>%96</dd></div></dl>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="product-panel" id="panel-writing" role="tabpanel" aria-labelledby="tab-writing" data-product-panel="writing" hidden>
+            <div class="panel-copy">
+              <p class="section-kicker">Rapor Yazımı</p>
+              <h3>Şirket şablonunda, kaynakları belli bir ilk taslak.</h3>
+              <p>Kapak, kapsam, sonuçlar ve devam bölümleri tek akışta hazırlanır; PDF ve DOCX çıktısı alınabilir.</p>
+            </div>
+            <div class="app-window writing-window">
+              <div class="window-bar"><span>Yeni Rapor</span><span>Taslak</span></div>
+              <div class="report-sheet"><small>GENEL / PUBLIC</small><strong>DEVELOPMENT STATEMENT</strong><div class="sheet-meta"><span>TARİH<br><b>06.08.2026</b></span><span>RAPOR NO.<br><b>2026-BIG-E-DUR-07</b></span></div><h4>BAĞLANTI BRAKETİ DAYANIM ANALİZİ</h4><p>KAPSAM</p><p>SONUÇLAR</p></div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section class="memory-story light-band" id="memory">
+      <div class="section-shell">
+        <div class="memory-story-grid">
+          <div class="memory-story-copy reveal">
+            <p class="eyebrow dark-eyebrow">KURUMSAL HAFIZA</p>
+            <h2>Dosya yolunu verin. RaporHub gerisini yapılandırsın.</h2>
+            <p>Alt klasörler özyinelemeli taranır; metin, OCR ve belge özellikleri birlikte değerlendirilir. Sistem kullanıcıdan onay beklemeden taksonomiyi üretir.</p>
+            <ol class="process-list">
+              <li><span>01</span><div><strong>İçeriği çıkarır</strong><p>PDF, DOCX ve PPTX içeriğini; gerekiyorsa OCR ile okur.</p></div></li>
+              <li><span>02</span><div><strong>Varlıkları tanır</strong><p>Kişi, çalışma, yıl, araç, konu ve belge türünü çıkarır.</p></div></li>
+              <li><span>03</span><div><strong>Ağacı kurar</strong><p>Belgeleri filtrelenebilir dallara ve ilişkilere yerleştirir.</p></div></li>
+            </ol>
+          </div>
+          <figure class="memory-story-visual reveal">
+            <img src="/raporhub-landing/assets/report-analysis.webp" alt="Teknik raporların kanıt işaretleri ve bağlantılarla incelenmesini gösteren illüstrasyon" width="1536" height="1024" loading="lazy">
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="memory-explorer-section" id="memory-explorer">
+      <div class="section-shell wide-shell">
+        <div class="memory-explorer-heading reveal">
+          <div>
+            <p class="eyebrow dark-eyebrow">CANLI KURUMSAL HAFIZA</p>
+            <h2>Dosyalar, filtrelenebilir bir bilgi ağacına dönüşür.</h2>
+          </div>
+        </div>
+        <div class="rh-memory-explorer reveal" data-memory-explorer></div>
+      </div>
+    </section>
+
+    <section class="security-band dark-band" id="security">
+      <div class="section-shell">
+        <div class="security-grid">
+          <div class="security-copy reveal">
+            <p class="eyebrow">YEREL VE KONTROLLÜ</p>
+            <h2>Raporlarınız başka bir sisteme taşınmadan yapay zekâ ile çalışır.</h2>
+            <p>Yerel embedding, yerel LLM ve ekip bazlı veri alanları sayesinde raporlar kurum içinde kalır. Kaynağı olmayan cümle, doğrulanmış bulgu gibi sunulmaz.</p>
+            <div class="security-points">
+              <div><strong>Yerel</strong><span>Model ve belgeler aynı ortamda</span></div>
+              <div><strong>İzlenebilir</strong><span>Belge, sayfa ve pasaj kaynağı</span></div>
+              <div><strong>İzole</strong><span>Ekip bazlı bağımsız veri alanları</span></div>
+            </div>
+          </div>
+          <figure class="security-visual reveal">
+            <img src="/raporhub-landing/assets/local-ai-system.webp" alt="Belgelerin güvenli yerel yapay zeka altyapısında işlendiğini gösteren teknik illüstrasyon" width="1536" height="1024" loading="lazy">
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="faq-section light-band">
+      <div class="section-shell faq-shell">
+        <div class="faq-heading reveal">
+          <p class="eyebrow dark-eyebrow">SIK SORULANLAR</p>
+          <h2>RaporHub hakkında.</h2>
+        </div>
+        <div class="faq-list reveal">
+          <details>
+            <summary>RaporHub nedir?</summary>
+            <p>Teknik raporları arama, soru-cevap, karşılaştırma, yazım ve kurumsal hafıza akışlarında birleştiren yerel mühendislik zekası platformudur.</p>
+          </details>
+          <details>
+            <summary>Cevapların kaynağı görülebilir mi?</summary>
+            <p>Evet. RaporHub yanıtla birlikte ilgili belgeyi, sayfayı ve kullanılan pasajı gösterir.</p>
+          </details>
+          <details>
+            <summary>Klasörler otomatik sınıflandırılabilir mi?</summary>
+            <p>Kurumsal Hafıza görünümü; alt klasörleri tarayıp çalışma, kişi, yıl ve teknik konu gibi alanları otomatik çıkaracak şekilde tasarlanmıştır.</p>
+          </details>
+          <details>
+            <summary>İnternet bağlantısı gerekli mi?</summary>
+            <p>Yerel model ve yerel dosya altyapısı kullanıldığında temel rapor işleme ve soru-cevap akışları kurum ağı içinde çalışabilir.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section class="final-cta">
+      <img src="/raporhub-landing/assets/hero-engineering.webp" alt="Araç doğrulama laboratuvarında çalışan mühendislik ekibi" width="1536" height="864" loading="lazy">
+      <div class="final-cta-shade" aria-hidden="true"></div>
+      <div class="final-cta-content reveal">
+        <p class="eyebrow">RAPORLARINIZI HAFIZAYA DÖNÜŞTÜRÜN</p>
+        <h2>Geçmiş çalışma, bir sonraki kararın başlangıcı olsun.</h2>
+        <div class="hero-actions">
+          <a class="button button-light" href="/app">RaporHub'ı Aç</a>
+          <a class="button button-outline-light" href="#memory-explorer">Kurumsal Hafızayı Gör</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-brand"><img class="footer-logo" src="/raporhub-landing/assets/raporhub-wordmark-light.png" alt="RaporHub"></div>
+    <p>Mühendislik bilgisini kaynaklı, yerel ve yeniden kullanılabilir hale getirir.</p>
+    <div class="footer-links"><a href="#capabilities">Yetenekler</a><a href="#workspace">Ürün</a><a href="#security">Güvenlik</a><a href="#memory-explorer">Canlı Hafıza Ağacı</a></div>
+    <span>RaporHub · 2026</span>
+  </footer>
+</body>
+</html>

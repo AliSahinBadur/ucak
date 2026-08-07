@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from ..config import (
+    APP_BRAND,
     CHAT_LLM_BACKEND,
     CHAT_LLM_ENABLED,
     CHAT_LLM_MODEL_NAME,
@@ -50,14 +51,14 @@ class GeneralChatService:
     def _build_prompt(message: str, history: list[dict[str, Any]]) -> str:
         history_lines = []
         for item in history[-6:]:
-            role = "Kullanici" if item.get("role") == "user" else "Big Agent"
+            role = "Kullanici" if item.get("role") == "user" else APP_BRAND.display_name
             content = " ".join(str(item.get("content", "")).split())
             if content:
                 history_lines.append(f"{role}: {content}")
         joined_history = "\n".join(history_lines) if history_lines else "Yok."
-        return f"""Sen Big Agent uygulamasinin genel sohbet modusun.
+        return f"""Sen {APP_BRAND.display_name} uygulamasinin genel sohbet modusun.
 Turkce cevap ver. Kisa, net, dogal ve yardimci ol.
-Kendini Big Agent icindeki arac test raporu asistani olarak tanit.
+Kendini {APP_BRAND.display_name} icindeki arac test raporu asistani olarak tanit.
 Basit sohbet, matematik ve genel yardim sorularini direkt cevapla.
 Insan oldugunu iddia etme; kimligini sorarlarsa yapay zeka destekli bir asistan oldugunu rahat bir dille soyle.
 Rapor, test, analiz, katalog veya kaynak gerektiren teknik sorularda cevap verebilirsin; kaynakli cevap gerekiyorsa rapor modunu veya otomatik modu kullanabildigini belirt.

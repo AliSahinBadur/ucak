@@ -79,6 +79,7 @@ def check_case(service: DocumentIntelligenceService, session, case: dict[str, An
         mode=case.get("mode", "keyword"),
         limit=int(case.get("limit", 5)),
         context_document_ids=context_ids,
+        retrieval_version=case.get("retrieval_version", "v2"),
     )
     elapsed = time.perf_counter() - started_at
 

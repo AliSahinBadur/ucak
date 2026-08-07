@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db.models import Document
+from .document_path_service import resolve_document_file_path
 
 
 class StorageService:
@@ -17,8 +16,7 @@ class StorageService:
         issues: list[dict] = []
 
         for document in documents:
-            file_path = Path(document.file_path)
-            if not file_path.exists():
+            if resolve_document_file_path(document.file_path) is None:
                 issues.append(
                     {
                         "document_id": document.id,

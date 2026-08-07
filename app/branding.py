@@ -7,6 +7,7 @@ from dataclasses import dataclass
 class AppBrand:
     key: str
     display_name: str
+    initials: str
     api_title: str
     data_dir_env: str
     default_data_dir: str
@@ -30,8 +31,9 @@ class AppBrand:
 BRANDS = {
     "big_agent": AppBrand(
         key="big_agent",
-        display_name="Big Agent",
-        api_title="Big Agent MVP",
+        display_name="SmartCAE AI",
+        initials="SA",
+        api_title="SmartCAE AI",
         data_dir_env="BIG_AGENT_DATA_DIR",
         default_data_dir="data",
         default_cookie_name="big_agent_session",
@@ -53,6 +55,7 @@ BRANDS = {
     "raporhub": AppBrand(
         key="raporhub",
         display_name="RaporHub",
+        initials="RH",
         api_title="RaporHub",
         data_dir_env="RAPORHUB_DATA_DIR",
         default_data_dir="data_raporhub",
