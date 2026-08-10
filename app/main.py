@@ -2243,6 +2243,131 @@ def upload_page(request: Request) -> HTMLResponse:
       .section-head {
         flex-direction: column;
       }
+
+      body[data-app-variant="big_agent"].chat-focus .section[data-module-key="chat"],
+      body[data-app-variant="big_agent"] .section.module-expanded[data-module-key="chat"] {
+        padding-right: 18px;
+        padding-left: 18px;
+      }
+      body[data-app-variant="big_agent"] .chat-layout,
+      body[data-app-variant="big_agent"].chat-focus .chat-layout,
+      body[data-app-variant="big_agent"] .section.module-expanded[data-module-key="chat"] .chat-layout {
+        width: 100%;
+        min-width: 0;
+        grid-template-columns: minmax(0, 1fr);
+      }
+      body[data-app-variant="big_agent"] .chat-layout > *,
+      body[data-app-variant="big_agent"] .chat-panel,
+      body[data-app-variant="big_agent"] .chat-side {
+        width: 100%;
+        min-width: 0;
+      }
+      body[data-app-variant="big_agent"] .chat-side {
+        min-height: 300px;
+      }
+    }
+
+    @media (max-width: 620px) {
+      body[data-app-variant="big_agent"].chat-focus .section[data-module-key="chat"],
+      body[data-app-variant="big_agent"] .section.module-expanded[data-module-key="chat"] {
+        padding-right: 12px;
+        padding-left: 12px;
+      }
+      body[data-app-variant="big_agent"] .chat-layout {
+        gap: 12px;
+        margin-top: 12px;
+      }
+      body[data-app-variant="big_agent"] .chat-panel,
+      body[data-app-variant="big_agent"] .chat-side {
+        min-height: 0;
+        padding: 12px;
+      }
+      body[data-app-variant="big_agent"] .chat-toolbar {
+        gap: 9px;
+        margin-bottom: 9px;
+      }
+      body[data-app-variant="big_agent"] .chat-agent-subtitle {
+        font-size: 11px;
+      }
+      body[data-app-variant="big_agent"] .chat-toolbar-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+      }
+      body[data-app-variant="big_agent"] .chat-toolbar-actions select,
+      body[data-app-variant="big_agent"] .chat-toolbar-actions .button {
+        width: 100%;
+        min-width: 0;
+        height: 38px;
+        padding-right: 8px;
+        padding-left: 8px;
+        font-size: 11px;
+      }
+      body[data-app-variant="big_agent"] .chat-messages {
+        width: 100%;
+        min-width: 0;
+        min-height: 340px;
+        max-height: 52vh;
+        overflow-x: hidden;
+        padding: 12px;
+        border-radius: 10px;
+      }
+      body[data-app-variant="big_agent"] .chat-message {
+        max-width: 94%;
+        overflow-wrap: anywhere;
+        padding: 9px 10px 10px;
+        font-size: 13px;
+      }
+      body[data-app-variant="big_agent"] .chat-prompts {
+        flex-wrap: nowrap;
+        gap: 6px;
+        margin-top: 9px;
+        padding-bottom: 4px;
+        overflow-x: auto;
+      }
+      body[data-app-variant="big_agent"] .chat-prompt-help,
+      body[data-app-variant="big_agent"] .chat-prompt {
+        flex: 0 0 auto;
+      }
+      body[data-app-variant="big_agent"] .chat-prompt {
+        padding: 7px 9px;
+        white-space: nowrap;
+      }
+      body[data-app-variant="big_agent"] .chat-input-row {
+        grid-template-columns: minmax(0, 1fr) 48px;
+        gap: 7px;
+        margin-top: 9px;
+        align-items: end;
+      }
+      body[data-app-variant="big_agent"] .chat-input-row textarea {
+        width: 100%;
+        min-width: 0;
+        min-height: 48px;
+        max-height: 112px;
+        resize: none;
+      }
+      body[data-app-variant="big_agent"] .chat-input-row .button {
+        display: grid;
+        place-items: center;
+        width: 48px;
+        min-width: 48px;
+        min-height: 48px;
+        padding: 0;
+        font-size: 0;
+      }
+      body[data-app-variant="big_agent"] .chat-input-row .button::before {
+        content: "\\2191";
+        font-size: 22px;
+        line-height: 1;
+      }
+      body[data-app-variant="big_agent"] #chatStatus {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      body[data-app-variant="big_agent"] .chat-source-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
     }
 __VARIANT_CSS__
   </style>
