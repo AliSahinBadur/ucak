@@ -361,6 +361,9 @@
       });
       const key = filter.dataset.docFilter;
       items.forEach((item) => { item.hidden = key !== "all" && item.dataset.category !== key; });
+      [...workspace.querySelectorAll(".landing-tree details")].reverse().forEach((branch) => {
+        branch.hidden = ![...branch.querySelectorAll("[data-doc-item]")].some((item) => !item.hidden);
+      });
       const visible = items.filter((item) => !item.hidden);
       if (count) count.textContent = `${visible.length} örnek doküman`;
       if (!visible.some((item) => item.classList.contains("active"))) selectItem(visible[0], true);

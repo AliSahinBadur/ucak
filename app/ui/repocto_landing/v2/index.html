@@ -6,8 +6,10 @@
   <meta name="description" content="RepOcto, dağınık dokümanları aranabilir, karşılaştırılabilir ve kaynakları izlenebilir ortak bilgiye dönüştürür.">
   <title>RepOcto | Doküman Zekâsı · V2</title>
   <link rel="icon" type="image/svg+xml" href="/repocto-landing/assets/repocto-favicon.svg?v=2">
-  <link rel="stylesheet" href="/repocto-landing/v2/repocto-v2.css?v=1">
-  <script src="/repocto-landing/v2/repocto-v2.js?v=1" defer></script>
+  <link rel="stylesheet" href="/repocto-landing/v2/repocto-v2.css?v=12">
+  <link rel="stylesheet" href="/repocto-landing/repocto-legacy-memory.css?v=4">
+  <script src="/repocto-landing/repocto-legacy-memory.js?v=6" defer></script>
+  <script src="/repocto-landing/v2/repocto-v2.js?v=2" defer></script>
 </head>
 <body data-landing-version="2">
   <a class="skip-link" href="#ana-anlatim">İçeriğe geç</a>
@@ -15,8 +17,7 @@
 
   <header class="site-header" data-site-header>
     <a class="brand" href="#ana-anlatim" aria-label="RepOcto ana anlatım">
-      <img src="/repocto-landing/assets/repocto-favicon.svg?v=2" alt="" width="52" height="52">
-      <span class="brand-name"><strong>RepOcto</strong><small>Doküman zekâsı</small></span>
+      <img class="brand-wordmark" src="/repocto-landing/assets/repocto-wordmark.png?v=2" alt="" width="1565" height="500">
     </a>
 
     <nav class="site-nav" id="site-nav" aria-label="Ana navigasyon" data-site-nav>
@@ -28,8 +29,8 @@
     </nav>
 
     <div class="header-actions">
-      <span class="version-badge" aria-label="İkinci arayüz sürümü">V2</span>
-      <a class="button button-primary header-app-link" href="/app">Uygulamayı Aç</a>
+      <a class="header-how-link" href="#uzantilar">Nasıl çalışır?</a>
+      <a class="button button-primary header-app-link" href="/app">RepOcto'yu Aç</a>
       <button class="menu-toggle" type="button" aria-controls="site-nav" aria-expanded="false" data-menu-toggle>Menü</button>
     </div>
   </header>
@@ -39,25 +40,23 @@
       <video class="hero-video" muted loop playsinline preload="auto" poster="/repocto-landing/assets/repocto-hero-coral-v3.png" aria-label="Dokümanlarla çalışan RepOcto animasyonu">
         <source src="/repocto-landing/assets/repocto-hero-loop-v2.mp4?v=1" type="video/mp4">
       </video>
-      <div class="hero-wash" aria-hidden="true"></div>
       <div class="hero-content">
-        <div class="hero-copy-panel">
+        <div class="hero-copy">
           <p class="hero-overline">Dokümanlar · Kaynaklar · Ortak Hafıza</p>
           <h1 id="hero-title">RepOcto</h1>
           <p class="hero-statement">Dokümanlarınızı, ekibinizin yeniden kullanabildiği ortak bilgiye dönüştürür.</p>
           <p class="hero-description">PDF, DOCX ve PPTX dosyalarını bulur, karşılaştırır ve özetler; her yanıtı belge, sayfa ve pasaj kaynağıyla birlikte gösterir.</p>
           <div class="hero-actions">
-            <a class="button button-primary hero-cta" href="#uzantilar">Nasıl çalışır?</a>
-            <a class="button hero-app-cta" href="/app">RepOcto'yu Aç</a>
+            <a class="button button-primary" href="#uzantilar">RepOcto'yu keşfet</a>
+            <a class="button button-secondary" href="#yetenekler">Nasıl çalışır?</a>
           </div>
-          <dl class="hero-facts" aria-label="RepOcto kısa özeti">
-            <div><dt>8</dt><dd>Uzman kol</dd></div>
-            <div><dt>1</dt><dd>Ortak hafıza</dd></div>
-            <div><dt>3</dt><dd>Dosya uzantısı</dd></div>
-          </dl>
+          <div class="hero-facts" aria-label="RepOcto kısa özeti">
+            <div><strong>8</strong><span>Uzman kol</span></div>
+            <div><strong>1</strong><span>Ortak hafıza</span></div>
+            <div><strong>3</strong><span>Dosya uzantısı</span></div>
+          </div>
         </div>
       </div>
-      <a class="scroll-link" href="#uzantilar"><span>01</span> Uzantılarla başla</a>
     </section>
 
     <section class="extensions section-snap" id="uzantilar" aria-labelledby="extensions-title">
@@ -94,22 +93,17 @@
           </div>
         </div>
 
-        <div class="octopus-stage octopus-stage-primary reveal" data-octopus-map data-active-arm="search" aria-label="Sekiz kollu RepOcto navigasyonu">
-          <canvas class="octopus-canvas" aria-hidden="true"></canvas>
-          <div class="octopus-head" aria-hidden="true">
-            <span class="octopus-eye octopus-eye-left"></span>
-            <span class="octopus-eye octopus-eye-right"></span>
-            <strong>RepOcto</strong>
-          </div>
+        <div class="octopus-stage octopus-stage-primary octopus-stage-static octopus-stage-character reveal" data-octopus-map data-active-arm="search" aria-label="Sekiz kollu RepOcto navigasyonu">
+          <img class="octopus-character" src="/repocto-landing/assets/repocto-octopus-friendly-v3.png" alt="Gülümseyen ve sekiz kolu belirgin RepOcto karakteri">
 
-          <a class="arm-target" style="--arm-x:4%;--arm-y:34%" href="#detay-arama" data-arm-link="search"><span>01</span><strong>Akıllı Arama</strong><small>İlgili pasajı bulur</small></a>
-          <a class="arm-target" style="--arm-x:69%;--arm-y:34%" href="#detay-soru" data-arm-link="qa"><span>02</span><strong>Soru &amp; Cevap</strong><small>Kanıtla yanıtlar</small></a>
-          <a class="arm-target" style="--arm-x:0%;--arm-y:51%" href="#detay-kaynak" data-arm-link="citation"><span>03</span><strong>Kaynak İzleme</strong><small>Dayanağı gösterir</small></a>
-          <a class="arm-target" style="--arm-x:73%;--arm-y:51%" href="#detay-ozet" data-arm-link="summary"><span>04</span><strong>Teknik Özet</strong><small>Bulguyu sadeleştirir</small></a>
-          <a class="arm-target" style="--arm-x:2%;--arm-y:68%" href="#detay-karsilastirma" data-arm-link="compare"><span>05</span><strong>Karşılaştırma</strong><small>Farkı görünür kılar</small></a>
-          <a class="arm-target" style="--arm-x:71%;--arm-y:68%" href="#detay-siniflandirma" data-arm-link="category"><span>06</span><strong>Sınıflandırma</strong><small>İçeriği düzenler</small></a>
-          <a class="arm-target" style="--arm-x:7%;--arm-y:85%" href="#detay-hafiza" data-arm-link="memory"><span>07</span><strong>Kurumsal Hafıza</strong><small>Deneyimi biriktirir</small></a>
-          <a class="arm-target" style="--arm-x:66%;--arm-y:85%" href="#detay-hazirlama" data-arm-link="writing"><span>08</span><strong>Doküman Hazırlama</strong><small>İlk taslağı kurar</small></a>
+          <a class="arm-target arm-target-left arm-level-1" href="#detay-arama" data-arm-link="search"><span>01</span><strong>Akıllı Arama</strong><small>İlgili pasajı bulur</small></a>
+          <a class="arm-target arm-target-right arm-level-1" href="#detay-soru" data-arm-link="qa"><span>02</span><strong>Soru &amp; Cevap</strong><small>Kanıtla yanıtlar</small></a>
+          <a class="arm-target arm-target-left arm-level-2" href="#detay-kaynak" data-arm-link="citation"><span>03</span><strong>Kaynak İzleme</strong><small>Dayanağı gösterir</small></a>
+          <a class="arm-target arm-target-right arm-level-2" href="#detay-ozet" data-arm-link="summary"><span>04</span><strong>Teknik Özet</strong><small>Bulguyu sadeleştirir</small></a>
+          <a class="arm-target arm-target-left arm-level-3" href="#detay-karsilastirma" data-arm-link="compare"><span>05</span><strong>Karşılaştırma</strong><small>Farkı görünür kılar</small></a>
+          <a class="arm-target arm-target-right arm-level-3" href="#detay-siniflandirma" data-arm-link="category"><span>06</span><strong>Sınıflandırma</strong><small>İçeriği düzenler</small></a>
+          <a class="arm-target arm-target-left arm-level-4" href="#detay-hafiza" data-arm-link="memory"><span>07</span><strong>Kurumsal Hafıza</strong><small>Deneyimi biriktirir</small></a>
+          <a class="arm-target arm-target-right arm-level-4" href="#detay-hazirlama" data-arm-link="writing"><span>08</span><strong>Doküman Hazırlama</strong><small>İlk taslağı kurar</small></a>
         </div>
       </div>
     </section>
@@ -123,15 +117,15 @@
       <div class="story-layout section-shell">
         <aside class="story-octopus" aria-label="Detay bölümleri arasında gezinme">
           <div class="octopus-stage octopus-stage-secondary octopus-stage-static" data-octopus-map data-active-arm="search">
-            <img class="octopus-character" src="/repocto-landing/assets/repocto-octopus-friendly-v2.png" alt="Gülümseyen sekiz kollu RepOcto karakteri">
-            <a class="arm-target arm-target-left" style="--arm-x:2%;--arm-y:34%" href="#detay-arama" data-arm-link="search"><span>01</span><strong>Arama</strong></a>
-            <a class="arm-target arm-target-right" style="--arm-y:34%" href="#detay-soru" data-arm-link="qa"><span>02</span><strong>Soru &amp; Cevap</strong></a>
-            <a class="arm-target arm-target-left" style="--arm-x:2%;--arm-y:49%" href="#detay-kaynak" data-arm-link="citation"><span>03</span><strong>Kaynak</strong></a>
-            <a class="arm-target arm-target-right" style="--arm-y:49%" href="#detay-ozet" data-arm-link="summary"><span>04</span><strong>Özet</strong></a>
-            <a class="arm-target arm-target-left" style="--arm-x:2%;--arm-y:64%" href="#detay-karsilastirma" data-arm-link="compare"><span>05</span><strong>Karşılaştır</strong></a>
-            <a class="arm-target arm-target-right" style="--arm-y:64%" href="#detay-siniflandirma" data-arm-link="category"><span>06</span><strong>Sınıflandır</strong></a>
-            <a class="arm-target arm-target-left" style="--arm-x:2%;--arm-y:79%" href="#detay-hafiza" data-arm-link="memory"><span>07</span><strong>Hafıza</strong></a>
-            <a class="arm-target arm-target-right" style="--arm-y:79%" href="#detay-hazirlama" data-arm-link="writing"><span>08</span><strong>Hazırla</strong></a>
+            <img class="octopus-character" src="/repocto-landing/assets/repocto-octopus-friendly-v3.png" alt="Gülümseyen ve sekiz kolu belirgin RepOcto karakteri">
+            <a class="arm-target arm-target-left arm-level-1" href="#detay-arama" data-arm-link="search"><span>01</span><strong>Arama</strong></a>
+            <a class="arm-target arm-target-right arm-level-1" href="#detay-soru" data-arm-link="qa"><span>02</span><strong>Soru &amp; Cevap</strong></a>
+            <a class="arm-target arm-target-left arm-level-2" href="#detay-kaynak" data-arm-link="citation"><span>03</span><strong>Kaynak</strong></a>
+            <a class="arm-target arm-target-right arm-level-2" href="#detay-ozet" data-arm-link="summary"><span>04</span><strong>Özet</strong></a>
+            <a class="arm-target arm-target-left arm-level-3" href="#detay-karsilastirma" data-arm-link="compare"><span>05</span><strong>Karşılaştır</strong></a>
+            <a class="arm-target arm-target-right arm-level-3" href="#detay-siniflandirma" data-arm-link="category"><span>06</span><strong>Sınıflandır</strong></a>
+            <a class="arm-target arm-target-left arm-level-4" href="#detay-hafiza" data-arm-link="memory"><span>07</span><strong>Hafıza</strong></a>
+            <a class="arm-target arm-target-right arm-level-4" href="#detay-hazirlama" data-arm-link="writing"><span>08</span><strong>Hazırla</strong></a>
           </div>
         </aside>
 
@@ -194,113 +188,44 @@
             </div>
           </article>
 
-          <article class="story-panel story-panel-coral" aria-labelledby="writing-title">
-            <div class="story-index">04</div>
-            <div class="story-copy">
-              <p class="story-kicker">DOKÜMAN HAZIRLAMA</p>
-              <h3 id="writing-title">Notlardan izlenebilir ilk taslağa.</h3>
-              <p>Dağınık teknik notları başlıklandırın ve kurumsal şablona uygun bir doküman taslağında birleştirin. Kullanılan geçmiş içeriklerin kaynağı korunsun.</p>
-              <div class="feature-lines">
-                <div id="detay-hazirlama" data-feature-key="writing"><strong>Doküman Hazırlama</strong><span>Kapak, kapsam, bulgular ve sonuçları düzenli bir ilk taslakta toplar.</span></div>
-              </div>
+          <article class="story-panel story-panel-writing" id="detay-hazirlama" data-feature-key="writing" aria-labelledby="writing-title">
+            <div class="writing-copy">
+              <span class="writing-number">04</span>
+              <h3 id="writing-title">Doküman Hazırlama</h3>
+              <p>Dağınık teknik notları anlamlı başlıklara ayırır ve şirket şablonunda düzenli bir doküman taslağına dönüştürür.</p>
             </div>
-            <div class="document-preview" aria-label="Teknik doküman taslağı örneği">
-              <div><span>GENEL / PUBLIC</span><b>DOKÜMAN NO. 2026-BIG-E-07</b></div>
-              <small>TEKNİK DOKÜMAN</small>
-              <strong>BAĞLANTI BRAKETİ<br>DAYANIM ANALİZİ</strong>
-              <i></i><i></i><i></i>
-              <p>Sonuç: Revizyon B uygun</p>
+            <div class="writing-flow" aria-label="Teknik notlardan düzenli doküman taslağına dönüşüm">
+              <ul class="writing-notes" aria-label="Teknik notlar">
+                <li>Braket revizyon B</li>
+                <li>Yük: 2,4 kN</li>
+                <li>Maks. gerilme 168 MPa</li>
+                <li>FOS 2,1 · uygun</li>
+                <li>Görselleri ekle</li>
+              </ul>
+              <div class="writing-transform" aria-hidden="true"><b>→</b><span>DÜZENLE</span></div>
+              <figure class="writing-document" aria-label="Bağlantı Braketi Dayanım Analizi teknik doküman taslağı">
+                <div class="writing-document-meta"><span>TEKNİK DOKÜMAN</span><b>A4</b></div>
+                <h4>Bağlantı Braketi<br>Dayanım Analizi</h4>
+                <div class="writing-document-rule"></div>
+                <div class="writing-document-columns"><strong>KAPSAM</strong><strong>BULGULAR</strong></div>
+                <i></i><i></i><i></i>
+                <p>Sonuç: Revizyon B uygun</p>
+              </figure>
             </div>
           </article>
         </div>
       </div>
     </section>
 
-    <section class="documents-section section-snap" id="dokumanlar" aria-labelledby="documents-title">
-      <div class="section-shell">
-        <div class="documents-heading reveal">
+    <section class="memory-explorer-section section-snap" id="dokumanlar" aria-labelledby="documents-title">
+      <div class="section-shell wide-shell">
+        <div class="memory-explorer-heading reveal">
           <div>
-            <p class="eyebrow">DOKÜMAN KLASÖRÜ</p>
+            <p class="eyebrow dark-eyebrow">CANLI KURUMSAL HAFIZA</p>
             <h2 id="documents-title">Klasör yapısı, aranabilir bir doküman ağacına dönüşür.</h2>
           </div>
-          <p>Her kayıt dosya yolunu, sınıflandırma gerekçesini ve kaynak izlerini korur. Aşağıdaki örnek dokümanları seçerek ayrıntılarını inceleyin.</p>
         </div>
-
-        <div class="folder-workspace reveal" data-document-workspace>
-          <div class="folder-toolbar">
-            <div class="folder-brand"><img src="/repocto-landing/assets/repocto-favicon.svg?v=2" alt="" width="34" height="34"><span>RepOcto <small>Doküman ağacı</small></span></div>
-            <div class="folder-path"><span>Kök klasör</span><code>V:\DOKÜMANLAR</code></div>
-            <span data-document-count>4 örnek doküman</span>
-          </div>
-          <ol class="folder-pipeline" aria-label="Doküman ağacı oluşturma adımları">
-            <li><b>01</b><span><strong>Alt klasörler</strong><small>Özyinelemeli tarama</small></span></li>
-            <li><b>02</b><span><strong>Metin + OCR</strong><small>İçerik çıkarımı</small></span></li>
-            <li><b>03</b><span><strong>Metadata</strong><small>Dosya bilgileri</small></span></li>
-            <li><b>04</b><span><strong>Sınıflandırma</strong><small>Konu ve çalışma</small></span></li>
-            <li><b>05</b><span><strong>Hafıza indeksi</strong><small>Arama + ilişkiler</small></span></li>
-          </ol>
-          <div class="folder-controls">
-            <div class="document-filters" role="group" aria-label="Konu filtresi">
-              <button type="button" class="active" data-doc-filter="all" aria-pressed="true">Tümü</button>
-              <button type="button" data-doc-filter="dayanim" aria-pressed="false">Dayanım</button>
-              <button type="button" data-doc-filter="konfor" aria-pressed="false">Konfor</button>
-              <button type="button" data-doc-filter="nvh" aria-pressed="false">NVH</button>
-            </div>
-            <span>Çalışma → konu → doküman</span>
-          </div>
-          <div class="folder-layout">
-            <aside class="folder-tree" aria-label="Doküman ağacı">
-              <div class="folder-pane-title"><strong>Otomatik kategoriler</strong><span>3 çalışma</span></div>
-              <div class="landing-tree">
-                <details open><summary><b>BIG-E</b><small>2</small></summary>
-                  <details open><summary><b>Dayanım</b><small>1</small></summary>
-                    <button type="button" class="document-item active" data-doc-item data-category="dayanim" data-code="2025-BIG-E-DUR-01" data-title="Detay stok regalleri statik analiz dokümanı" data-path="V:\DOKÜMANLAR\BIG-E\DAYANIM\2025-BIG-E-DUR-01.pdf" data-study="BIG-E" data-topic="Dayanım" data-year="2025" data-type="PDF" data-confidence="%96" data-reason="Dosya kodu, statik analiz başlığı ve dayanım sonuçları aynı sınıfı destekliyor."><strong>2025-BIG-E-DUR-01</strong><small>PDF · 2025</small></button>
-                  </details>
-                  <details open><summary><b>Konfor</b><small>1</small></summary>
-                    <button type="button" class="document-item" data-doc-item data-category="konfor" data-code="2025-BIG-E-TEST-13" data-title="Konfor parkuru test dokümanı" data-path="V:\DOKÜMANLAR\BIG-E\KONFOR\2025-BIG-E-TEST-13.pdf" data-study="BIG-E" data-topic="Konfor" data-year="2025" data-type="PDF" data-confidence="%93" data-reason="Parkur adları, test koşulları ve çalışma kodu Konfor dalını destekliyor."><strong>2025-BIG-E-TEST-13</strong><small>PDF · 2025</small></button>
-                  </details>
-                </details>
-                <details open><summary><b>CITIBUS</b><small>1</small></summary>
-                  <details open><summary><b>Dayanım</b><small>1</small></summary>
-                    <button type="button" class="document-item" data-doc-item data-category="dayanim" data-code="2024-CITIBUS-DUR-04" data-title="Bağlantı bölgesi dayanım incelemesi" data-path="V:\DOKÜMANLAR\CITIBUS\DAYANIM\2024-CITIBUS-DUR-04.pptx" data-study="CITIBUS" data-topic="Dayanım" data-year="2024" data-type="PPTX" data-confidence="%91" data-reason="Sunum başlıkları, gerilme sonuçları ve DUR kodu Dayanım dalını destekliyor."><strong>2024-CITIBUS-DUR-04</strong><small>PPTX · 2024</small></button>
-                  </details>
-                </details>
-                <details open><summary><b>CITIPORT</b><small>1</small></summary>
-                  <details open><summary><b>NVH</b><small>1</small></summary>
-                    <button type="button" class="document-item" data-doc-item data-category="nvh" data-code="2026-CITIPORT-NVH-02" data-title="Kabin gürültü ve titreşim değerlendirmesi" data-path="V:\DOKÜMANLAR\CITIPORT\NVH\2026-CITIPORT-NVH-02.pdf" data-study="CITIPORT" data-topic="NVH" data-year="2026" data-type="PDF" data-confidence="%94" data-reason="Frekans grafikleri, kabin gürültüsü başlığı ve NVH kodu aynı sınıfı destekliyor."><strong>2026-CITIPORT-NVH-02</strong><small>PDF · 2026</small></button>
-                  </details>
-                </details>
-              </div>
-            </aside>
-
-            <section class="folder-map" aria-label="Doküman ilişki şeması">
-              <div class="folder-pane-title"><strong>Doküman ağacı</strong><span>Çalışma → konu → belge</span></div>
-              <div class="tree-map" aria-hidden="true">
-                <div class="tree-map-root">Ortak Hafıza</div>
-                <div class="tree-map-branches">
-                  <article><b>BIG-E · 2</b><span>Dayanım</span><span>Konfor</span></article>
-                  <article><b>CITIBUS · 1</b><span>Dayanım</span></article>
-                  <article><b>CITIPORT · 1</b><span>NVH</span></article>
-                </div>
-              </div>
-            </section>
-
-            <section class="document-detail" aria-live="polite" aria-label="Seçili doküman ayrıntıları">
-              <div class="folder-pane-title"><strong>Belge profili</strong><span>Otomatik çıkarıldı</span></div>
-              <div class="detail-status"><span>Seçili doküman</span><b data-detail-confidence>%96 güven</b></div>
-              <p class="detail-code" data-detail-code>2025-BIG-E-DUR-01</p>
-              <h3 data-detail-title>Detay stok regalleri statik analiz dokümanı</h3>
-              <p class="detail-path" data-detail-path>V:\DOKÜMANLAR\BIG-E\DAYANIM\2025-BIG-E-DUR-01.pdf</p>
-              <dl>
-                <div><dt>Çalışma</dt><dd data-detail-study>BIG-E</dd></div>
-                <div><dt>Konu</dt><dd data-detail-topic>Dayanım</dd></div>
-                <div><dt>Yıl</dt><dd data-detail-year>2025</dd></div>
-                <div><dt>Tür</dt><dd data-detail-type>PDF</dd></div>
-              </dl>
-              <div class="classification-reason"><span>Neden bu kategoride?</span><p data-detail-reason>Dosya kodu, statik analiz başlığı ve dayanım sonuçları aynı sınıfı destekliyor.</p></div>
-            </section>
-          </div>
-        </div>
+        <div class="rh-memory-explorer reveal" data-memory-explorer></div>
       </div>
     </section>
 
@@ -329,7 +254,7 @@
         </aside>
       </div>
       <footer class="site-footer section-shell">
-        <a class="footer-brand" href="#ana-anlatim"><img src="/repocto-landing/assets/repocto-favicon.svg?v=2" alt="" width="36" height="36"><strong>RepOcto</strong></a>
+        <a class="footer-brand" href="#ana-anlatim" aria-label="RepOcto ana anlatım"><img class="footer-wordmark" src="/repocto-landing/assets/repocto-wordmark.png?v=2" alt="" width="1565" height="500"></a>
         <span>Doküman zekâsı · Arayüz V2</span>
       </footer>
     </section>

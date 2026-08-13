@@ -3054,6 +3054,18 @@ __VARIANT_CSS__
               <div><b>04</b><span><strong>Belge ağacı</strong><small>Klasör yapısını görünür kıl</small></span></div>
             </div>
             <div class="repocto-library-status" id="libraryStatus" role="status" aria-live="polite">Taranacak kök klasör yolunu girin.</div>
+            <div class="repocto-library-controls">
+              <label for="librarySearchInput">Doküman ara</label>
+              <input id="librarySearchInput" type="search" placeholder="Dosya veya klasör adı" autocomplete="off" />
+              <label for="libraryTypeFilter">Dosya türü</label>
+              <select id="libraryTypeFilter">
+                <option value="all">Tümü</option>
+                <option value="PDF">PDF</option>
+                <option value="DOCX">DOCX</option>
+                <option value="PPTX">PPTX</option>
+              </select>
+              <button class="button secondary" id="libraryClearButton" type="button">Temizle</button>
+            </div>
             <div class="repocto-library-workspace">
               <aside class="repocto-library-tree-pane" aria-label="Doküman ağacı">
                 <div class="repocto-library-pane-head"><strong>Doküman ağacı</strong><span id="libraryTreeSummary">Henüz taranmadı</span></div>
@@ -3061,6 +3073,12 @@ __VARIANT_CSS__
                   <div class="repocto-library-empty">Klasör yolu tarandığında belge ağacı burada oluşacak.</div>
                 </div>
               </aside>
+              <section class="repocto-library-map-pane" aria-label="Klasör haritası">
+                <div class="repocto-library-pane-head"><strong>Klasör haritası</strong><span>Kök → klasör → doküman</span></div>
+                <div class="repocto-library-map" id="libraryMap">
+                  <div class="repocto-library-empty">Kütüphane tarandığında klasör haritası burada oluşacak.</div>
+                </div>
+              </section>
               <section class="repocto-library-detail-pane" aria-label="Seçili doküman ayrıntıları">
                 <div class="repocto-library-pane-head"><strong>Belge profili</strong><span>Salt okunur</span></div>
                 <div class="repocto-library-detail" id="libraryDetail">
@@ -3426,6 +3444,10 @@ __VARIANT_CSS__
     const libraryStatus = document.getElementById("libraryStatus");
     const libraryTree = document.getElementById("libraryTree");
     const libraryTreeSummary = document.getElementById("libraryTreeSummary");
+    const librarySearchInput = document.getElementById("librarySearchInput");
+    const libraryTypeFilter = document.getElementById("libraryTypeFilter");
+    const libraryClearButton = document.getElementById("libraryClearButton");
+    const libraryMap = document.getElementById("libraryMap");
     const libraryDetail = document.getElementById("libraryDetail");
     const searchQuery = document.getElementById("searchQuery");
     const searchMode = document.getElementById("searchMode");
@@ -5267,6 +5289,17 @@ __VARIANT_CSS__
       `;
     }
 
+    function renderLibraryDetailEmpty(message = "Dosya türü, boyutu, güncellenme zamanı ve klasör yolu burada gösterilecek.") {
+      if (!libraryDetail) return;
+      libraryDetail.innerHTML = `
+        <div class="repocto-library-detail-empty">
+          <span>REP</span>
+          <strong>Bir doküman seçin</strong>
+          <p>${escapeHtml(message)}</p>
+        </div>
+      `;
+    }
+
     function renderLibraryNode(node, depth = 0) {
       if (!node) return "";
       if (node.type === "document") {
@@ -5286,15 +5319,51 @@ __VARIANT_CSS__
       `;
     }
 
-    function renderLibrary(data) {
-      const documentCount = Number(data.document_count || 0);
-      const directoryCount = Number(data.directory_count || 0);
-      libraryTree.innerHTML = data.tree
-        ? renderLibraryNode(data.tree)
-        : '<div class="repocto-library-empty">Desteklenen doküman bulunamadı.</div>';
-      libraryTreeSummary.textContent = `${directoryCount} klasör · ${documentCount} doküman`;
-      const suffix = data.truncated ? " · güvenli tarama sınırında durduruldu" : "";
-      libraryStatus.textContent = `Kütüphane hazır: ${directoryCount} klasör ve ${documentCount} doküman bulundu${suffix}.`;
+    let libraryData = null;
+
+    function filterLibraryNode(node, query, type) {
+      if (!node) return null;
+      if (node.type === "document") {
+        const searchable = `${node.name || ""} ${node.relative_path || ""}`.toLocaleLowerCase("tr-TR");
+        const queryMatches = !query || searchable.includes(query);
+        const typeMatches = type === "all" || String(node.extension || "").toLowerCase() === type;
+        return queryMatches && typeMatches ? { ...node } : null;
+      }
+      const originalChildren = Array.isArray(node.children) ? node.children : [];
+      const children = originalChildren.map(child => filterLibraryNode(child, query, type)).filter(Boolean);
+      const folderMatches = !query || String(node.name || "").toLocaleLowerCase("tr-TR").includes(query);
+      if (folderMatches && query && type === "all") return { ...node };
+      return children.length ? { ...node, children } : null;
+    }
+
+    function libraryMapNodes(node, depth = 0, output = []) {
+      if (!node || output.length >= 28) return output;
+      output.push({ name: node.name || "Doküman", type: node.type, extension: node.extension || "", depth });
+      (Array.isArray(node.children) ? node.children : []).forEach(child => libraryMapNodes(child, depth + 1, output));
+      return output;
+    }
+
+    function renderLibraryMap(tree) {
+      if (!libraryMap) return;
+      const nodes = libraryMapNodes(tree);
+      if (!nodes.length) {
+        libraryMap.innerHTML = '<div class="repocto-library-empty">Bu filtreyle harita düğümü bulunamadı.</div>';
+        return;
+      }
+      libraryMap.innerHTML = `
+        <div class="repocto-library-map-root">Kütüphane</div>
+        <div class="repocto-library-map-list">
+          ${nodes.slice(1).map(node => `
+            <div class="repocto-library-map-node ${node.type === "document" ? "document" : "folder"}" style="--map-depth:${Math.min(node.depth, 5)}">
+              <span>${node.type === "document" ? escapeHtml(node.extension || "DOC") : "KLS"}</span>
+              <strong>${escapeHtml(node.name)}</strong>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function bindLibraryDocuments() {
       libraryTree.querySelectorAll("[data-library-document]").forEach(button => {
         button.addEventListener("click", () => {
           libraryTree.querySelectorAll("[data-library-document]").forEach(item => item.classList.remove("active"));
@@ -5306,6 +5375,34 @@ __VARIANT_CSS__
           }
         });
       });
+    }
+
+    function applyLibraryFilters() {
+      if (!libraryData) return;
+      const query = String(librarySearchInput?.value || "").trim().toLocaleLowerCase("tr-TR");
+      const type = String(libraryTypeFilter?.value || "all").toLowerCase();
+      const filteredTree = filterLibraryNode(libraryData.tree, query, type);
+      libraryTree.innerHTML = filteredTree
+        ? renderLibraryNode(filteredTree)
+        : '<div class="repocto-library-empty">Bu filtreyle doküman bulunamadı.</div>';
+      renderLibraryMap(filteredTree);
+      bindLibraryDocuments();
+      const firstDocument = libraryTree.querySelector("[data-library-document]");
+      if (firstDocument) {
+        firstDocument.click();
+      } else {
+        renderLibraryDetailEmpty("Bu filtreyle eşleşen bir doküman bulunamadı.");
+      }
+    }
+
+    function renderLibrary(data) {
+      libraryData = data;
+      const documentCount = Number(data.document_count || 0);
+      const directoryCount = Number(data.directory_count || 0);
+      libraryTreeSummary.textContent = `${directoryCount} klasör · ${documentCount} doküman`;
+      const suffix = data.truncated ? " · güvenli tarama sınırında durduruldu" : "";
+      libraryStatus.textContent = `Kütüphane hazır: ${directoryCount} klasör ve ${documentCount} doküman bulundu${suffix}.`;
+      applyLibraryFilters();
     }
 
     async function scanRepOctoLibrary() {
@@ -6214,6 +6311,20 @@ __VARIANT_CSS__
           event.preventDefault();
           scanRepOctoLibrary();
         }
+      });
+    }
+    if (librarySearchInput) {
+      librarySearchInput.addEventListener("input", applyLibraryFilters);
+    }
+    if (libraryTypeFilter) {
+      libraryTypeFilter.addEventListener("change", applyLibraryFilters);
+    }
+    if (libraryClearButton) {
+      libraryClearButton.addEventListener("click", () => {
+        if (librarySearchInput) librarySearchInput.value = "";
+        if (libraryTypeFilter) libraryTypeFilter.value = "all";
+        applyLibraryFilters();
+        librarySearchInput?.focus();
       });
     }
     graphSearchInput.addEventListener("input", () => {

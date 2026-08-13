@@ -377,9 +377,33 @@ REPOCTO_CSS = """
       color: #a7ded9;
     }
 
+    body[data-app-variant="repocto"] .repocto-library-controls {
+      display: grid;
+      grid-template-columns: auto minmax(180px, 1fr) auto 150px auto;
+      gap: 9px;
+      align-items: center;
+      padding: 12px 15px;
+      border: 1px solid var(--rh-line);
+      border-radius: 6px;
+      background: var(--rh-surface);
+    }
+
+    body[data-app-variant="repocto"] .repocto-library-controls label {
+      color: #57336a;
+      font-size: 9px;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+
+    body[data-app-variant="repocto"] .repocto-library-controls input,
+    body[data-app-variant="repocto"] .repocto-library-controls select {
+      min-width: 0;
+      min-height: 38px;
+    }
+
     body[data-app-variant="repocto"] .repocto-library-workspace {
       display: grid;
-      grid-template-columns: minmax(380px, 1.15fr) minmax(300px, 0.85fr);
+      grid-template-columns: minmax(255px, 0.86fr) minmax(270px, 1.02fr) minmax(245px, 0.82fr);
       min-height: 500px;
       overflow: hidden;
       border: 1px solid var(--rh-line);
@@ -389,13 +413,18 @@ REPOCTO_CSS = """
     }
 
     body[data-app-variant="repocto"] .repocto-library-tree-pane,
+    body[data-app-variant="repocto"] .repocto-library-map-pane,
     body[data-app-variant="repocto"] .repocto-library-detail-pane {
       min-width: 0;
       padding: 18px;
     }
 
+    body[data-app-variant="repocto"] .repocto-library-map-pane,
     body[data-app-variant="repocto"] .repocto-library-detail-pane {
       border-left: 1px solid var(--rh-line);
+    }
+
+    body[data-app-variant="repocto"] .repocto-library-detail-pane {
       background: var(--rh-surface-muted);
     }
 
@@ -425,6 +454,89 @@ REPOCTO_CSS = """
       overflow: auto;
       padding: 12px 3px 10px;
       scrollbar-width: thin;
+    }
+
+    body[data-app-variant="repocto"] .repocto-library-map {
+      max-height: 630px;
+      overflow: auto;
+      padding: 20px 12px 24px;
+      scrollbar-width: thin;
+    }
+
+    body[data-app-variant="repocto"] .repocto-library-map-root {
+      position: relative;
+      width: fit-content;
+      margin: 0 auto 31px;
+      padding: 11px 18px;
+      border-radius: 5px;
+      background: #59346d;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    body[data-app-variant="repocto"] .repocto-library-map-root::after {
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      width: 1px;
+      height: 22px;
+      background: var(--rh-line);
+      content: '';
+    }
+
+    body[data-app-variant="repocto"] .repocto-library-map-list {
+      display: grid;
+      gap: 6px;
+    }
+
+    body[data-app-variant="repocto"] .repocto-library-map-node {
+      position: relative;
+      display: grid;
+      grid-template-columns: 32px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      min-height: 42px;
+      margin-left: calc((var(--map-depth) - 1) * 15px);
+      padding: 6px 8px;
+      border: 1px solid var(--rh-line);
+      border-radius: 4px;
+      background: var(--rh-surface);
+    }
+
+    body[data-app-variant="repocto"] .repocto-library-map-node::before {
+      position: absolute;
+      right: 100%;
+      top: 50%;
+      width: 12px;
+      height: 1px;
+      background: var(--rh-line);
+      content: '';
+    }
+
+    body[data-app-variant="repocto"] .repocto-library-map-node span {
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 28px;
+      border-radius: 4px;
+      background: #eaddec;
+      color: #57336a;
+      font-size: 8px;
+      font-weight: 900;
+    }
+
+    body[data-app-variant="repocto"] .repocto-library-map-node.document span {
+      background: #d7efeb;
+      color: #286d70;
+    }
+
+    body[data-app-variant="repocto"] .repocto-library-map-node strong {
+      min-width: 0;
+      overflow: hidden;
+      font-size: 10px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     body[data-app-variant="repocto"] .repocto-library-folder > summary {
@@ -1056,6 +1168,16 @@ REPOCTO_CSS = """
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
+      body[data-app-variant="repocto"] .repocto-library-workspace {
+        grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.1fr);
+      }
+
+      body[data-app-variant="repocto"] .repocto-library-detail-pane {
+        grid-column: 1 / -1;
+        border-top: 1px solid var(--rh-line);
+        border-left: 0;
+      }
+
       body[data-app-variant="repocto"] .repocto-capability-strip {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
@@ -1071,6 +1193,11 @@ REPOCTO_CSS = """
       }
 
       body[data-app-variant="repocto"] .repocto-library-detail-pane {
+        border-top: 1px solid var(--rh-line);
+        border-left: 0;
+      }
+
+      body[data-app-variant="repocto"] .repocto-library-map-pane {
         border-top: 1px solid var(--rh-line);
         border-left: 0;
       }
@@ -1176,6 +1303,7 @@ REPOCTO_CSS = """
 
       body[data-app-variant="repocto"] .repocto-library-path > div,
       body[data-app-variant="repocto"] .repocto-library-pipeline,
+      body[data-app-variant="repocto"] .repocto-library-controls,
       body[data-app-variant="repocto"] .repocto-library-document-copy dl {
         grid-template-columns: 1fr;
       }

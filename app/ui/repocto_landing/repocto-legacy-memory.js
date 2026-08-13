@@ -1,4 +1,6 @@
 (() => {
+  const scriptUrl = document.currentScript?.src || document.baseURI;
+  const wordmarkUrl = new URL("assets/repocto-wordmark.png", scriptUrl).href;
   const documents = [
     {
       id: "big-e-dur-01",
@@ -108,7 +110,7 @@
       <section class="mx-app" aria-label="Etkileşimli kurumsal hafıza ağacı">
         <header class="mx-topbar">
           <div class="mx-brand">
-            <img class="mx-brand-logo" src="assets/repocto-wordmark.png" alt="RepOcto">
+            <img class="mx-brand-logo" src="${escapeHtml(wordmarkUrl)}" alt="RepOcto">
             <span class="mx-brand-copy"><strong>RepOcto</strong><span>Kurumsal Hafıza</span></span>
           </div>
           <div class="mx-path-control">
