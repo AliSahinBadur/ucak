@@ -4,11 +4,12 @@ SmartCAE AI is a local-first report assistant for vehicle test and analysis docu
 
 Current version: `v0.50.114`
 
-## SmartCAE AI and RaporHub
+## SmartCAE AI, RaporHub and RepOcto
 
 SmartCAE AI is now the canonical codebase for both products. The API, RAG, ingestion,
 catalog, comparison, and report-writing services are shared. `APP_VARIANT` selects
-the product identity and theme, while each instance keeps its own data directory.
+the product identity and interface. RaporHub and RepOcto intentionally share the
+same report data directory; RepOcto is the separately selectable v2 experience.
 
 Run SmartCAE AI:
 
@@ -26,6 +27,19 @@ $env:RAPORHUB_DATA_DIR = "C:\Users\ISU34977\PyCharmMiscProject\Big_Agent\data_ra
 $env:APP_AUTH_COOKIE_NAME = "raporhub_session"
 & 'C:\Users\ISU34977\PyCharmMiscProject\.venv312\Scripts\python.exe' -m uvicorn app.main:app --host 127.0.0.1 --port 8003
 ```
+
+Run RepOcto without changing the existing RaporHub interface:
+
+```powershell
+$env:APP_VARIANT = "repocto"
+$env:RAPORHUB_DATA_DIR = "C:\Users\ISU34977\PyCharmMiscProject\Big_Agent\data_raporhub"
+$env:APP_AUTH_COOKIE_NAME = "repocto_session"
+& 'C:\Users\ISU34977\PyCharmMiscProject\.venv312\Scripts\python.exe' -m uvicorn app.main:app --host 127.0.0.1 --port 8004
+```
+
+`APP_VARIANT=raporhub` keeps the original green landing and application UI.
+`APP_VARIANT=repocto` serves the RepOcto landing and redesigned application UI.
+Both variants use the same API, RAG services, reports, chunks, and embeddings.
 
 The old standalone `RaporHub` folder is not modified by this setup. New shared
 features should be developed here once; product-specific UI work is selected by
@@ -80,10 +94,11 @@ Sabit portlarla başlatmak için:
 ```bat
 start_big_agent.bat
 start_raporhub.bat
+start_repocto.bat
 ```
 
-SmartCAE AI `8002`, ReportHub `8003` portunda açılır. Smart AIOS klasöründeki
-`start_all_apps.bat` üç uygulamayı birlikte başlatır.
+SmartCAE AI `8002`, RaporHub `8003`, RepOcto `8004` portunda açılır. Smart AIOS
+klasöründeki toplu başlatıcı ayrıca güncellendiğinde üçünü birlikte açabilir.
 
 From the project folder:
 

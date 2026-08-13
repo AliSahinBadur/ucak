@@ -9,7 +9,7 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     application: str
-    variant: Literal["big_agent", "raporhub"]
+    variant: Literal["big_agent", "raporhub", "repocto"]
 
 
 class IngestResponse(BaseModel):
@@ -310,6 +310,11 @@ class StorageCheckResponse(BaseModel):
     healthy_documents: int
     missing_file_count: int
     issues: list[StorageIssueResponse]
+
+
+class LibraryScanRequest(BaseModel):
+    path: str = Field(min_length=1, max_length=2048)
+    limit: int = Field(default=500, ge=1, le=800)
 
 
 class CatalogImportResponse(BaseModel):

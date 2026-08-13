@@ -9,6 +9,7 @@ class ChatRoutingTests(unittest.TestCase):
     def test_application_capability_questions_do_not_use_rag(self) -> None:
         for message in (
             "RaporHub ne yapar?",
+            "RepOcto ne yapar?",
             "SmartCAE AI ne yapar?",
             "Bu uygulama ne yapar?",
             "Kendinden bahset",

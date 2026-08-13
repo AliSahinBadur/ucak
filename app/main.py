@@ -44,6 +44,7 @@ from .api_models import (
     DuplicateReportScanResponse,
     HealthResponse,
     IngestResponse,
+    LibraryScanRequest,
     MultiDocumentAskRequest,
     MultiDocumentAskResponse,
     ReindexEmbeddingsResponse,
@@ -70,6 +71,7 @@ from .services.haystack_retrieval_service import (
     HaystackUnavailableError,
 )
 from .services.ingest_service import IngestService
+from .services.library_service import LibraryService
 from .services.multi_document_qa_service import MultiDocumentQAService
 from .services.qa_service import QAService
 from .services.report_comparison_service import (
@@ -89,6 +91,7 @@ from .config import (
     APP_SESSION_SECRET,
     APP_USERS_RAW,
     APP_VARIANT,
+    REPOCTO_LIBRARY_ROOTS,
 )
 
 
@@ -97,10 +100,18 @@ logger = logging.getLogger(__name__)
 #dfgasdgfasdfasdfasdfasdf
 app = FastAPI(title=APP_BRAND.api_title, version=APP_VERSION)
 RAPORHUB_LANDING_DIR = Path(__file__).resolve().parent / "ui" / "raporhub_landing"
+REPOCTO_LANDING_DIR = Path(__file__).resolve().parent / "ui" / "repocto_landing"
+REPOCTO_LANDING_V2_DIR = REPOCTO_LANDING_DIR / "v2"
+REPORT_WORKSPACE_VARIANTS = frozenset({"raporhub", "repocto"})
 app.mount(
     "/raporhub-landing",
     StaticFiles(directory=str(RAPORHUB_LANDING_DIR)),
     name="raporhub-landing",
+)
+app.mount(
+    "/repocto-landing",
+    StaticFiles(directory=str(REPOCTO_LANDING_DIR)),
+    name="repocto-landing",
 )
 AUTH_COOKIE_NAME = APP_AUTH_COOKIE_NAME
 AUTH_SESSION_SECONDS = 8 * 60 * 60
@@ -166,7 +177,7 @@ def _auth_enabled() -> bool:
 
 
 def _application_home_path() -> str:
-    return "/app" if APP_VARIANT == "raporhub" else "/"
+    return "/app" if APP_VARIANT in REPORT_WORKSPACE_VARIANTS else "/"
 
 
 def _login_html(error: str = "") -> str:
@@ -214,10 +225,18 @@ async def auth_middleware(request: Request, call_next):
     path = request.url.path
     if path in {"/health", "/login", "/logout", "/favicon.ico"}:
         return await call_next(request)
-    if APP_VARIANT == "raporhub" and (
-        path == "/" or path.startswith("/raporhub-landing/")
-    ):
-        return await call_next(request)
+    if APP_VARIANT in REPORT_WORKSPACE_VARIANTS:
+        landing_prefix = (
+            "/raporhub-landing/"
+            if APP_VARIANT == "raporhub"
+            else "/repocto-landing/"
+        )
+        repocto_v2_landing = APP_VARIANT == "repocto" and path in {
+            "/repocto-v2",
+            "/repocto-v2/",
+        }
+        if path == "/" or path.startswith(landing_prefix) or repocto_v2_landing:
+            return await call_next(request)
 
     username = _read_session_user(request)
     if username:
@@ -293,8 +312,16 @@ def _display_embedding_device() -> tuple[str, str]:
 
 
 def _apply_brand_tokens(html: str) -> str:
+    brand_dative = "RepOcto'ya" if APP_VARIANT == "repocto" else f"{APP_BRAND.display_name}'a"
+    workspace_intro = (
+        "Raporları bilgiye, bilgiyi karara dönüştürün."
+        if APP_VARIANT == "repocto"
+        else "Rapor havuzunu yonet, katalogla eslestir, kaynakli cevap al ve mukerrer adaylari ayni yerel sistemde incele."
+    )
     replacements = {
         "__BRAND_NAME__": escape(APP_BRAND.display_name),
+        "__BRAND_DATIVE__": brand_dative,
+        "__WORKSPACE_INTRO__": workspace_intro,
         "__BRAND_INITIALS__": escape(APP_BRAND.initials),
         "__APP_VARIANT__": APP_VARIANT,
         "__VARIANT_CSS__": get_variant_css(APP_VARIANT),
@@ -343,6 +370,12 @@ def favicon() -> Response:
             media_type="image/x-icon",
             headers={"Cache-Control": "public, max-age=86400"},
         )
+    if APP_VARIANT == "repocto":
+        return FileResponse(
+            REPOCTO_LANDING_DIR / "assets" / "repocto-favicon.svg",
+            media_type="image/svg+xml",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
     return Response(
         content=FAVICON_SVG,
         media_type="image/svg+xml",
@@ -387,6 +420,17 @@ def logout():
     return response
 
 
+@app.get("/repocto-v2/", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/repocto-v2", response_class=HTMLResponse, include_in_schema=False)
+def repocto_v2_landing() -> HTMLResponse:
+    if APP_VARIANT != "repocto":
+        raise HTTPException(status_code=404, detail="Not found")
+    return HTMLResponse(
+        REPOCTO_LANDING_V2_DIR.joinpath("index.html").read_text(encoding="utf-8"),
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
 @app.get("/app/", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/app", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/", response_class=HTMLResponse)
@@ -394,6 +438,11 @@ def upload_page(request: Request) -> HTMLResponse:
     if APP_VARIANT == "raporhub" and request.url.path == "/":
         return HTMLResponse(
             RAPORHUB_LANDING_DIR.joinpath("index.html").read_text(encoding="utf-8"),
+            headers={"Cache-Control": "no-cache"},
+        )
+    if APP_VARIANT == "repocto" and request.url.path == "/":
+        return HTMLResponse(
+            REPOCTO_LANDING_DIR.joinpath("index.html").read_text(encoding="utf-8"),
             headers={"Cache-Control": "no-cache"},
         )
 
@@ -2388,20 +2437,20 @@ __VARIANT_CSS__
             <a class="logout-link" href="/logout">Cikis</a>
           </div>
           <div class="raporhub-brand-subtitle" data-raporhub-only hidden>Muhendislik rapor zekasi</div>
-          <p>Rapor havuzunu yonet, katalogla eslestir, kaynakli cevap al ve mukerrer adaylari ayni yerel sistemde incele.</p>
+          <p>__WORKSPACE_INTRO__</p>
           <div class="module-switcher" aria-label="Modul secimi">
             <div class="raporhub-nav-label" data-raporhub-only hidden>Calisma Alani</div>
             <button class="module-filter" type="button" data-module-filter="home" data-nav-label="Genel Bakis" data-nav-short="GB" title="Genel Bakis" data-raporhub-only hidden>Genel Bakis</button>
             <button class="module-filter active" type="button" data-module-filter="upload" data-nav-label="Raporlar" data-nav-short="RP" title="Raporlar">Raporlar</button>
-            <button class="module-filter" type="button" data-module-filter="catalog" data-nav-label="Katalog" data-nav-short="KT" title="Katalog">Katalog</button>
+            <button class="module-filter" type="button" data-module-filter="catalog" data-nav-label="Katalog" data-nav-short="KT" title="Katalog" data-repocto-hide>Katalog</button>
             <div class="raporhub-nav-label" data-raporhub-only hidden>Bilgi Analizi</div>
             <button class="module-filter" type="button" data-module-filter="search" data-nav-label="Arama" data-nav-short="AR" title="Arama">Arama</button>
             <button class="module-filter" type="button" data-module-filter="chat" data-nav-label="Chatbot" data-nav-short="AI" title="Chatbot">Chatbot</button>
             <button class="module-filter" type="button" data-module-filter="duplicates" data-nav-label="Mukerrer" data-nav-short="MK" title="Mukerrer">Mukerrer</button>
-            <button class="module-filter" type="button" data-module-filter="graph" data-nav-label="Kategoriler" data-nav-short="KG" title="Kategoriler">Kategoriler</button>
+            <button class="module-filter" type="button" data-module-filter="graph" data-nav-label="Kategoriler" data-nav-short="KG" title="Kategoriler" data-repocto-label="Kütüphane" data-repocto-short="KT">Kategoriler</button>
             <div class="raporhub-nav-label" data-raporhub-only hidden>Rapor Uretimi</div>
             <button class="module-filter" type="button" data-module-filter="qa" data-nav-label="Q&A" data-nav-short="QA" title="Q&A" data-raporhub-hide>Q&A</button>
-            <button class="module-filter" type="button" data-module-filter="writing" data-nav-label="Yazim" data-nav-short="YZ" title="Yazim">Yazim</button>
+            <button class="module-filter" type="button" data-module-filter="writing" data-nav-label="Yazim" data-nav-short="YZ" title="Yazim" data-repocto-label="Raporlama" data-repocto-short="RP">Yazim</button>
             <button class="module-filter" type="button" data-module-filter="all" data-raporhub-hide>Her sey</button>
           </div>
           <div class="raporhub-sidebar-footer" data-raporhub-only hidden>
@@ -2410,6 +2459,10 @@ __VARIANT_CSS__
           </div>
         </div>
         <header class="raporhub-topbar" data-raporhub-only hidden>
+          <div class="repocto-page-context" data-repocto-only hidden>
+            <span>REPORT INTELLIGENCE</span>
+            <strong id="repoctoPageTitle">Chatbot</strong>
+          </div>
           <button class="raporhub-theme-toggle" id="raporhubThemeToggle" type="button" aria-label="Karanlik moda gec" aria-pressed="false" title="Karanlik moda gec">
             <span class="raporhub-theme-icon" aria-hidden="true"></span>
           </button>
@@ -2436,9 +2489,16 @@ __VARIANT_CSS__
             <button class="button secondary" id="raporhubUploadShortcut" type="button">Rapor Yukle</button>
           </div>
 
+          <div class="repocto-capability-strip" data-repocto-only hidden aria-label="RepOcto hizli islemleri">
+            <button type="button" data-home-action="chat"><i>01</i><span><strong>Kaynakli Asistan</strong><span>Raporlardan kanitli cevap al</span></span></button>
+            <button type="button" data-home-action="search"><i>02</i><span><strong>Akilli Arama</strong><span>Bilgiyi belge ve pasajda bul</span></span></button>
+            <button type="button" data-home-action="comparison"><i>03</i><span><strong>Karsilastirma</strong><span>Iki teknik raporu yan yana incele</span></span></button>
+            <button type="button" data-home-action="writing"><i>04</i><span><strong>Rapor Yazimi</strong><span>Kaynaklardan ilk taslagi olustur</span></span></button>
+          </div>
+
           <div class="raporhub-question-workspace">
             <div class="raporhub-question-copy">
-              <span>RaporHub'a sor</span>
+              <span>__BRAND_DATIVE__ sor</span>
               <strong>Belgelerden kanitli bir cevap olustur</strong>
             </div>
             <div class="raporhub-question-row">
@@ -2795,7 +2855,7 @@ __VARIANT_CSS__
             </div>
           </div>
         </div>
-        <div class="section" data-module-title="Katalog" data-modal-layout="catalog-stack" data-module-key="catalog">
+        <div class="section" data-module-title="Katalog" data-modal-layout="catalog-stack" data-module-key="catalog" data-repocto-hide>
           <div class="section-head">
             <div>
               <h2>Katalog</h2>
@@ -2971,7 +3031,49 @@ __VARIANT_CSS__
             </div>
           </div>
         </div>
-        <div class="section" data-module-title="Kategori Tarayici" data-module-key="graph">
+        <div class="section" data-module-title="Kategori Tarayici" data-repocto-title="Kütüphane" data-module-key="graph">
+          <div class="repocto-library" data-repocto-only hidden>
+            <div class="repocto-library-hero">
+              <div>
+                <div class="repocto-library-eyebrow">KURUMSAL HAFIZA</div>
+                <h2>Kütüphane</h2>
+                <p>Bir kök klasör seçin; RepOcto alt klasörlerdeki PDF, DOCX ve PPTX belgelerini okunabilir bir doküman ağacına dönüştürsün.</p>
+              </div>
+              <div class="repocto-library-path">
+                <label for="libraryPathInput">Kök klasör</label>
+                <div>
+                  <input id="libraryPathInput" type="text" value="V:\\RAPORLAR" placeholder="Örnek: V:\\RAPORLAR" autocomplete="off" spellcheck="false" />
+                  <button class="button primary" id="libraryScanButton" type="button">Kütüphaneyi Tara</button>
+                </div>
+              </div>
+            </div>
+            <div class="repocto-library-pipeline" aria-label="Kütüphane işleme adımları">
+              <div><b>01</b><span><strong>Kök klasör</strong><small>Yolu güvenli biçimde doğrula</small></span></div>
+              <div><b>02</b><span><strong>Alt klasörler</strong><small>Özyinelemeli olarak tara</small></span></div>
+              <div><b>03</b><span><strong>Dokümanlar</strong><small>PDF · DOCX · PPTX</small></span></div>
+              <div><b>04</b><span><strong>Belge ağacı</strong><small>Klasör yapısını görünür kıl</small></span></div>
+            </div>
+            <div class="repocto-library-status" id="libraryStatus" role="status" aria-live="polite">Taranacak kök klasör yolunu girin.</div>
+            <div class="repocto-library-workspace">
+              <aside class="repocto-library-tree-pane" aria-label="Doküman ağacı">
+                <div class="repocto-library-pane-head"><strong>Doküman ağacı</strong><span id="libraryTreeSummary">Henüz taranmadı</span></div>
+                <div class="repocto-library-tree" id="libraryTree">
+                  <div class="repocto-library-empty">Klasör yolu tarandığında belge ağacı burada oluşacak.</div>
+                </div>
+              </aside>
+              <section class="repocto-library-detail-pane" aria-label="Seçili doküman ayrıntıları">
+                <div class="repocto-library-pane-head"><strong>Belge profili</strong><span>Salt okunur</span></div>
+                <div class="repocto-library-detail" id="libraryDetail">
+                  <div class="repocto-library-detail-empty">
+                    <span>REP</span>
+                    <strong>Bir doküman seçin</strong>
+                    <p>Dosya türü, boyutu, güncellenme zamanı ve klasör yolu burada gösterilecek.</p>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+          <div data-repocto-hide>
           <div class="section-head">
             <div>
               <h2>Kategori Tarayici</h2>
@@ -3030,6 +3132,7 @@ __VARIANT_CSS__
                 </table>
               </div>
             </div>
+          </div>
           </div>
         </div>
         <div class="section" data-module-title="Soru-Cevap" data-module-key="qa">
@@ -3183,9 +3286,12 @@ __VARIANT_CSS__
   </div>
 
   <script>
-    const isRaporHub = document.body.dataset.appVariant === "raporhub";
-    const raporhubSidebarPreferenceKey = "raporhubSidebarCollapsed";
-    const raporhubThemePreferenceKey = "raporhubColorMode";
+    const appVariant = document.body.dataset.appVariant;
+    const isLegacyRaporHub = appVariant === "raporhub";
+    const isRepOcto = appVariant === "repocto";
+    const isRaporHub = isLegacyRaporHub || isRepOcto;
+    const raporhubSidebarPreferenceKey = isRepOcto ? "repoctoSidebarCollapsed" : "raporhubSidebarCollapsed";
+    const raporhubThemePreferenceKey = isRepOcto ? "repoctoColorMode" : "raporhubColorMode";
     let raporhubSidebarCollapsedPreference = false;
     let raporhubThemePreference = "light";
     if (isRaporHub) {
@@ -3195,9 +3301,30 @@ __VARIANT_CSS__
       document.querySelectorAll("[data-raporhub-hide]").forEach(element => {
         element.hidden = true;
       });
+      if (isRepOcto) {
+        document.querySelectorAll("[data-repocto-only]").forEach(element => {
+          element.hidden = false;
+        });
+        document.querySelectorAll("[data-repocto-hide]").forEach(element => {
+          element.hidden = true;
+        });
+        document.querySelectorAll("[data-repocto-label]").forEach(element => {
+          const label = element.dataset.repoctoLabel || "";
+          if (!label) return;
+          element.textContent = label;
+          element.dataset.navLabel = label;
+          element.title = label;
+          if (element.dataset.repoctoShort) {
+            element.dataset.navShort = element.dataset.repoctoShort;
+          }
+        });
+        document.querySelectorAll("[data-repocto-title]").forEach(element => {
+          element.dataset.moduleTitle = element.dataset.repoctoTitle;
+        });
+      }
       const raporhubModuleSwitcher = document.querySelector(".module-switcher");
       const raporhubChatButton = document.querySelector('[data-module-filter="chat"]');
-      if (raporhubModuleSwitcher && raporhubChatButton) {
+      if (isRaporHub && raporhubModuleSwitcher && raporhubChatButton) {
         raporhubModuleSwitcher.prepend(raporhubChatButton);
       }
       const raporhubComposerFooter = document.getElementById("raporhubChatComposerFooter");
@@ -3242,6 +3369,7 @@ __VARIANT_CSS__
     const uploadedDocumentsTable = document.getElementById("uploadedDocumentsTable");
     const raporhubSidebarToggle = document.getElementById("raporhubSidebarToggle");
     const raporhubThemeToggle = document.getElementById("raporhubThemeToggle");
+    const repoctoPageTitle = document.getElementById("repoctoPageTitle");
     const raporhubHomeQuestion = document.getElementById("raporhubHomeQuestion");
     const raporhubHomeAskButton = document.getElementById("raporhubHomeAskButton");
     const raporhubUploadShortcut = document.getElementById("raporhubUploadShortcut");
@@ -3293,6 +3421,12 @@ __VARIANT_CSS__
     const graphCategoryFilter = document.getElementById("graphCategoryFilter");
     const graphDensityChart = document.getElementById("graphDensityChart");
     const graphDocumentsTable = document.getElementById("graphDocumentsTable");
+    const libraryPathInput = document.getElementById("libraryPathInput");
+    const libraryScanButton = document.getElementById("libraryScanButton");
+    const libraryStatus = document.getElementById("libraryStatus");
+    const libraryTree = document.getElementById("libraryTree");
+    const libraryTreeSummary = document.getElementById("libraryTreeSummary");
+    const libraryDetail = document.getElementById("libraryDetail");
     const searchQuery = document.getElementById("searchQuery");
     const searchMode = document.getElementById("searchMode");
     const searchButton = document.getElementById("searchButton");
@@ -3448,6 +3582,10 @@ __VARIANT_CSS__
       moduleFilterButtons.forEach(button => {
         button.classList.toggle("active", button.dataset.moduleFilter === selectedModuleFilter);
       });
+      if (repoctoPageTitle) {
+        const activeButton = moduleFilterButtons.find(button => button.dataset.moduleFilter === selectedModuleFilter);
+        repoctoPageTitle.textContent = activeButton?.dataset.navLabel || "Calisma Alani";
+      }
       document.body.classList.toggle("chat-focus", selectedModuleFilter === "chat");
 
       moduleSections.forEach(section => {
@@ -3457,7 +3595,11 @@ __VARIANT_CSS__
       });
 
       if (selectedModuleFilter === "graph") {
-        refreshGraph();
+        if (isRepOcto) {
+          focusRepOctoLibrary();
+        } else {
+          refreshGraph();
+        }
       }
       if (selectedModuleFilter === "home" && isRaporHub) {
         refreshRaporHubOverview();
@@ -3541,7 +3683,11 @@ __VARIANT_CSS__
         refreshUploadedDocuments();
       }
       if (section.dataset.moduleKey === "graph") {
-        refreshGraph();
+        if (isRepOcto) {
+          focusRepOctoLibrary();
+        } else {
+          refreshGraph();
+        }
       }
       if (section.dataset.moduleKey === "duplicates") {
         if (duplicateWorkspaceView === "comparison") {
@@ -5091,6 +5237,108 @@ __VARIANT_CSS__
       }
     }
 
+    function focusRepOctoLibrary() {
+      if (!isRepOcto || !libraryPathInput) return;
+      window.setTimeout(() => libraryPathInput.focus({ preventScroll: true }), 0);
+    }
+
+    function formatLibrarySize(sizeBytes) {
+      const size = Number(sizeBytes || 0);
+      if (size < 1024) return `${size} B`;
+      if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+      return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    function renderLibraryDetail(node) {
+      if (!libraryDetail || !node) return;
+      const modified = node.modified_at ? new Date(node.modified_at).toLocaleString("tr-TR") : "-";
+      libraryDetail.innerHTML = `
+        <div class="repocto-library-document-icon">${escapeHtml(node.extension || "DOC")}</div>
+        <div class="repocto-library-document-copy">
+          <span>SEÇİLİ DOKÜMAN</span>
+          <h3>${escapeHtml(node.name || "-")}</h3>
+          <dl>
+            <div><dt>Tür</dt><dd>${escapeHtml(node.extension || "-")}</dd></div>
+            <div><dt>Boyut</dt><dd>${escapeHtml(formatLibrarySize(node.size_bytes))}</dd></div>
+            <div><dt>Güncelleme</dt><dd>${escapeHtml(modified)}</dd></div>
+          </dl>
+          <div class="repocto-library-document-path"><span>Dosya yolu</span><code>${escapeHtml(node.path || "-")}</code></div>
+        </div>
+      `;
+    }
+
+    function renderLibraryNode(node, depth = 0) {
+      if (!node) return "";
+      if (node.type === "document") {
+        return `
+          <button class="repocto-library-document" type="button" data-library-document="${encodeURIComponent(JSON.stringify(node))}" style="--library-depth:${depth}">
+            <span class="repocto-library-file-icon">${escapeHtml(node.extension || "DOC")}</span>
+            <span><strong>${escapeHtml(node.name || "-")}</strong><small>${escapeHtml(formatLibrarySize(node.size_bytes))}</small></span>
+          </button>
+        `;
+      }
+      const children = Array.isArray(node.children) ? node.children : [];
+      return `
+        <details class="repocto-library-folder" open style="--library-depth:${depth}">
+          <summary><span class="repocto-library-folder-icon"></span><strong>${escapeHtml(node.name || "Klasör")}</strong><small>${children.length}</small></summary>
+          <div>${children.map(child => renderLibraryNode(child, depth + 1)).join("")}</div>
+        </details>
+      `;
+    }
+
+    function renderLibrary(data) {
+      const documentCount = Number(data.document_count || 0);
+      const directoryCount = Number(data.directory_count || 0);
+      libraryTree.innerHTML = data.tree
+        ? renderLibraryNode(data.tree)
+        : '<div class="repocto-library-empty">Desteklenen doküman bulunamadı.</div>';
+      libraryTreeSummary.textContent = `${directoryCount} klasör · ${documentCount} doküman`;
+      const suffix = data.truncated ? " · güvenli tarama sınırında durduruldu" : "";
+      libraryStatus.textContent = `Kütüphane hazır: ${directoryCount} klasör ve ${documentCount} doküman bulundu${suffix}.`;
+      libraryTree.querySelectorAll("[data-library-document]").forEach(button => {
+        button.addEventListener("click", () => {
+          libraryTree.querySelectorAll("[data-library-document]").forEach(item => item.classList.remove("active"));
+          button.classList.add("active");
+          try {
+            renderLibraryDetail(JSON.parse(decodeURIComponent(button.dataset.libraryDocument || "")));
+          } catch (error) {
+            libraryStatus.textContent = "Belge ayrıntıları görüntülenemedi.";
+          }
+        });
+      });
+    }
+
+    async function scanRepOctoLibrary() {
+      if (!isRepOcto || !libraryPathInput || !libraryScanButton) return;
+      const path = libraryPathInput.value.trim();
+      if (!path) {
+        libraryStatus.textContent = "Taramak için bir kök klasör yolu girin.";
+        libraryPathInput.focus();
+        return;
+      }
+      libraryScanButton.disabled = true;
+      libraryScanButton.textContent = "Taranıyor...";
+      libraryStatus.textContent = `${path} altındaki klasörler ve dokümanlar taranıyor.`;
+      try {
+        const response = await fetch("/library/scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path, limit: 500 }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          libraryStatus.textContent = data.detail || "Kütüphane taranamadı.";
+          return;
+        }
+        renderLibrary(data);
+      } catch (error) {
+        libraryStatus.textContent = `Kütüphane taranamadı: ${error}`;
+      } finally {
+        libraryScanButton.disabled = false;
+        libraryScanButton.textContent = "Kütüphaneyi Tara";
+      }
+    }
+
     function fileHrefFromPath(rawPath) {
       const backslash = String.fromCharCode(92);
       return rawPath && (rawPath.includes(backslash) || rawPath.includes("/"))
@@ -5719,7 +5967,7 @@ __VARIANT_CSS__
       raporhubSidebarToggle.addEventListener("click", toggleRaporHubSidebar);
       raporhubThemeToggle.addEventListener("click", toggleRaporHubTheme);
       window.addEventListener("resize", syncRaporHubSidebar);
-      chatInput.placeholder = "RaporHub'a mesaj yaz...";
+      chatInput.placeholder = "__BRAND_DATIVE__ mesaj yaz...";
       raporhubHomeAskButton.addEventListener("click", askFromRaporHubHome);
       raporhubHomeQuestion.addEventListener("keydown", event => {
         if (event.key === "Enter" && !event.shiftKey) {
@@ -5957,6 +6205,17 @@ __VARIANT_CSS__
     });
     uploadedDocumentsRefreshButton.addEventListener("click", refreshUploadedDocuments);
     graphRefreshButton.addEventListener("click", refreshGraph);
+    if (libraryScanButton) {
+      libraryScanButton.addEventListener("click", scanRepOctoLibrary);
+    }
+    if (libraryPathInput) {
+      libraryPathInput.addEventListener("keydown", event => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          scanRepOctoLibrary();
+        }
+      });
+    }
     graphSearchInput.addEventListener("input", () => {
       graphState.search = graphSearchInput.value;
       renderGraphDocuments();
@@ -6558,6 +6817,7 @@ def _is_application_meta_message(normalized: str) -> bool:
     brand_names = {
         _fold_chat_text(APP_BRAND.display_name),
         "raporhub",
+        "repocto",
         "smartcae ai",
         "big agent",
     }
@@ -6667,6 +6927,7 @@ def _chat_general_answer(message: str, history: list[dict] | None = None) -> tup
         or "big agent ne yapar" in normalized
         or "smartcae ai ne yapar" in normalized
         or "raporhub ne yapar" in normalized
+        or "repocto ne yapar" in normalized
         or "bu uygulama ne yapar" in normalized
         or "sistem ne yapar" in normalized
     ):
@@ -6918,6 +7179,18 @@ def graph_overview(
 ) -> dict:
     service = GraphService(session)
     return service.overview(limit=limit)
+
+
+@app.post("/library/scan")
+def scan_library(payload: LibraryScanRequest) -> dict:
+    if APP_VARIANT != "repocto":
+        raise HTTPException(status_code=404, detail="Kütüphane yalnızca RepOcto'da kullanılabilir.")
+    try:
+        return LibraryService(REPOCTO_LIBRARY_ROOTS).scan(payload.path, limit=payload.limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail="Kök klasör okunamadı.") from exc
 
 
 @app.post("/catalog/ingest-selected", response_model=CatalogSelectedIngestResponse)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .repocto_styles import REPOCTO_CSS
+
 
 RAPORHUB_CSS = """
     body[data-app-variant="raporhub"] {
@@ -1480,4 +1482,12 @@ RAPORHUB_CSS = """
 
 
 def get_variant_css(app_variant: str) -> str:
-    return RAPORHUB_CSS if app_variant == "raporhub" else ""
+    if app_variant == "raporhub":
+        return RAPORHUB_CSS
+    if app_variant == "repocto":
+        repocto_base = RAPORHUB_CSS.replace(
+            'data-app-variant="raporhub"',
+            'data-app-variant="repocto"',
+        )
+        return f"{repocto_base}\n{REPOCTO_CSS}"
+    return ""

@@ -16,6 +16,27 @@ DATA_DIR = Path(
 ).expanduser()
 DOCUMENTS_DIR = DATA_DIR / "documents"
 DATABASE_URL = f"sqlite:///{(DATA_DIR / 'app.db').as_posix()}"
+
+
+def _repocto_library_roots() -> tuple[Path, ...]:
+    configured = [
+        Path(item.strip()).expanduser()
+        for item in os.getenv("REPOCTO_LIBRARY_ROOTS", "").split(";")
+        if item.strip()
+    ]
+    defaults = [
+        DOCUMENTS_DIR,
+        BASE_DIR / "data" / "documents",
+        Path("V:/RAPORLAR"),
+    ]
+    unique: list[Path] = []
+    for root in [*defaults, *configured]:
+        if root not in unique:
+            unique.append(root)
+    return tuple(unique)
+
+
+REPOCTO_LIBRARY_ROOTS = _repocto_library_roots()
 APP_AUTH_ENABLED = False
 APP_USERS_RAW = ""
 APP_SESSION_SECRET = ""

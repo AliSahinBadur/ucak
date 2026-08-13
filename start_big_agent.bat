@@ -24,9 +24,13 @@ if /I "%APP_VARIANT%"=="big_agent" (
   set "APP_NAME=ReportHub"
   set "RAPORHUB_DATA_DIR=%APP_DIR%data_raporhub"
   set "APP_AUTH_COOKIE_NAME=raporhub_session"
+) else if /I "%APP_VARIANT%"=="repocto" (
+  set "APP_NAME=RepOcto"
+  set "RAPORHUB_DATA_DIR=%APP_DIR%data_raporhub"
+  set "APP_AUTH_COOKIE_NAME=repocto_session"
 ) else (
   echo [HATA] Bilinmeyen uygulama varyanti: %APP_VARIANT%
-  echo Desteklenen degerler: big_agent, raporhub
+  echo Desteklenen degerler: big_agent, raporhub, repocto
   pause
   exit /b 1
 )
