@@ -28,6 +28,7 @@ def _repocto_library_roots() -> tuple[Path, ...]:
         DOCUMENTS_DIR,
         BASE_DIR / "data" / "documents",
         Path("V:/RAPORLAR"),
+        Path("V:/CAE/Dijital Dönüşüm Çalışmaları"),
     ]
     unique: list[Path] = []
     for root in [*defaults, *configured]:

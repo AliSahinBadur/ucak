@@ -314,6 +314,40 @@ REPOCTO_CSS = """
       background: #318f95;
     }
 
+    body[data-app-variant="repocto"] .repocto-library-recent {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-height: 28px;
+      align-items: center;
+    }
+
+    body[data-app-variant="repocto"] .repocto-library-recent button {
+      max-width: min(100%, 260px);
+      overflow: hidden;
+      padding: 6px 9px;
+      border: 1px solid rgba(127, 212, 209, 0.34);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.1);
+      color: rgba(255, 255, 255, 0.86);
+      font: 700 11px/1.2 Consolas, monospace;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    body[data-app-variant="repocto"] .repocto-library-recent button:hover,
+    body[data-app-variant="repocto"] .repocto-library-recent button:focus-visible {
+      border-color: #7fd4d1;
+      background: rgba(127, 212, 209, 0.16);
+      color: #ffffff;
+    }
+
+    body[data-app-variant="repocto"] .repocto-library-recent span {
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 11px;
+    }
+
     body[data-app-variant="repocto"] .repocto-library-pipeline {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));

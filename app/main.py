@@ -3042,9 +3042,11 @@ __VARIANT_CSS__
               <div class="repocto-library-path">
                 <label for="libraryPathInput">Kök klasör</label>
                 <div>
-                  <input id="libraryPathInput" type="text" value="V:\\RAPORLAR" placeholder="Örnek: V:\\RAPORLAR" autocomplete="off" spellcheck="false" />
+                  <input id="libraryPathInput" type="text" value="V:\\RAPORLAR" placeholder="Örnek: V:\\RAPORLAR" autocomplete="off" spellcheck="false" list="libraryRecentPaths" />
+                  <datalist id="libraryRecentPaths"></datalist>
                   <button class="button primary" id="libraryScanButton" type="button">Kütüphaneyi Tara</button>
                 </div>
+                <div class="repocto-library-recent" id="libraryRecentPathList" aria-label="Önceki kök klasör yolları"></div>
               </div>
             </div>
             <div class="repocto-library-pipeline" aria-label="Kütüphane işleme adımları">
@@ -3440,6 +3442,8 @@ __VARIANT_CSS__
     const graphDensityChart = document.getElementById("graphDensityChart");
     const graphDocumentsTable = document.getElementById("graphDocumentsTable");
     const libraryPathInput = document.getElementById("libraryPathInput");
+    const libraryRecentPaths = document.getElementById("libraryRecentPaths");
+    const libraryRecentPathList = document.getElementById("libraryRecentPathList");
     const libraryScanButton = document.getElementById("libraryScanButton");
     const libraryStatus = document.getElementById("libraryStatus");
     const libraryTree = document.getElementById("libraryTree");
@@ -5320,6 +5324,53 @@ __VARIANT_CSS__
     }
 
     let libraryData = null;
+    const libraryRecentPathsKey = "repocto.library.recentPaths";
+
+    function readLibraryRecentPaths() {
+      try {
+        const stored = JSON.parse(localStorage.getItem(libraryRecentPathsKey) || "[]");
+        return Array.isArray(stored)
+          ? stored.filter(item => typeof item === "string" && item.trim()).slice(0, 6)
+          : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function renderLibraryRecentPaths() {
+      if (!libraryRecentPaths && !libraryRecentPathList) return;
+      const paths = readLibraryRecentPaths();
+      if (libraryRecentPaths) {
+        libraryRecentPaths.innerHTML = paths
+          .map(path => `<option value="${escapeHtml(path)}"></option>`)
+          .join("");
+      }
+      if (libraryRecentPathList) {
+        libraryRecentPathList.innerHTML = paths.length
+          ? paths.map(path => `<button type="button" data-library-recent-path="${escapeHtml(path)}" title="${escapeHtml(path)}">${escapeHtml(path)}</button>`).join("")
+          : '<span>Önceki yol yok.</span>';
+      }
+    }
+
+    function rememberLibraryPath(path) {
+      const normalizedPath = String(path || "").trim();
+      if (!normalizedPath) return;
+      const paths = readLibraryRecentPaths()
+        .filter(item => item.toLocaleLowerCase("tr-TR") !== normalizedPath.toLocaleLowerCase("tr-TR"));
+      paths.unshift(normalizedPath);
+      try {
+        localStorage.setItem(libraryRecentPathsKey, JSON.stringify(paths.slice(0, 6)));
+      } catch {
+        return;
+      }
+      renderLibraryRecentPaths();
+    }
+
+    function selectLibraryRecentPath(path) {
+      if (!libraryPathInput) return;
+      libraryPathInput.value = path;
+      libraryPathInput.focus();
+    }
 
     function filterLibraryNode(node, query, type) {
       if (!node) return null;
@@ -5413,6 +5464,7 @@ __VARIANT_CSS__
         libraryPathInput.focus();
         return;
       }
+      rememberLibraryPath(path);
       libraryScanButton.disabled = true;
       libraryScanButton.textContent = "Taranıyor...";
       libraryStatus.textContent = `${path} altındaki klasörler ve dokümanlar taranıyor.`;
@@ -6306,11 +6358,19 @@ __VARIANT_CSS__
       libraryScanButton.addEventListener("click", scanRepOctoLibrary);
     }
     if (libraryPathInput) {
+      renderLibraryRecentPaths();
       libraryPathInput.addEventListener("keydown", event => {
         if (event.key === "Enter") {
           event.preventDefault();
           scanRepOctoLibrary();
         }
+      });
+    }
+    if (libraryRecentPathList) {
+      libraryRecentPathList.addEventListener("click", event => {
+        const button = event.target.closest("[data-library-recent-path]");
+        if (!button) return;
+        selectLibraryRecentPath(button.dataset.libraryRecentPath || "");
       });
     }
     if (librarySearchInput) {

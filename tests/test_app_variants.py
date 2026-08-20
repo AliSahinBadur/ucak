@@ -103,6 +103,7 @@ def test_repocto_v2_is_separate_and_has_the_reviewed_scroll_flow() -> None:
     assert "if (reducedMotion)" in v2_js
     assert 'video.removeAttribute("autoplay")' in v2_js
     assert '<img class="brand-wordmark" src="/repocto-landing/assets/repocto-wordmark.png?v=2"' in v2_html
+    assert '/repocto-landing/v2/repocto-v2.css?v=13' in v2_html
     assert 'class="brand-symbol"' not in v2_html
     assert 'class="brand-name"' not in v2_html
     assert '.brand-wordmark {' in v2_css
@@ -117,7 +118,8 @@ def test_repocto_v2_is_separate_and_has_the_reviewed_scroll_flow() -> None:
     assert "Derine in" not in v2_html
     assert ".hero-skill" not in v2_css
     assert ".scroll-link" not in v2_css
-    assert "linear-gradient(180deg, #eadff0 0%, #dfcbe6 58%, #d3b8dd 100%)" in v2_css
+    assert "background: #49315f;" in v2_css
+    assert ".extensions .eyebrow," in v2_css
     assert "linear-gradient(135deg, #1c0d28, #382047 54%, #24122f)" in v2_css
     assert ".octopus-layout { grid-template-columns: 1fr; }" in v2_css
     assert v2_html.count("repocto-octopus-friendly-v3.png") == 2
@@ -149,6 +151,10 @@ def test_repocto_v2_is_separate_and_has_the_reviewed_scroll_flow() -> None:
     assert 'id="librarySearchInput"' in main_html
     assert 'id="libraryTypeFilter"' in main_html
     assert 'id="libraryMap"' in main_html
+    assert 'list="libraryRecentPaths"' in main_html
+    assert 'id="libraryRecentPathList"' in main_html
+    assert 'repocto.library.recentPaths' in main_html
+    assert 'data-library-recent-path' in main_html
     assert 'const firstDocument = libraryTree.querySelector("[data-library-document]");' in main_html
     assert 'renderLibraryDetailEmpty("Bu filtreyle eşleşen bir doküman bulunamadı.");' in main_html
 
