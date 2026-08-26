@@ -1,0 +1,18 @@
+[project]
+name = "rag-app"
+version = "0.50"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.116.0",
+    "httpx>=0.28.0",
+    "openpyxl>=3.1.0",
+    "pypdf>=5.0.0",
+    "python-docx>=1.1.0",
+    "python-multipart>=0.0.9",
+    "reportlab>=4.0.0",
+    "sqlalchemy>=2.0.0",
+    "uvicorn>=0.35.0",
+]
+
+[dependency-groups]
+embeddings = ["sentence-transformers>=4.1.0"]
