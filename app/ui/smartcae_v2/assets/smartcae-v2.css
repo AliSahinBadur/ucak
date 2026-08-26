@@ -1609,8 +1609,26 @@ body[data-active-view="chat"] .chat-stage {
 .comparison-card h3 { margin: 0; font-size: 13px; }
 .result-card-head span,
 .comparison-card-head span { color: var(--red); font-size: 9px; font-weight: 900; }
-.result-card p,
+.result-card > .result-excerpt,
 .comparison-card p { margin: 9px 0 0; color: var(--ink-soft); font-size: 11px; line-height: 1.6; }
+.result-tags { margin-top: 9px; }
+.result-evidence-facts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 10px 12px;
+}
+.result-evidence-facts .evidence-fact > span { font-size: 8px; }
+.result-evidence-facts .evidence-fact > strong { font-size: 10px; }
+.result-card .evidence-table-wrap { margin-top: 12px; }
+.result-card .evidence-table { font-size: 10px; }
+.result-card .evidence-table th { font-size: 8px; }
+.result-card .evidence-table th,
+.result-card .evidence-table td { padding: 8px 10px; }
+.result-details { margin-top: 12px; }
+.result-details dl {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 18px;
+}
+.result-details dl > div { grid-template-columns: 92px minmax(0, 1fr); }
 .result-meta { margin-top: 9px; color: var(--muted); font-size: 9px; }
 .result-card-footer { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-top: 9px; }
 .result-card-footer .result-meta { min-width: 0; margin-top: 0; }
@@ -2149,6 +2167,9 @@ body.evidence-open .evidence-panel.preview-active {
   .compare-form { grid-template-columns: 1fr; }
   .compare-mark { display: none; }
   .comparison-summary { grid-template-columns: repeat(2, 1fr); }
+  .result-evidence-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .result-evidence-facts .evidence-fact-wide { grid-column: 1 / -1; }
+  .result-details dl { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 640px) {
@@ -2207,6 +2228,8 @@ body.evidence-open .evidence-panel.preview-active {
   .draft-preview { padding: 14px; }
   .draft-paper { min-height: 430px; padding: 24px 18px; }
   .evidence-panel { width: calc(100vw - var(--rail-width)); }
+  .result-evidence-facts { grid-template-columns: 1fr; }
+  .result-evidence-facts .evidence-fact-wide { grid-column: auto; }
   .result-card-footer { align-items: flex-start; flex-direction: column; }
   .result-card-actions { align-self: flex-end; }
   .source-preview-canvas { height: 250px; }

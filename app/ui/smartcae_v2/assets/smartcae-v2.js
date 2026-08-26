@@ -1005,15 +1005,63 @@
       const documentId = Number(item.document_id);
       const page = Math.max(1, Number(item.page_start) || 1);
       const title = item.document_title || item.file_name || `Doküman ${documentId}`;
+      const documentData = documentById(documentId) || {};
+      const fileType = fileTypeLabel({ ...documentData, file_name: item.file_name || documentData.file_name });
+      const pageEnd = Math.max(page, Number(item.page_end) || page);
+      const pageCount = Number(documentData.page_count || 0);
+      const pageLabel = `Sayfa ${page}${pageEnd !== page ? `–${pageEnd}` : ""}${pageCount ? `/${pageCount}` : ""}`;
+      const excerpt = cleanEvidenceExcerpt(item.chunk_text, title) || "İlgili kaynak pasajı.";
+      const authors = item.authors || documentData.authors || "";
+      const reportDate = item.report_date || documentData.report_date || "";
+      const reportTopic = item.report_title || documentData.report_title || "";
+      const reportCode = item.report_code || documentData.report_code || "";
+      const discipline = item.discipline || documentData.discipline || "";
+      const vehicle = item.vehicle_name || documentData.vehicle_name || "";
+      const sourcePath = item.source_path || documentData.source_path || "";
+      const fileName = item.file_name || documentData.file_name || "";
+      const createdAt = item.created_at || documentData.created_at || "";
+      const relevance = Number(item.combined_score);
+      const relevanceLabel = Number.isFinite(relevance) && relevance > 0
+        ? (relevance <= 1 ? `${formatRelevance(relevance)} eşleşme` : `${relevance.toFixed(2)} puan`)
+        : "";
+      const visibleFacts = [
+        evidenceFactHtml("Hazırlayan", authors),
+        evidenceFactHtml("Rapor tarihi", reportDate),
+        evidenceFactHtml("Rapor konusu", reportTopic, true),
+      ].join("");
+      const detailRows = [
+        evidenceDetailHtml("Rapor no", reportCode),
+        evidenceDetailHtml("Araç / proje", vehicle),
+        evidenceDetailHtml("Kategori", discipline),
+        evidenceDetailHtml("Eşleşen bölüm", item.section_title || ""),
+        evidenceDetailHtml("Toplam sayfa", pageCount ? String(pageCount) : ""),
+        evidenceDetailHtml("Dosya adı", fileName),
+        evidenceDetailHtml("Sisteme eklenme", createdAt),
+        evidenceDetailHtml("Dosya konumu", sourcePath),
+      ].join("");
+      const tableHtml = evidenceTableHtml(excerpt);
       return `
       <article class="result-card" role="link" tabindex="0" data-result-card-document="${documentId}" aria-label="${escapeHtml(title)} dosyasını aç">
         <div class="result-card-head">
           <h3>${escapeHtml(title)}</h3>
-          <span>${formatRelevance(item.combined_score)}</span>
         </div>
-        <p>${escapeHtml(clampText(item.chunk_text, 640))}</p>
+        <div class="evidence-tags result-tags">
+          <span class="evidence-tag file">${escapeHtml(fileType)}</span>
+          <span class="evidence-tag">${escapeHtml(pageLabel)}</span>
+          ${discipline ? `<span class="evidence-tag">${escapeHtml(discipline)}</span>` : ""}
+          ${relevanceLabel ? `<span class="evidence-tag score">${escapeHtml(relevanceLabel)}</span>` : ""}
+        </div>
+        ${visibleFacts ? `<div class="evidence-facts result-evidence-facts">${visibleFacts}</div>` : ""}
+        ${tableHtml || `<p class="result-excerpt">${escapeHtml(clampText(excerpt, 640))}</p>`}
+        ${(detailRows || tableHtml || excerpt.length > 640) ? `
+          <details class="evidence-details result-details">
+            <summary>Belge detayları ve tam pasaj</summary>
+            ${detailRows ? `<dl>${detailRows}</dl>` : ""}
+            <div class="evidence-full-passage"><span>Kaynak pasajı</span><p>${escapeHtml(excerpt)}</p></div>
+          </details>
+        ` : ""}
         <div class="result-card-footer">
-          <div class="result-meta">Sayfa ${page}${item.page_end !== item.page_start ? `–${Number(item.page_end)}` : ""}${item.section_title ? ` · ${escapeHtml(item.section_title)}` : ""}</div>
+          <div class="result-meta">${item.section_title ? `Eşleşen bölüm: ${escapeHtml(item.section_title)}` : "Kaynak pasajı"}</div>
           <div class="result-card-actions" aria-label="Doküman işlemleri">
             <button class="result-action-button folder-action" type="button" data-result-folder="${documentId}" aria-label="${escapeHtml(title)} klasörünü aç" title="Bulunduğu klasörü aç"><svg><use href="#icon-folder-open"/></svg></button>
             <button class="result-action-button preview-action" type="button" data-result-preview="${documentId}" data-result-page="${page}" aria-label="${escapeHtml(title)} önizlemesini göster" title="Kaynaklarda önizle"><svg><use href="#icon-eye"/></svg></button>
@@ -1025,11 +1073,11 @@
     searchResults.querySelectorAll("[data-result-card-document]").forEach(card => {
       const openResult = () => openDocument(Number(card.dataset.resultCardDocument));
       card.addEventListener("click", event => {
-        if (event.target.closest("button")) return;
+        if (event.target.closest("button, details, summary, a")) return;
         openResult();
       });
       card.addEventListener("keydown", event => {
-        if (event.target.closest("button") || !["Enter", " "].includes(event.key)) return;
+        if (event.target !== card || !["Enter", " "].includes(event.key)) return;
         event.preventDefault();
         openResult();
       });

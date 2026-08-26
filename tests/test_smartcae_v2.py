@@ -271,7 +271,12 @@ def test_smartcae_v2_search_cards_open_files_and_offer_folder_and_inline_preview
     assert 'data-result-folder="${documentId}"' in script
     assert 'data-result-preview="${documentId}"' in script
     assert "data-result-document" not in script
-    assert "event.target.closest(\"button\")" in script
+    assert 'event.target.closest("button, details, summary, a")' in script
+    assert 'class="evidence-facts result-evidence-facts"' in script
+    assert 'class="evidence-tags result-tags"' in script
+    assert 'class="evidence-details result-details"' in script
+    assert 'cleanEvidenceExcerpt(item.chunk_text, title)' in script
+    assert 'evidenceTableHtml(excerpt)' in script
     assert 'fetch(`/documents/${Number(documentId)}/open-folder`' in script
     assert 'sourcePreviewFrame.src = `/documents/${id}/preview?page=${page}' in script
     assert 'evidencePanel.classList.add("preview-active")' in script
@@ -281,6 +286,9 @@ def test_smartcae_v2_search_cards_open_files_and_offer_folder_and_inline_preview
     assert "background: #fff5d9" in css
     assert ".result-action-button.preview-action" in css
     assert "background: #eaf4ff" in css
+    assert ".result-evidence-facts" in css
+    assert ".result-card .evidence-table" in css
+    assert ".result-details" in css
     assert ".source-preview-pane" in css
     assert ".evidence-panel.preview-active .source-preview-canvas" in css
     assert '@app.post("/documents/{document_id}/open-folder")' in main_source
