@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fffafb">
+  <title>SmartCAE AI · V2 Çalışma Alanı</title>
+  <link rel="icon" href="/favicon.ico" type="image/svg+xml">
+  <link rel="stylesheet" href="/smartcae-v2/assets/smartcae-v2.css?v=__APP_VERSION__">
+  <script src="/smartcae-v2/assets/smartcae-v2.js?v=__APP_VERSION__" defer></script>
+</head>
+<body data-smartcae-version="2" data-active-view="home">
+  <a class="skip-link" href="#workspaceMain">Ana çalışma alanına geç</a>
+
+  <svg class="icon-sprite" aria-hidden="true">
+    <symbol id="icon-home" viewBox="0 0 24 24"><path d="M3 10.7 12 3l9 7.7v9.1a1.2 1.2 0 0 1-1.2 1.2H4.2A1.2 1.2 0 0 1 3 19.8Z"/><path d="M9 21v-7h6v7"/></symbol>
+    <symbol id="icon-chat" viewBox="0 0 24 24"><path d="M20 15a3 3 0 0 1-3 3H9l-5 3v-5.2A7 7 0 0 1 4 5h13a3 3 0 0 1 3 3Z"/><path d="M8 10h8M8 14h5"/></symbol>
+    <symbol id="icon-file" viewBox="0 0 24 24"><path d="M6 2h8l4 4v16H6Z"/><path d="M14 2v5h5M9 12h6M9 16h6"/></symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></symbol>
+    <symbol id="icon-compare" viewBox="0 0 24 24"><path d="M8 3 4 7l4 4M4 7h13a3 3 0 0 1 3 3v1M16 21l4-4-4-4M20 17H7a3 3 0 0 1-3-3v-1"/></symbol>
+    <symbol id="icon-write" viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16Z"/><path d="m14 6 4 4M4 12V4h8"/></symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="icon-upload" viewBox="0 0 24 24"><path d="M12 16V3M7 8l5-5 5 5M4 14v6h16v-6"/></symbol>
+    <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="icon-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></symbol>
+    <symbol id="icon-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4 10 14"/><path d="M18 13v7H4V6h7"/></symbol>
+    <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 6v5h-5M4 18v-5h5"/><path d="M6.1 9a7 7 0 0 1 11.7-2.1L20 11M4 13l2.2 4.1A7 7 0 0 0 18 15"/></symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="icon-send" viewBox="0 0 24 24"><path d="m3 11 18-8-8 18-2-8Z"/><path d="m11 13 5-5"/></symbol>
+    <symbol id="icon-spark" viewBox="0 0 24 24"><path d="m12 2 1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8Z"/><path d="m19 15 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9Z"/></symbol>
+    <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="icon-folder-open" viewBox="0 0 24 24"><path d="M3 6.5h6l2 2h10v2.5"/><path d="M3 6.5v12a1.5 1.5 0 0 0 1.5 1.5h13.8a1.5 1.5 0 0 0 1.4-1l2.1-7a1.5 1.5 0 0 0-1.4-2H6.2a1.5 1.5 0 0 0-1.4 1L3 17"/></symbol>
+    <symbol id="icon-eye" viewBox="0 0 24 24"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+  </svg>
+
+  <div class="app-shell">
+    <nav class="tool-rail" aria-label="SmartCAE ana modülleri">
+      <a class="brand-mark" href="/smartcae-v2" aria-label="SmartCAE AI V2 ana sayfa">
+        <span class="brand-robot" aria-hidden="true">🤖</span>
+      </a>
+      <div class="rail-nav">
+        <button class="rail-button active" type="button" data-view-target="home" aria-label="Ana alan" title="Ana alan"><span class="rail-emoji" aria-hidden="true">🏠</span></button>
+        <button class="rail-button" type="button" data-view-target="chat" aria-label="AI asistan" title="AI asistan"><span class="rail-emoji" aria-hidden="true">💬</span></button>
+        <button class="rail-button" type="button" data-view-target="documents" aria-label="Dokümanlar" title="Dokümanlar"><span class="rail-emoji" aria-hidden="true">📚</span></button>
+        <button class="rail-button" type="button" data-view-target="search" aria-label="Akıllı arama" title="Akıllı arama"><span class="rail-emoji" aria-hidden="true">🔎</span></button>
+        <button class="rail-button" type="button" data-view-target="compare" aria-label="Karşılaştırma" title="Karşılaştırma"><span class="rail-emoji" aria-hidden="true">⚖️</span></button>
+        <button class="rail-button" type="button" data-view-target="writing" aria-label="Doküman hazırlama" title="Doküman hazırlama"><span class="rail-emoji" aria-hidden="true">📝</span></button>
+      </div>
+      <a class="rail-button rail-legacy" href="/" aria-label="Eski SmartCAE arayüzünü aç" title="Eski arayüz"><svg><use href="#icon-external"/></svg></a>
+    </nav>
+
+    <aside class="source-sidebar" id="sourceSidebar" aria-label="Doküman kaynakları">
+      <div class="source-sidebar-head">
+        <div class="source-sidebar-title">
+          <span class="overline">SMARTCAE AI</span>
+          <strong>Kaynaklar</strong>
+        </div>
+        <div class="source-head-actions">
+          <button class="icon-button" id="newChatButton" type="button" aria-label="Yeni çalışma başlat" title="Yeni çalışma"><svg><use href="#icon-plus"/></svg></button>
+          <button class="icon-button" id="toggleSourceSidebar" type="button" aria-label="Kaynak panelini daralt" aria-expanded="true" title="Kaynak panelini daralt"><svg><use href="#icon-panel"/></svg></button>
+          <button class="icon-button mobile-only" id="closeSourceSidebar" type="button" aria-label="Kaynak panelini kapat"><svg><use href="#icon-close"/></svg></button>
+        </div>
+      </div>
+
+      <div class="source-toolbar">
+        <label class="sidebar-search">
+          <svg><use href="#icon-search"/></svg>
+          <input id="sidebarDocumentFilter" type="search" placeholder="Doküman ara" autocomplete="off">
+        </label>
+        <label class="source-upload-button" for="globalFilePicker" aria-label="Doküman ekle" title="Doküman ekle"><svg><use href="#icon-upload"/></svg></label>
+        <input id="globalFilePicker" class="visually-hidden" type="file" accept=".pdf,.docx,.pptx" multiple>
+      </div>
+
+      <div class="source-filter-row">
+        <div class="source-tabs" role="tablist" aria-label="Kaynak filtresi">
+          <button class="active" type="button" role="tab" data-source-filter="all" aria-selected="true" aria-controls="sourceDocumentList">Tümü <span id="sourceAllCount">0</span></button>
+          <button type="button" role="tab" data-source-filter="selected" aria-selected="false" aria-controls="sourceDocumentList">Seçili <span id="sourceSelectedCount">0</span></button>
+        </div>
+        <button class="icon-button source-refresh-button" id="refreshDocumentsButton" type="button" aria-label="Doküman listesini yenile" title="Yenile"><svg><use href="#icon-refresh"/></svg></button>
+      </div>
+
+      <div class="source-list" id="sourceDocumentList" role="tabpanel" aria-live="polite">
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line short"></div>
+        <div class="skeleton-line"></div>
+      </div>
+
+      <p class="sidebar-status" id="sidebarStatus" role="status" aria-live="polite">Kaynaklar hazırlanıyor.</p>
+      <div class="source-selection-bar" id="sourceSelectionBar">
+        <div><strong id="selectedContextCount">0 seçili</strong><span>En fazla 8 doküman</span></div>
+        <button id="clearContextButton" type="button" disabled>Temizle</button>
+      </div>
+      <div class="source-resizer" id="sourceResizer" role="separator" aria-label="Kaynak paneli genişliğini ayarla" aria-orientation="vertical" aria-valuemin="250" aria-valuemax="420" aria-valuenow="304" tabindex="0"></div>
+    </aside>
+
+    <div class="workspace-column">
+      <header class="topbar">
+        <div class="topbar-context">
+          <button class="icon-button mobile-only" id="openSourceSidebar" type="button" aria-label="Kaynak panelini aç"><svg><use href="#icon-menu"/></svg></button>
+          <div>
+            <span class="overline" id="activeViewOverline">MÜHENDİSLİK ÇALIŞMA ALANI</span>
+            <strong id="activeViewTitle">Ana alan</strong>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <a class="legacy-link" href="/">Eski arayüz</a>
+          <button class="system-chip" id="systemStatusButton" type="button" aria-expanded="false" aria-controls="systemStatusPopover">
+            <span class="status-dot checking" id="systemStatusDot"></span>
+            <span class="system-chip-copy">
+              <span id="systemStatusLabel">Sistem kontrolü</span>
+              <small id="systemVersionLabel">v__APP_VERSION__</small>
+            </span>
+          </button>
+          <button class="icon-button evidence-toggle" id="evidenceToggle" type="button" aria-label="Kaynak ve kanıt panelini aç" aria-expanded="false" title="Kaynaklar"><svg><use href="#icon-panel"/></svg></button>
+        </div>
+        <div class="system-popover" id="systemStatusPopover" hidden>
+          <div><span>Embedding</span><strong id="embeddingStatus">Kontrol ediliyor</strong></div>
+          <div><span>Model</span><strong id="embeddingModel">-</strong></div>
+          <div><span>Cihaz</span><strong id="embeddingDevice">-</strong></div>
+          <div><span>Ollama</span><strong id="ollamaStatus">Kontrol ediliyor</strong></div>
+          <p id="systemStatusMessage">Yerel modeller kontrol ediliyor.</p>
+        </div>
+      </header>
+
+      <main class="workspace-main" id="workspaceMain" tabindex="-1">
+        <section class="workspace-view home-view active" data-view="home" aria-labelledby="homeTitle">
+          <div class="welcome-block">
+            <span class="welcome-badge"><svg><use href="#icon-spark"/></svg> Yerel mühendislik asistanı</span>
+            <h1 id="homeTitle">Bugün ne üzerinde<br><em>çalışıyoruz?</em></h1>
+            <p>Dokümanlarını kaynak göstererek ara, karşılaştır ve mühendislik çıktısına dönüştür.</p>
+            <form class="hero-composer" id="heroComposer">
+              <textarea id="heroPrompt" rows="2" minlength="2" maxlength="1000" required placeholder="SmartCAE AI'a bir mühendislik sorusu sor..." aria-label="SmartCAE AI'a soru sor"></textarea>
+              <div class="composer-row">
+                <span id="homeContextHint">Tüm dokümanlar kullanılacak</span>
+                <button class="send-button" type="submit" aria-label="Soruyu gönder"><svg><use href="#icon-send"/></svg></button>
+              </div>
+            </form>
+          </div>
+
+          <div class="quick-actions" aria-label="Hızlı işlemler">
+            <button class="action-card" type="button" data-view-target="chat">
+              <span class="action-icon"><svg><use href="#icon-chat"/></svg></span>
+              <span><strong>Kaynaklı asistana sor</strong><small>Dokümanlardan kanıtlı yanıt al</small></span>
+              <svg class="action-arrow"><use href="#icon-chevron"/></svg>
+            </button>
+            <button class="action-card" type="button" data-view-target="search">
+              <span class="action-icon"><svg><use href="#icon-search"/></svg></span>
+              <span><strong>Dokümanlarda ara</strong><small>Sayfa ve pasaj düzeyinde bul</small></span>
+              <svg class="action-arrow"><use href="#icon-chevron"/></svg>
+            </button>
+            <button class="action-card" type="button" data-view-target="compare">
+              <span class="action-icon"><svg><use href="#icon-compare"/></svg></span>
+              <span><strong>İki dokümanı karşılaştır</strong><small>Benzerlik ve farkları incele</small></span>
+              <svg class="action-arrow"><use href="#icon-chevron"/></svg>
+            </button>
+            <button class="action-card" type="button" data-view-target="writing">
+              <span class="action-icon"><svg><use href="#icon-write"/></svg></span>
+              <span><strong>Doküman taslağı hazırla</strong><small>Notları izlenebilir çıktıya dönüştür</small></span>
+              <svg class="action-arrow"><use href="#icon-chevron"/></svg>
+            </button>
+          </div>
+
+          <div class="home-lower-grid">
+            <section class="surface-panel recent-panel">
+              <div class="panel-heading">
+                <div><span class="overline">SON ÇALIŞMALAR</span><h2>Yakın zamanda eklenenler</h2></div>
+                <button class="text-button" type="button" data-view-target="documents">Tümünü gör</button>
+              </div>
+              <div class="recent-documents" id="recentDocuments"><p class="empty-state">Dokümanlar yükleniyor.</p></div>
+            </section>
+            <aside class="surface-panel workspace-summary">
+              <span class="overline">ÇALIŞMA ALANI</span>
+              <strong id="documentMetric">—</strong>
+              <span>doküman hazır</span>
+              <div class="summary-meter"><span id="embeddingCoverageBar"></span></div>
+              <p id="embeddingCoverageText">Embedding kapsamı hesaplanıyor.</p>
+            </aside>
+          </div>
+        </section>
+
+        <section class="workspace-view chat-view" data-view="chat" aria-labelledby="chatTitle">
+          <h1 id="chatTitle" class="visually-hidden">Kaynaklı mühendislik asistanı</h1>
+          <div class="chat-stage">
+            <div class="chat-workspace-bar">
+              <div class="chat-agent-identity">
+                <span class="chat-agent-robot" aria-hidden="true">🤖</span>
+                <div>
+                  <strong>SmartCAE AI</strong>
+                  <span>Seçili dokümanlarla kaynaklı yanıt üretir</span>
+                </div>
+              </div>
+              <div class="chat-workspace-actions">
+                <div class="chat-controls">
+                  <label>Asistan<select id="chatAssistantMode"><option value="auto">Otomatik</option><option value="report">Doküman</option><option value="general">Genel</option></select></label>
+                  <label class="rag-version-control">RAG<select id="chatRetrievalVersion" aria-label="RAG sürümü"><option value="v2">v2 · Beta</option><option value="v3">v3 · Haystack</option><option value="v1">v1 · Klasik</option></select></label>
+                  <label>Arama<select id="chatSearchMode"><option value="hybrid">Hibrit</option><option value="semantic">Semantik</option><option value="keyword">Anahtar kelime</option></select></label>
+                </div>
+                <button class="chat-evidence-button" id="chatEvidenceButton" type="button" aria-controls="evidencePanel" aria-expanded="false">
+                  <svg><use href="#icon-panel"/></svg><span id="chatEvidenceCount">0 kaynak</span>
+                </button>
+              </div>
+            </div>
+            <div class="chat-messages" id="chatMessages" role="log" aria-live="polite" aria-relevant="additions">
+              <article class="message assistant-message">
+                <div class="message-avatar" aria-hidden="true">🤖</div>
+                <div class="message-bubble"><span class="message-author">SmartCAE AI</span><p>Merhaba. Bir mühendislik sorusu sorabilir veya soldan çalışmak istediğin dokümanları seçebilirsin.</p></div>
+              </article>
+            </div>
+            <div class="chat-process" id="chatProcess" data-state="idle" role="status" aria-live="polite" hidden>
+              <div class="chat-process-head">
+                <span class="chat-process-title"><i aria-hidden="true"></i><strong id="chatProcessTitle">SmartCAE çalışıyor</strong></span>
+                <span class="chat-process-elapsed" id="chatProcessElapsed" aria-label="Geçen süre">0.0 sn</span>
+              </div>
+              <div class="chat-process-track" id="chatProcessTrack" role="progressbar" aria-label="Yanıt hazırlama ilerlemesi" aria-valuemin="0" aria-valuemax="100" aria-valuetext="İşlem sürüyor">
+                <span class="chat-process-fill"></span>
+              </div>
+              <div class="chat-process-steps" aria-label="İşlem aşamaları">
+                <span class="done" id="chatProcessRequestStep"><i aria-hidden="true"></i>İstek gönderildi</span>
+                <span class="active" id="chatProcessServerStep"><i aria-hidden="true"></i><span id="chatProcessServerLabel">RAG / LLM işliyor</span></span>
+                <span id="chatProcessResponseStep"><i aria-hidden="true"></i>Yanıt bekleniyor</span>
+              </div>
+              <p id="chatProcessDetail">İşlem hazırlanıyor.</p>
+            </div>
+            <div class="chat-suggestions" id="chatSuggestions" aria-label="Örnek sorular">
+              <span class="chat-suggestions-label">Örnek sorular</span>
+              <button class="quality-example" type="button" data-prompt="RAPOR-KODU raporundaki tablo ve şekil numaralandırması doğru mu yapılmış?" data-assistant-mode="report" data-select-token="RAPOR-KODU" title="Rapor kodunu değiştirerek tablo ve şekil sırasını kontrol et"><span aria-hidden="true">🔢</span>Tablo / şekil kontrolü</button>
+              <button type="button" data-prompt="SmartCAE AI ne yapar?" data-assistant-mode="auto"><span aria-hidden="true">🤖</span>SmartCAE AI ne yapar?</button>
+              <button type="button" data-prompt="Bu uygulama ne yapar?" data-assistant-mode="auto"><span aria-hidden="true">💡</span>Uygulama nedir?</button>
+              <button type="button" data-prompt="Kendinden bahset" data-assistant-mode="auto"><span aria-hidden="true">💬</span>Kendinden bahset</button>
+              <button type="button" data-prompt="BIG-E konfor raporunda hangi parkurlar var?" data-assistant-mode="report"><span aria-hidden="true">🛣️</span>BIG-E konfor parkurları</button>
+              <button type="button" data-prompt="Alternatör braket raporunda doğal frekans kaç Hz?" data-assistant-mode="report"><span aria-hidden="true">📈</span>Alternatör braket</button>
+              <button type="button" data-prompt="TASE sıcaklık testinde kaç sensör kullanıldı?" data-assistant-mode="report"><span aria-hidden="true">🌡️</span>TASE sensör</button>
+            </div>
+            <p class="inline-status" id="chatStatus" role="status">Asistan hazır.</p>
+            <form class="chat-composer" id="chatComposer">
+              <textarea id="chatInput" rows="1" minlength="2" maxlength="1000" required placeholder="Mühendislik sorunu yaz..." aria-label="Asistana mesaj yaz"></textarea>
+              <div class="composer-row">
+                <span class="chat-context-state"><i aria-hidden="true"></i><span id="chatContextHint">Tüm dokümanlar</span></span>
+                <span class="chat-keyboard-hint">Enter ile gönder · Shift+Enter ile yeni satır</span>
+                <button class="send-button" id="chatSendButton" type="submit" aria-label="Mesajı gönder"><svg><use href="#icon-send"/></svg></button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section class="workspace-view" data-view="documents" aria-labelledby="documentsTitle">
+          <div class="view-heading">
+            <div><span class="overline">KURUMSAL KAYNAKLAR</span><h1 id="documentsTitle">Doküman çalışma alanı</h1><p>PDF, DOCX ve PPTX dosyalarını tek yerde yönet.</p></div>
+            <label class="primary-button" for="globalFilePicker"><svg><use href="#icon-upload"/></svg>Doküman ekle</label>
+          </div>
+          <div class="document-toolbar">
+            <label class="large-search"><svg><use href="#icon-search"/></svg><input id="documentPageFilter" type="search" placeholder="Başlık veya dosya adına göre ara"></label>
+            <span id="documentListMeta">Dokümanlar yükleniyor.</span>
+          </div>
+          <div class="document-grid" id="documentGrid"><p class="empty-state">Dokümanlar yükleniyor.</p></div>
+        </section>
+
+        <section class="workspace-view" data-view="search" aria-labelledby="searchTitle">
+          <h1 id="searchTitle" class="visually-hidden">Bilgiyi geçtiği yerde bul</h1>
+          <form class="search-form" id="searchForm">
+            <label class="large-search"><svg><use href="#icon-search"/></svg><input id="searchQuery" type="search" required minlength="2" placeholder="Örn. alternatör braketi doğal frekans sonucu"></label>
+            <select id="searchMode" aria-label="Arama modu"><option value="hybrid">Hibrit</option><option value="semantic">Semantik</option><option value="keyword">Anahtar kelime</option></select>
+            <button class="primary-button" type="submit">Ara</button>
+          </form>
+          <p class="inline-status" id="searchStatus" role="status">Arama yapmak için bir sorgu yaz.</p>
+          <div class="search-results" id="searchResults"><p class="empty-state">Sonuçlar burada görüntülenecek.</p></div>
+        </section>
+
+        <section class="workspace-view" data-view="compare" aria-labelledby="compareTitle">
+          <div class="view-heading">
+            <div><span class="overline">TEKNİK KARŞILAŞTIRMA</span><h1 id="compareTitle">İki dokümanı yan yana incele</h1><p>Benzerlikleri, farkları ve ilgili pasajları kaynaklarıyla gör.</p></div>
+          </div>
+          <form class="compare-form" id="compareForm">
+            <label><span>Doküman A</span><select id="compareLeft" required><option value="">Seçiniz</option></select></label>
+            <span class="compare-mark">↔</span>
+            <label><span>Doküman B</span><select id="compareRight" required><option value="">Seçiniz</option></select></label>
+            <button class="primary-button" type="submit">Karşılaştır</button>
+          </form>
+          <p class="inline-status" id="compareStatus" role="status">Karşılaştırılacak iki dokümanı seç.</p>
+          <div class="comparison-summary" id="comparisonSummary" hidden></div>
+          <div class="comparison-results" id="comparisonResults"><p class="empty-state">Karşılaştırma sonuçları burada görüntülenecek.</p></div>
+        </section>
+
+        <section class="workspace-view" data-view="writing" aria-labelledby="writingTitle">
+          <div class="view-heading">
+            <div><span class="overline">DOKÜMAN HAZIRLAMA</span><h1 id="writingTitle">Notlardan izlenebilir ilk taslağa</h1><p>Seçili kaynaklar ve teknik notlarla düzenli bir doküman taslağı oluştur.</p></div>
+          </div>
+          <div class="writing-layout">
+            <form class="writing-form surface-panel" id="writingForm">
+              <label>Başlık<input id="draftTitle" required minlength="3" maxlength="200" value="Teknik Değerlendirme Dokümanı"></label>
+              <div class="two-fields">
+                <label>Doküman türü<input id="draftType" value="Genel Teknik Doküman"></label>
+                <label>Detay<select id="draftDetail"><option value="detailed">Detaylı</option><option value="quick">Hızlı</option></select></label>
+              </div>
+              <label>Amaç<textarea id="draftObjective" rows="3" maxlength="400" placeholder="Bu dokümanın amacı..."></textarea></label>
+              <label>Teknik notlar<textarea id="draftNotes" rows="8" maxlength="4000" placeholder="Dağınık notları, bulguları ve kararları buraya yaz..."></textarea></label>
+              <div class="form-actions">
+                <button class="primary-button" type="submit"><svg><use href="#icon-spark"/></svg>Taslak oluştur</button>
+                <button class="secondary-button" id="downloadDraftButton" type="button" disabled>PDF indir</button>
+              </div>
+              <p class="inline-status" id="draftStatus" role="status">Seçili bağlamdaki dokümanlar kaynak olarak kullanılacak.</p>
+            </form>
+            <section class="draft-preview surface-panel" aria-label="Oluşturulan doküman taslağı">
+              <div class="draft-paper" id="draftOutput"><p class="empty-state">Oluşturulan taslak burada görüntülenecek.</p></div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <aside class="evidence-panel" id="evidencePanel" aria-label="Kaynak ve kanıt paneli" aria-hidden="true" inert>
+      <div class="evidence-resizer" id="evidenceResizer" role="separator" aria-label="Kaynaklar panelinin genişliğini ayarla" aria-orientation="vertical" aria-valuemin="280" aria-valuemax="720" aria-valuenow="340" tabindex="0" title="Sürükleyerek genişliği ayarla; çift tıklayarak sıfırla"></div>
+      <div class="evidence-head">
+        <div><span class="overline">KANIT ALANI</span><strong>Kaynaklar</strong></div>
+        <button class="icon-button" id="closeEvidencePanel" type="button" aria-label="Kanıt panelini kapat"><svg><use href="#icon-close"/></svg></button>
+      </div>
+      <section class="source-preview-pane" id="sourcePreviewPane" aria-label="Doküman önizlemesi" hidden>
+        <div class="source-preview-head">
+          <div>
+            <span class="overline">ÖNİZLEME</span>
+            <strong id="sourcePreviewTitle">Doküman önizlemesi</strong>
+            <span id="sourcePreviewMeta"></span>
+          </div>
+          <button class="icon-button" id="closeSourcePreview" type="button" aria-label="Doküman önizlemesini kapat" title="Önizlemeyi kapat"><svg><use href="#icon-close"/></svg></button>
+        </div>
+        <div class="source-preview-canvas">
+          <span class="source-preview-loading" id="sourcePreviewLoading">Önizleme yükleniyor…</span>
+          <iframe id="sourcePreviewFrame" title="Seçilen dokümanın önizlemesi" loading="lazy"></iframe>
+        </div>
+      </section>
+      <p class="evidence-intro" id="evidenceIntro">AI yanıtlarında ve arama sonuçlarında kullanılan pasajlar burada görüntülenir.</p>
+      <div class="evidence-list" id="evidenceList"><p class="empty-state">Henüz görüntülenecek bir kaynak yok.</p></div>
+    </aside>
+  </div>
+
+  <div class="mobile-scrim" id="mobileScrim" hidden></div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

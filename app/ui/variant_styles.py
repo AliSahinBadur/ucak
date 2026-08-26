@@ -423,6 +423,34 @@ RAPORHUB_CSS = """
       color: var(--rh-ink);
       text-align: right;
     }
+    body[data-app-variant="raporhub"] .raporhub-system-popover .raporhub-system-popover-title {
+      margin: 0;
+      padding: 7px 0 9px;
+      border-bottom: 1px solid var(--rh-line);
+      color: var(--rh-ink);
+      font-size: 13px;
+      font-weight: 900;
+    }
+    body[data-app-variant="raporhub"] .raporhub-system-popover .raporhub-system-message {
+      margin: 0;
+      padding: 10px 0 4px;
+      color: var(--rh-muted);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+    body[data-app-variant="raporhub"] .raporhub-system-popover .system-state-ready {
+      color: #16834f;
+    }
+    body[data-app-variant="raporhub"] .raporhub-system-popover .system-state-warning,
+    body[data-app-variant="raporhub"] .raporhub-system-popover .system-state-checking {
+      color: #a76813;
+    }
+    body[data-app-variant="raporhub"] .raporhub-system-popover .system-state-error {
+      color: #b4233f;
+    }
+    body[data-app-variant="raporhub"] .raporhub-system-popover .system-state-disabled {
+      color: var(--rh-muted);
+    }
 
     body[data-app-variant="raporhub"] .section {
       grid-column: 2;

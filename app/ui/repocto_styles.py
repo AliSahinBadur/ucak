@@ -205,6 +205,10 @@ REPOCTO_CSS = """
       background: var(--rh-surface);
     }
 
+    body[data-app-variant="repocto"] .raporhub-system-popover {
+      width: min(390px, calc(100vw - 32px));
+    }
+
     body[data-app-variant="repocto"] .section {
       padding: 98px clamp(22px, 3.2vw, 52px) 42px;
     }

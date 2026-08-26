@@ -14,6 +14,7 @@ import time
 import unicodedata
 from typing import Annotated, Literal
 
+import httpx
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -55,7 +56,14 @@ from .api_models import (
     StorageCheckResponse,
 )
 from .db.session import SessionLocal, get_session, init_db
-from .db.models import ChunkEmbedding, Document, DocumentChunk, DocumentPage
+from .db.models import (
+    CatalogDocumentLink,
+    ChunkEmbedding,
+    Document,
+    DocumentChunk,
+    DocumentPage,
+    ReportCatalogEntry,
+)
 from .services.embedding_reindex_service import EmbeddingReindexService
 from .services.embedding_service import build_embedding_service
 from .services.catalog_ingest_service import CatalogIngestService
@@ -91,6 +99,14 @@ from .config import (
     APP_SESSION_SECRET,
     APP_USERS_RAW,
     APP_VARIANT,
+    CHAT_LLM_BACKEND,
+    CHAT_LLM_ENABLED,
+    CHAT_LLM_MODEL_NAME,
+    EMBEDDING_DEVICE,
+    EMBEDDING_LOCAL_FILES_ONLY,
+    EMBEDDING_MODEL_NAME,
+    EMBEDDING_PROVIDER,
+    OLLAMA_HOST,
     REPOCTO_LIBRARY_ROOTS,
 )
 
@@ -102,6 +118,7 @@ app = FastAPI(title=APP_BRAND.api_title, version=APP_VERSION)
 RAPORHUB_LANDING_DIR = Path(__file__).resolve().parent / "ui" / "raporhub_landing"
 REPOCTO_LANDING_DIR = Path(__file__).resolve().parent / "ui" / "repocto_landing"
 REPOCTO_LANDING_V2_DIR = REPOCTO_LANDING_DIR / "v2"
+SMARTCAE_V2_DIR = Path(__file__).resolve().parent / "ui" / "smartcae_v2"
 REPORT_WORKSPACE_VARIANTS = frozenset({"raporhub", "repocto"})
 app.mount(
     "/raporhub-landing",
@@ -113,6 +130,12 @@ app.mount(
     StaticFiles(directory=str(REPOCTO_LANDING_DIR)),
     name="repocto-landing",
 )
+if APP_VARIANT == "big_agent":
+    app.mount(
+        "/smartcae-v2/assets",
+        StaticFiles(directory=str(SMARTCAE_V2_DIR / "assets")),
+        name="smartcae-v2-assets",
+    )
 AUTH_COOKIE_NAME = APP_AUTH_COOKIE_NAME
 AUTH_SESSION_SECONDS = 8 * 60 * 60
 FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
@@ -311,6 +334,111 @@ def _display_embedding_device() -> tuple[str, str]:
     return ("GPU", "gpu") if is_gpu else ("CPU", "cpu")
 
 
+def _short_runtime_model_name(value: str) -> str:
+    candidate = Path(value).name or value
+    return candidate.split("/")[-1]
+
+
+def _embedding_runtime_status() -> dict[str, object]:
+    service = build_embedding_service()
+    active_provider = str(getattr(service, "provider_name", "unknown"))
+    configured_provider = EMBEDDING_PROVIDER.strip().casefold()
+    real_model_loaded = active_provider.startswith("sentence-transformers:") and hasattr(service, "model")
+    configured_for_sentence_transformers = configured_provider in {
+        "sentence-transformer",
+        "sentence-transformers",
+        "hf",
+        "huggingface",
+    }
+    configured_path = Path(EMBEDDING_MODEL_NAME).expanduser()
+    active_model = (
+        _short_runtime_model_name(active_provider.split(":", 1)[1])
+        if ":" in active_provider
+        else active_provider
+    )
+    device = str(getattr(service, "device", EMBEDDING_DEVICE)).strip() or "cpu"
+    fallback_active = configured_for_sentence_transformers and not real_model_loaded
+
+    if real_model_loaded:
+        state = "ready"
+        message = "Sentence Transformers modeli yuklendi ve kullanima hazir."
+    elif fallback_active:
+        state = "warning"
+        message = "Yapilandirilan embedding modeli yuklenemedi; token-hash yedek modu aktif."
+    else:
+        state = "warning"
+        message = "Token-hash embedding saglayicisi aktif; Qwen modeli kullanilmiyor."
+
+    return {
+        "state": state,
+        "ready": real_model_loaded,
+        "message": message,
+        "configured_provider": EMBEDDING_PROVIDER,
+        "active_provider": active_provider,
+        "configured_model": _short_runtime_model_name(EMBEDDING_MODEL_NAME),
+        "active_model": active_model,
+        "device": device,
+        "local_files_only": EMBEDDING_LOCAL_FILES_ONLY,
+        "model_path_exists": configured_path.exists(),
+        "fallback_active": fallback_active,
+    }
+
+
+def _ollama_runtime_status() -> dict[str, object]:
+    configured = CHAT_LLM_ENABLED and CHAT_LLM_BACKEND == "ollama"
+    base_status: dict[str, object] = {
+        "configured": configured,
+        "connected": False,
+        "host": OLLAMA_HOST,
+        "configured_model": CHAT_LLM_MODEL_NAME,
+        "model_available": False,
+        "models": [],
+        "state": "disabled" if not configured else "checking",
+        "message": "Ollama sohbet saglayicisi devre disi." if not configured else "",
+    }
+    if not configured:
+        return base_status
+
+    try:
+        with httpx.Client(timeout=2.0) as client:
+            response = client.get(f"{OLLAMA_HOST}/api/tags")
+            response.raise_for_status()
+            payload = response.json()
+        models = sorted(
+            {
+                str(item.get("name") or item.get("model") or "").strip()
+                for item in payload.get("models", [])
+                if isinstance(item, dict) and (item.get("name") or item.get("model"))
+            }
+        )
+        expected_model = CHAT_LLM_MODEL_NAME.strip().casefold()
+        model_available = bool(expected_model) and any(
+            model.casefold() == expected_model for model in models
+        )
+        base_status.update(
+            {
+                "connected": True,
+                "model_available": model_available,
+                "models": models,
+                "state": "ready" if model_available else "warning",
+                "message": (
+                    "Ollama baglantisi ve yapilandirilan sohbet modeli hazir."
+                    if model_available
+                    else "Ollama bagli, ancak yapilandirilan sohbet modeli bulunamadi."
+                ),
+            }
+        )
+    except Exception as exc:
+        error_text = re.sub(r"\s+", " ", str(exc)).strip()[:240]
+        base_status.update(
+            {
+                "state": "error",
+                "message": f"Ollama baglantisi kurulamadi: {error_text or type(exc).__name__}",
+            }
+        )
+    return base_status
+
+
 def _apply_brand_tokens(html: str) -> str:
     brand_dative = "RepOcto'ya" if APP_VARIANT == "repocto" else f"{APP_BRAND.display_name}'a"
     workspace_intro = (
@@ -324,6 +452,12 @@ def _apply_brand_tokens(html: str) -> str:
         "__WORKSPACE_INTRO__": workspace_intro,
         "__BRAND_INITIALS__": escape(APP_BRAND.initials),
         "__APP_VARIANT__": APP_VARIANT,
+        "__SMARTCAE_V2_LINK__": (
+            '<a class="smartcae-v2-link" href="/smartcae-v2">'
+            'Yeni arayüz <span aria-hidden="true">→</span></a>'
+            if APP_VARIANT == "big_agent"
+            else ""
+        ),
         "__VARIANT_CSS__": get_variant_css(APP_VARIANT),
         "__THEME_BG__": APP_BRAND.background,
         "__THEME_PANEL__": APP_BRAND.panel,
@@ -360,6 +494,15 @@ def healthcheck() -> HealthResponse:
         application=APP_BRAND.display_name,
         variant=APP_VARIANT,
     )
+
+
+@app.get("/system/model-status")
+def system_model_status() -> dict[str, object]:
+    return {
+        "embedding": _embedding_runtime_status(),
+        "ollama": _ollama_runtime_status(),
+        "version": APP_VERSION,
+    }
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -427,6 +570,18 @@ def repocto_v2_landing() -> HTMLResponse:
         raise HTTPException(status_code=404, detail="Not found")
     return HTMLResponse(
         REPOCTO_LANDING_V2_DIR.joinpath("index.html").read_text(encoding="utf-8"),
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/smartcae-v2/", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/smartcae-v2", response_class=HTMLResponse, include_in_schema=False)
+def smartcae_v2_page() -> HTMLResponse:
+    if APP_VARIANT != "big_agent":
+        raise HTTPException(status_code=404, detail="Not found")
+    html = SMARTCAE_V2_DIR.joinpath("index.html").read_text(encoding="utf-8")
+    return HTMLResponse(
+        html.replace("__APP_VERSION__", APP_VERSION),
         headers={"Cache-Control": "no-cache"},
     )
 
@@ -563,6 +718,38 @@ def upload_page(request: Request) -> HTMLResponse:
     }
     .logout-link:hover {
       color: var(--accent-strong);
+    }
+    .smartcae-v2-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 38px;
+      margin-left: auto;
+      padding: 0 15px;
+      border: 1px solid color-mix(in srgb, var(--accent) 78%, #ffffff 22%);
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+      box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 22%, transparent);
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.01em;
+      line-height: 1;
+      text-decoration: none;
+      transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+    }
+    .smartcae-v2-link:hover {
+      box-shadow: 0 11px 24px color-mix(in srgb, var(--accent) 30%, transparent);
+      filter: brightness(1.04);
+      transform: translateY(-1px);
+    }
+    .smartcae-v2-link:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--accent) 28%, #ffffff 72%);
+      outline-offset: 3px;
+    }
+    .smartcae-v2-link + .logout-link {
+      margin-left: 0;
     }
     .hero p {
       margin: 0;
@@ -2434,6 +2621,7 @@ __VARIANT_CSS__
             <span class="version-pill app-version-pill">v__APP_VERSION__</span>
             <span class="version-pill compute-pill compute-__DEVICE_KIND__" title="Embedding islemleri __DEVICE_LABEL__ ile calisiyor">__DEVICE_LABEL__</span>
             <span class="version-pill model-pill">model: __MODEL_LABEL__</span>
+            __SMARTCAE_V2_LINK__
             <a class="logout-link" href="/logout">Cikis</a>
           </div>
           <div class="raporhub-brand-subtitle" data-raporhub-only hidden>Muhendislik rapor zekasi</div>
@@ -2466,16 +2654,27 @@ __VARIANT_CSS__
           <button class="raporhub-theme-toggle" id="raporhubThemeToggle" type="button" aria-label="Karanlik moda gec" aria-pressed="false" title="Karanlik moda gec">
             <span class="raporhub-theme-icon" aria-hidden="true"></span>
           </button>
-          <details class="raporhub-system-menu">
+          <details class="raporhub-system-menu" id="systemStatusMenu">
             <summary title="Sistem durumunu goster">
               <span class="raporhub-device-dot compute-__DEVICE_KIND__"></span>
               <strong>__DEVICE_LABEL__</strong>
               <span>v__APP_VERSION__</span>
             </summary>
-            <div class="raporhub-system-popover">
-              <div><span>Embedding</span><strong>__DEVICE_LABEL__</strong></div>
-              <div><span>Model</span><strong>__MODEL_LABEL__</strong></div>
-              <div><span>Surum</span><strong>v__APP_VERSION__</strong></div>
+            <div class="raporhub-system-popover" aria-label="Model ve sistem durumu">
+              <div data-repocto-hide><span>Embedding</span><strong>__DEVICE_LABEL__</strong></div>
+              <div data-repocto-hide><span>Model</span><strong>__MODEL_LABEL__</strong></div>
+              <div data-repocto-hide><span>Surum</span><strong>v__APP_VERSION__</strong></div>
+              <p class="raporhub-system-popover-title" data-repocto-only hidden>Model sagligi</p>
+              <div data-repocto-only hidden><span>Embedding</span><strong id="systemEmbeddingState" class="system-state system-state-checking">Kontrol bekleniyor</strong></div>
+              <div data-repocto-only hidden><span>Model</span><strong id="systemEmbeddingModel">__MODEL_LABEL__</strong></div>
+              <div data-repocto-only hidden><span>Saglayici</span><strong id="systemEmbeddingProvider">-</strong></div>
+              <div data-repocto-only hidden><span>Cihaz</span><strong id="systemEmbeddingDevice">__DEVICE_LABEL__</strong></div>
+              <div data-repocto-only hidden><span>Yerel model</span><strong id="systemEmbeddingLocal">-</strong></div>
+              <div data-repocto-only hidden><span>Ollama</span><strong id="systemOllamaState" class="system-state system-state-checking">Kontrol bekleniyor</strong></div>
+              <div data-repocto-only hidden><span>Ollama adresi</span><strong id="systemOllamaHost">-</strong></div>
+              <div data-repocto-only hidden><span>Sohbet modeli</span><strong id="systemOllamaModel">-</strong></div>
+              <div data-repocto-only hidden><span>Surum</span><strong>v__APP_VERSION__</strong></div>
+              <p class="raporhub-system-message" id="systemStatusMessage" role="status" aria-live="polite" data-repocto-only hidden>Pencere acildiginda guncel durum kontrol edilir.</p>
             </div>
           </details>
         </header>
@@ -3389,6 +3588,16 @@ __VARIANT_CSS__
     const uploadedDocumentsTable = document.getElementById("uploadedDocumentsTable");
     const raporhubSidebarToggle = document.getElementById("raporhubSidebarToggle");
     const raporhubThemeToggle = document.getElementById("raporhubThemeToggle");
+    const systemStatusMenu = document.getElementById("systemStatusMenu");
+    const systemEmbeddingState = document.getElementById("systemEmbeddingState");
+    const systemEmbeddingModel = document.getElementById("systemEmbeddingModel");
+    const systemEmbeddingProvider = document.getElementById("systemEmbeddingProvider");
+    const systemEmbeddingDevice = document.getElementById("systemEmbeddingDevice");
+    const systemEmbeddingLocal = document.getElementById("systemEmbeddingLocal");
+    const systemOllamaState = document.getElementById("systemOllamaState");
+    const systemOllamaHost = document.getElementById("systemOllamaHost");
+    const systemOllamaModel = document.getElementById("systemOllamaModel");
+    const systemStatusMessage = document.getElementById("systemStatusMessage");
     const repoctoPageTitle = document.getElementById("repoctoPageTitle");
     const raporhubHomeQuestion = document.getElementById("raporhubHomeQuestion");
     const raporhubHomeAskButton = document.getElementById("raporhubHomeAskButton");
@@ -3597,6 +3806,54 @@ __VARIANT_CSS__
         // The theme still works when browser storage is unavailable.
       }
       syncRaporHubTheme();
+    }
+
+    function setSystemState(element, state, label) {
+      element.textContent = label;
+      element.classList.remove("system-state-ready", "system-state-warning", "system-state-error", "system-state-disabled", "system-state-checking");
+      element.classList.add(`system-state-${state}`);
+    }
+
+    async function refreshSystemModelStatus() {
+      setSystemState(systemEmbeddingState, "checking", "Kontrol ediliyor");
+      setSystemState(systemOllamaState, "checking", "Kontrol ediliyor");
+      systemStatusMessage.textContent = "Model ve Ollama durumu kontrol ediliyor...";
+
+      try {
+        const response = await fetch("/system/model-status", { headers: { Accept: "application/json" } });
+        if (!response.ok) {
+          throw new Error(`Durum servisi ${response.status} kodunu dondurdu.`);
+        }
+        const data = await response.json();
+        const embedding = data.embedding || {};
+        const ollama = data.ollama || {};
+
+        setSystemState(
+          systemEmbeddingState,
+          embedding.state || "warning",
+          embedding.ready ? "Hazir" : (embedding.fallback_active ? "Yedek mod" : "Qwen pasif")
+        );
+        systemEmbeddingModel.textContent = embedding.active_model || embedding.configured_model || "-";
+        systemEmbeddingProvider.textContent = String(embedding.active_provider || embedding.configured_provider || "-").split(":", 1)[0];
+        systemEmbeddingDevice.textContent = String(embedding.device || "-").toUpperCase();
+        systemEmbeddingLocal.textContent = embedding.local_files_only
+          ? (embedding.model_path_exists ? "Evet · yol mevcut" : "Evet · yol bulunamadi")
+          : "Hayir";
+
+        const ollamaLabel = !ollama.configured
+          ? "Devre disi"
+          : (ollama.connected
+            ? (ollama.model_available ? "Bagli · model hazir" : "Bagli · model eksik")
+            : "Baglanti yok");
+        setSystemState(systemOllamaState, ollama.state || "error", ollamaLabel);
+        systemOllamaHost.textContent = ollama.host || "-";
+        systemOllamaModel.textContent = ollama.configured_model || "-";
+        systemStatusMessage.textContent = [embedding.message, ollama.message].filter(Boolean).join(" ");
+      } catch (error) {
+        setSystemState(systemEmbeddingState, "error", "Kontrol edilemedi");
+        setSystemState(systemOllamaState, "error", "Kontrol edilemedi");
+        systemStatusMessage.textContent = error instanceof Error ? error.message : "Sistem durumu alinamadi.";
+      }
     }
 
     function applyModuleFilter(filterKey) {
@@ -6115,6 +6372,11 @@ __VARIANT_CSS__
     if (isRaporHub) {
       raporhubSidebarToggle.addEventListener("click", toggleRaporHubSidebar);
       raporhubThemeToggle.addEventListener("click", toggleRaporHubTheme);
+      if (isRepOcto) {
+        systemStatusMenu.addEventListener("toggle", () => {
+          if (systemStatusMenu.open) refreshSystemModelStatus();
+        });
+      }
       window.addEventListener("resize", syncRaporHubSidebar);
       chatInput.placeholder = "__BRAND_DATIVE__ mesaj yaz...";
       raporhubHomeAskButton.addEventListener("click", askFromRaporHubHome);
@@ -7451,6 +7713,34 @@ def list_documents(
         .order_by(Document.created_at.desc(), Document.id.desc())
         .limit(limit)
     ).all()
+    document_ids = [int(document.id) for document, _, _ in rows]
+    page_counts = {
+        int(document_id): int(page_count or 0)
+        for document_id, page_count in session.execute(
+            select(DocumentPage.document_id, func.count(DocumentPage.id))
+            .where(DocumentPage.document_id.in_(document_ids))
+            .group_by(DocumentPage.document_id)
+        ).all()
+    } if document_ids else {}
+    catalog_rows = session.execute(
+        select(
+            CatalogDocumentLink.document_id,
+            ReportCatalogEntry.report_code,
+            ReportCatalogEntry.vehicle_name,
+            ReportCatalogEntry.report_title,
+            ReportCatalogEntry.discipline,
+            ReportCatalogEntry.report_date,
+            ReportCatalogEntry.authors,
+            ReportCatalogEntry.source_path,
+        )
+        .join(ReportCatalogEntry, ReportCatalogEntry.id == CatalogDocumentLink.catalog_entry_id)
+        .where(CatalogDocumentLink.document_id.in_(document_ids))
+        .order_by(ReportCatalogEntry.imported_at.desc(), ReportCatalogEntry.id.desc())
+    ).all() if document_ids else []
+    catalog_by_document: dict[int, object] = {}
+    for catalog_row in catalog_rows:
+        catalog_by_document.setdefault(int(catalog_row.document_id), catalog_row)
+
     return {
         "total": int(total),
         "items": [
@@ -7462,6 +7752,14 @@ def list_documents(
                 "created_at": document.created_at.strftime("%Y-%m-%d %H:%M") if document.created_at else "",
                 "chunk_count": int(chunk_count or 0),
                 "embedding_count": int(embedding_count or 0),
+                "page_count": page_counts.get(int(document.id), 0),
+                "report_code": getattr(catalog_by_document.get(int(document.id)), "report_code", None),
+                "vehicle_name": getattr(catalog_by_document.get(int(document.id)), "vehicle_name", None),
+                "report_title": getattr(catalog_by_document.get(int(document.id)), "report_title", None),
+                "discipline": getattr(catalog_by_document.get(int(document.id)), "discipline", None),
+                "report_date": getattr(catalog_by_document.get(int(document.id)), "report_date", None),
+                "authors": getattr(catalog_by_document.get(int(document.id)), "authors", None),
+                "source_path": getattr(catalog_by_document.get(int(document.id)), "source_path", None),
             }
             for document, chunk_count, embedding_count in rows
         ],
@@ -7628,6 +7926,93 @@ def document_file(document_id: int, session: Session = Depends(get_session)):
         filename=document.file_name,
         media_type=media_type,
         content_disposition_type="inline",
+    )
+
+
+@app.post("/documents/{document_id}/open-folder")
+def open_document_folder(document_id: int, session: Session = Depends(get_session)) -> dict:
+    document = session.get(Document, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    file_path = resolve_document_file_path(document.file_path)
+    if file_path is None:
+        raise HTTPException(status_code=404, detail="Original file not found.")
+
+    try:
+        os.startfile(str(file_path.parent))  # type: ignore[attr-defined]
+    except AttributeError as exc:
+        raise HTTPException(status_code=501, detail="Folder opening is only supported on Windows.") from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Document folder could not be opened: {exc}") from exc
+
+    return {
+        "opened": True,
+        "document_id": document.id,
+        "file_name": document.file_name,
+        "folder_path": str(file_path.parent),
+    }
+
+
+@app.get("/documents/{document_id}/preview")
+def document_preview(
+    document_id: int,
+    page: Annotated[int, Query(ge=1)] = 1,
+    session: Session = Depends(get_session),
+) -> Response:
+    document = session.get(Document, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    file_path = resolve_document_file_path(document.file_path)
+    if file_path is not None and file_path.suffix.lower() == ".pdf":
+        return FileResponse(
+            path=file_path,
+            filename=document.file_name,
+            media_type="application/pdf",
+            content_disposition_type="inline",
+        )
+
+    page_row = session.scalar(
+        select(DocumentPage).where(
+            DocumentPage.document_id == document_id,
+            DocumentPage.page_number == page,
+        )
+    )
+    if page_row is None:
+        page_row = session.scalar(
+            select(DocumentPage)
+            .where(DocumentPage.document_id == document_id)
+            .order_by(DocumentPage.page_number.asc())
+        )
+
+    page_label = f"Sayfa {page_row.page_number}" if page_row is not None else "Metin önizlemesi"
+    section_label = page_row.section_title if page_row is not None and page_row.section_title else "Doküman içeriği"
+    preview_text = page_row.clean_text if page_row is not None and page_row.clean_text else "Bu doküman için önizlenebilir metin bulunamadı."
+    return HTMLResponse(
+        f"""
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{escape(document.title)} · Önizleme</title>
+  <style>
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; padding: 16px; background: #fff; color: #302326; font-family: "Segoe UI", Tahoma, sans-serif; }}
+    header {{ position: sticky; top: 0; margin: -16px -16px 14px; padding: 12px 16px; border-bottom: 1px solid #eadde0; background: rgba(255,255,255,.96); }}
+    strong, span {{ display: block; }}
+    strong {{ font-size: 13px; line-height: 1.35; }}
+    span {{ margin-top: 4px; color: #9b2e43; font-size: 10px; font-weight: 700; }}
+    pre {{ margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.62 "Segoe UI", Tahoma, sans-serif; }}
+  </style>
+</head>
+<body>
+  <header><strong>{escape(document.title)}</strong><span>{escape(page_label)} · {escape(section_label)}</span></header>
+  <pre>{escape(preview_text)}</pre>
+</body>
+</html>
+        """
     )
 
 
