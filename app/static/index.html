@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Big Agent</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="stack">
+      <div class="card">
+        <div class="hero">
+          <div class="hero-title-row">
+            <h1>Big Agent</h1>
+            <span class="version-pill" id="app-version-pill">v&hellip;</span>
+            <span class="version-pill" id="app-model-pill">model: &hellip;</span>
+            <a class="logout-link" href="/logout">Cikis</a>
+          </div>
+          <p>Rapor havuzunu yonet, katalogla eslestir, kaynakli cevap al ve mukerrer adaylari ayni yerel sistemde incele.</p>
+          <div class="module-switcher" aria-label="Modul secimi">
+            <button class="module-filter active" type="button" data-module-filter="upload">Raporlar</button>
+            <button class="module-filter" type="button" data-module-filter="catalog">Katalog</button>
+            <button class="module-filter" type="button" data-module-filter="search">Arama</button>
+            <button class="module-filter" type="button" data-module-filter="chat">Chatbot</button>
+            <button class="module-filter" type="button" data-module-filter="duplicates">Mukerrer</button>
+            <button class="module-filter" type="button" data-module-filter="graph">Kategoriler</button>
+            <button class="module-filter" type="button" data-module-filter="qa">Q&A</button>
+            <button class="module-filter" type="button" data-module-filter="writing">Yazim</button>
+            <button class="module-filter" type="button" data-module-filter="all">Her sey</button>
+          </div>
+        </div>
+        <div class="section" data-module-title="Raporlar" data-module-key="upload">
+          <div class="section-head">
+            <div>
+              <h2>Raporlar</h2>
+              <p>Bir veya birden fazla PDF/DOCX/PPTX raporunu ayni alandan sisteme ekle.</p>
+            </div>
+            <button class="expand-button" type="button" data-expand-module>Buyut</button>
+          </div>
+          <div class="upload-grid report-upload-grid">
+            <div class="upload-card">
+              <h2>Rapor Yukle</h2>
+              <p>Tek dosya veya birden fazla rapor sec; hepsi ayni yukleme islemiyle islenir.</p>
+              <div class="actions">
+                <label class="button secondary" for="reportPicker">Rapor Sec</label>
+                <button class="button primary" id="uploadButton" type="button">Yuklemeyi Baslat</button>
+                <input id="reportPicker" type="file" accept=".pdf,.docx,.pptx" multiple />
+              </div>
+              <div class="meta" id="summary">Henuz rapor secilmedi.</div>
+              <div class="files">
+                <ul id="filesList"><li>Dosya listesi burada gorunecek.</li></ul>
+              </div>
+              <div class="status" id="statusBox"></div>
+              <div class="result" id="uploadResults" hidden>
+                <div class="panel-title">Islem Sonucu</div>
+                <div class="files">
+                  <ul id="uploadResultList"></ul>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-only uploaded-documents-panel">
+            <div class="uploaded-documents-head">
+              <div>
+                <h2>Icerideki Raporlar</h2>
+                <p>Sisteme yuklenmis PDF/DOCX/PPTX raporlarini burada kontrol et. Satira tiklayinca orijinal dosya acilir.</p>
+              </div>
+              <button class="button secondary" id="uploadedDocumentsRefreshButton" type="button">Listeyi Yenile</button>
+            </div>
+            <div class="note" id="uploadedDocumentsStatus">Rapor listesi henuz yuklenmedi.</div>
+            <div class="table-box" style="margin-top:12px;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Rapor</th>
+                    <th>Tur</th>
+                    <th>Chunk</th>
+                    <th>Embedding</th>
+                    <th>Yuklenme</th>
+                  </tr>
+                </thead>
+                <tbody id="uploadedDocumentsTable">
+                  <tr><td colspan="6" class="small">Raporlar modulu buyutulunce liste yenilenecek.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="section" data-module-title="Arama" data-module-key="search">
+          <div class="section-head">
+            <div>
+              <h2>Arama</h2>
+              <p>Rapor iceriginde ara; sagda bulunan sonuclara benzer raporlari gor.</p>
+            </div>
+            <button class="expand-button" type="button" data-expand-module>Buyut</button>
+          </div>
+          <div class="search-grid">
+            <div class="field">
+              <label for="searchQuery">Sorgu</label>
+              <input id="searchQuery" type="text" placeholder="Ornek: titresim analizi, motor takozu, en kotu senaryo" />
+            </div>
+            <div class="field">
+              <label for="searchMode">Mod</label>
+              <select id="searchMode">
+                <option value="hybrid">hybrid</option>
+                <option value="semantic">semantic</option>
+                <option value="keyword">keyword</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>&nbsp;</label>
+              <button class="button primary" id="searchButton" type="button" style="width:100%;">Ara</button>
+            </div>
+          </div>
+          <div class="note" id="searchMeta">Arama yapilmadi.</div>
+          <div class="split" id="searchResultsLayout">
+            <div class="panel">
+              <div class="panel-title">Sonuclar</div>
+              <div id="resultsList" class="cards">
+                <div class="empty">Sonuclar burada listelenecek.</div>
+              </div>
+            </div>
+            <div class="panel similar-panel">
+              <div class="panel-title">Benzer Raporlar</div>
+              <div id="similarList" class="cards">
+                <div class="empty">Benzer rapor onerileri burada listelenecek.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="section" data-module-title="Chatbot" data-module-key="chat">
+          <div class="section-head">
+            <div>
+              <h2>Chatbot</h2>
+              <p>Raporlar uzerinden sohbet et; cevaplar kaynak pasajlarla birlikte gelir.</p>
+            </div>
+            <button class="expand-button" type="button" data-expand-module>Buyut</button>
+          </div>
+          <div class="chat-layout">
+            <div class="panel chat-panel">
+              <div class="chat-toolbar">
+                <div class="chat-agent">
+                  <div class="chat-avatar">BA</div>
+                  <div>
+                    <div class="chat-agent-title">Rapor Asistani</div>
+                    <div class="chat-agent-subtitle">Kaynakli cevap ve rapor bulma</div>
+                  </div>
+                </div>
+                <div class="chat-toolbar-actions">
+                  <select id="chatAssistantMode" aria-label="Asistan modu">
+                    <option value="auto">otomatik</option>
+                    <option value="report">rapor</option>
+                    <option value="general">genel</option>
+                  </select>
+                  <select id="chatRetrievalVersion" aria-label="RAG surumu">
+                    <option value="v2">RAG v2 (Beta)</option>
+                    <option value="v1">RAG v1 (Klasik)</option>
+                  </select>
+                  <select id="chatMode" aria-label="Chat arama modu">
+                    <option value="hybrid">hybrid</option>
+                    <option value="semantic">semantic</option>
+                    <option value="keyword">keyword</option>
+                  </select>
+                  <button class="button secondary" id="chatClearButton" type="button">Yeni Sohbet</button>
+                </div>
+              </div>
+              <div id="chatMessages" class="chat-messages">
+                <div class="chat-message assistant">Merhaba. Icerideki raporlar uzerinden soru sorabilirsin.</div>
+              </div>
+              <div class="chat-prompts">
+                <button class="chat-prompt" type="button" data-chat-prompt="Big Agent ne yapar?">Big Agent ne yapar?</button>
+                <button class="chat-prompt" type="button" data-chat-prompt="Bu uygulama ne yapar?">Uygulama nedir?</button>
+                <button class="chat-prompt" type="button" data-chat-prompt="Kendinden bahset">Kendinden bahset</button>
+                <button class="chat-prompt" type="button" data-chat-prompt="BIG-E konfor raporunda hangi parkurlar var?">BIG-E konfor parkurlari</button>
+                <button class="chat-prompt" type="button" data-chat-prompt="Alternator braket raporunda dogal frekans kac Hz?">Alternator braket</button>
+                <button class="chat-prompt" type="button" data-chat-prompt="TASE sicaklik testinde kac sensor kullanildi?">TASE sensor</button>
+              </div>
+              <div class="chat-input-row">
+                <textarea id="chatInput" rows="2" placeholder="Rapor, test veya analiz hakkinda soru sor..."></textarea>
+                <button class="button primary" id="chatSendButton" type="button">Gonder</button>
+              </div>
+              <div class="note" id="chatStatus">Chatbot hazir.</div>
+            </div>
+            <div class="panel chat-side">
+              <div class="chat-source-head">
+                <div>
+                  <div class="panel-title">Son Kaynaklar</div>
+                  <div class="chat-source-meta" id="chatSourceMeta">Cevap geldikce ilgili rapor pasajlari burada gorunur.</div>
+                </div>
+              </div>
+              <div id="chatSources" class="cards">
+                <div class="empty">Kaynaklar cevap geldikce burada listelenecek.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="section" data-module-title="Mukerrer" data-module-key="duplicates">
+          <div class="section-head">
+            <div>
+              <h2>Mukerrer</h2>
+              <p>Mukerrer adaylarini tara veya iki teknik raporu kaynaklariyla karsilastir.</p>
+            </div>
+            <button class="expand-button" type="button" data-expand-module>Buyut</button>
+          </div>
+          <div class="duplicate-workspace-tabs" role="tablist" aria-label="Mukerrer calisma alani">
+            <button class="duplicate-workspace-tab active" id="duplicateCandidatesTab" type="button" role="tab" aria-selected="true" aria-controls="duplicateCandidatesPane">Mukerrer Adaylari</button>
+            <button class="duplicate-workspace-tab" id="reportComparisonTab" type="button" role="tab" aria-selected="false" aria-controls="reportComparisonPane">Rapor Karsilastirma</button>
+          </div>
+          <div class="duplicate-workspace-pane" id="duplicateCandidatesPane" role="tabpanel" aria-labelledby="duplicateCandidatesTab">
+            <div class="actions">
+              <button class="button primary" id="duplicateScanButton" type="button">Taramayi Baslat</button>
+              <button class="button secondary" id="duplicateRefreshButton" type="button">Kayitli Sonuclari Yenile</button>
+            </div>
+            <div class="note" id="duplicateStatus">Mukerrer adaylari henuz yuklenmedi.</div>
+            <div id="duplicateList" class="cards" style="margin-top:16px;">
+              <div class="empty">Kayitli mukerrer adaylari burada listelenecek.</div>
+            </div>
+          </div>
+          <div class="duplicate-workspace-pane" id="reportComparisonPane" role="tabpanel" aria-labelledby="reportComparisonTab" hidden>
+            <div class="comparison-source-grid">
+              <div class="comparison-source">
+                <div class="comparison-source-label">Rapor A</div>
+                <select id="comparisonLeftSelect" aria-label="Rapor A secimi">
+                  <option value="">Rapor sec...</option>
+                </select>
+                <div class="comparison-source-actions">
+                  <label class="button secondary" for="comparisonLeftUpload">Dosya Yukle</label>
+                  <input id="comparisonLeftUpload" type="file" accept=".pdf,.docx,.pptx" />
+                  <span class="small" id="comparisonLeftMeta">Kaynak secilmedi.</span>
+                </div>
+              </div>
+              <button class="comparison-swap" id="comparisonSwapButton" type="button" title="Raporlari degistir" aria-label="Raporlari degistir">&#8646;</button>
+              <div class="comparison-source">
+                <div class="comparison-source-label">Rapor B</div>
+                <select id="comparisonRightSelect" aria-label="Rapor B secimi">
+                  <option value="">Rapor sec...</option>
+                </select>
+                <div class="comparison-source-actions">
+                  <label class="button secondary" for="comparisonRightUpload">Dosya Yukle</label>
+                  <input id="comparisonRightUpload" type="file" accept=".pdf,.docx,.pptx" />
+                  <span class="small" id="comparisonRightMeta">Kaynak secilmedi.</span>
+                </div>
+              </div>
+            </div>
+            <div class="comparison-controls">
+              <label class="comparison-persist">
+                <input id="comparisonPersistUploads" type="checkbox" />
+                Yuklenen raporlari rapor havuzuna da ekle
+              </label>
+              <div class="comparison-run-actions">
+                <div class="comparison-method-help">
+                  <button class="comparison-info-button" type="button" aria-label="Eslesme yontemini goster" aria-describedby="comparisonMethodTooltip">i</button>
+                  <div class="comparison-method-tooltip" id="comparisonMethodTooltip" role="tooltip">
+                    <div class="comparison-method-title">Eslesme puani nasil hesaplanir?</div>
+                    <div class="comparison-method-row"><strong>%62</strong><span>Anlamsal benzerlik - Qwen embedding</span></div>
+                    <div class="comparison-method-row"><strong>%23</strong><span>Kelime ve teknik terim benzerligi</span></div>
+                    <div class="comparison-method-row"><strong>%10</strong><span>Bolum ve baslik benzerligi</span></div>
+                    <div class="comparison-method-row"><strong>%5</strong><span>Sayi, birim ve OK/NOK sinyalleri</span></div>
+                    <div class="comparison-method-note">Toplam puani 0.42'nin altinda kalan pasaj ciftleri elenir.</div>
+                  </div>
+                </div>
+                <button class="button primary" id="comparisonRunButton" type="button">Karsilastir</button>
+              </div>
+            </div>
+            <div class="note" id="comparisonStatus">Iki farkli rapor sec veya yukle.</div>
+            <div id="comparisonOutput" hidden>
+              <div class="comparison-summary" id="comparisonSummary"></div>
+              <div class="comparison-result-tabs" role="tablist" aria-label="Karsilastirma sonuclari">
+                <button class="comparison-result-tab active" id="comparisonSimilaritiesTab" type="button" role="tab" aria-selected="true">Benzerlikler</button>
+                <button class="comparison-result-tab" id="comparisonDifferencesTab" type="button" role="tab" aria-selected="false">Farkliliklar</button>
+              </div>
+              <div class="comparison-result-pane" id="comparisonSimilaritiesPane" role="tabpanel">
+                <div class="comparison-results" id="comparisonSimilarities"></div>
+              </div>
+              <div class="comparison-result-pane" id="comparisonDifferencesPane" role="tabpanel" hidden>
+                <div class="comparison-results" id="comparisonDifferences"></div>
+              </div>
+              <div class="comparison-pdf-workspace" id="comparisonPdfWorkspace" hidden>
+                <div class="comparison-pdf-head">
+                  <div>
+                    <div class="panel-title">PDF Eslesme Gorunumu</div>
+                    <div class="small" id="comparisonPdfStatus">Eslesen pasajlar iki PDF'de ayni renklerle isaretlenir.</div>
+                  </div>
+                  <div class="comparison-pdf-head-actions">
+                    <button class="button secondary comparison-pair-fullscreen" id="comparisonPairFullscreenOpen" type="button" disabled>Iki PDF'yi Tam Ekranda Ac</button>
+                    <div class="comparison-highlight-legend" id="comparisonHighlightLegend"></div>
+                  </div>
+                </div>
+                <div class="comparison-pdf-grid">
+                  <div class="comparison-pdf-panel">
+                    <div class="comparison-pdf-toolbar">
+                      <span id="comparisonLeftPdfTitle">Rapor A</span>
+                      <button class="comparison-open" id="comparisonLeftPdfOpen" type="button">Tum PDF'yi Ac</button>
+                    </div>
+                    <iframe class="comparison-pdf-frame" id="comparisonLeftPdfFrame" title="Rapor A renkli PDF onizlemesi" loading="lazy"></iframe>
+                    <div class="comparison-pdf-placeholder" id="comparisonLeftPdfPlaceholder" hidden></div>
+                  </div>
+                  <div class="comparison-pdf-panel">
+                    <div class="comparison-pdf-toolbar">
+                      <span id="comparisonRightPdfTitle">Rapor B</span>
+                      <button class="comparison-open" id="comparisonRightPdfOpen" type="button">Tum PDF'yi Ac</button>
+                    </div>
+                    <iframe class="comparison-pdf-frame" id="comparisonRightPdfFrame" title="Rapor B renkli PDF onizlemesi" loading="lazy"></iframe>
+                    <div class="comparison-pdf-placeholder" id="comparisonRightPdfPlaceholder" hidden></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="section" data-module-title="Katalog" data-modal-layout="catalog-stack" data-module-key="catalog">
+          <div class="section-head">
+            <div>
+              <h2>Katalog</h2>
+              <p>Excel/CSV katalogunu yukle, katalog kayitlarini icerdeki raporlarla eslestir ve rapor dosyalarini ac.</p>
+            </div>
+            <button class="expand-button" type="button" data-expand-module>Buyut</button>
+          </div>
+          <div class="upload-grid">
+            <div class="upload-card">
+              <h2>Katalog Yukleme</h2>
+              <p>Excel (.xlsx), CSV, TSV veya TXT formatinda rapor listesini ekle.</p>
+              <div class="actions">
+                <label class="button secondary" for="catalogPicker">Katalog Sec</label>
+                <button class="button primary" id="catalogImportButton" type="button">Katalogu Yukle</button>
+                <input id="catalogPicker" type="file" accept=".xlsx,.csv,.tsv,.txt" />
+                <button class="button secondary" id="catalogTableRefreshButton" type="button">Katalog Tablosunu Yenile</button>
+              </div>
+              <div class="meta" id="catalogSummary">Henuz katalog dosyasi secilmedi.</div>
+              <div class="status" id="catalogStatusBox"></div>
+              <div class="catalog-board">
+                <div class="catalog-pane ingested">
+                  <div class="catalog-pane-head">
+                    <span>Icerideki Raporlar</span>
+                    <span class="catalog-count" id="catalogIngestedCount">0</span>
+                  </div>
+                  <div class="catalog-table-scroll">
+                    <table class="catalog-table">
+                      <thead>
+                        <tr>
+                          <th>Rapor</th>
+                          <th>Arac</th>
+                          <th>Tip</th>
+                          <th>Durum</th>
+                          <th>Link</th>
+                        </tr>
+                      </thead>
+                      <tbody id="catalogIngestedTable">
+                        <tr><td colspan="5" class="small">Katalog tablosu henuz yuklenmedi.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="catalog-pane-actions">
+                    <button class="button secondary" id="catalogEmbeddingRebuildButton" type="button">Embeddingleri Yenile</button>
+                  </div>
+                </div>
+                <div class="catalog-pane pending">
+                  <div class="catalog-pane-head">
+                    <span>Iceri Alinacak Raporlar</span>
+                    <span class="catalog-count" id="catalogPendingCount">0</span>
+                  </div>
+                  <div class="catalog-table-scroll">
+                    <table class="catalog-table">
+                      <thead>
+                        <tr>
+                          <th>Sec</th>
+                          <th>Rapor</th>
+                          <th>Arac</th>
+                          <th>Tip</th>
+                          <th>Link</th>
+                          <th>Rapor</th>
+                        </tr>
+                      </thead>
+                      <tbody id="catalogPendingTable">
+                        <tr><td colspan="6" class="small">Katalog tablosu henuz yuklenmedi.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="catalog-pane-actions">
+                    <button class="button primary" id="catalogSelectedIngestButton" type="button">Secilenleri Ice Al</button>
+                  </div>
+                </div>
+              </div>
+              <details class="log-details">
+                <summary id="catalogLogSummary">Teknik log</summary>
+                <pre id="catalogResultBox">{}</pre>
+              </details>
+            </div>
+            <div class="upload-card">
+              <h2>Coklu Belge Calisma Alani</h2>
+              <p>1. Katalogdan ilgili rapor grubunu bul. 2. Yalnizca bu grubun yuklenmis PDF/DOCX/PPTX icerigi uzerinden ikinci soruyu sor.</p>
+              <div class="field">
+                <label for="catalogQuestion">Katalog Sorusu</label>
+                <input id="catalogQuestion" type="text" placeholder="Ornek: Novocitivolt araci ile kac tane NVH testi yapildi?" />
+              </div>
+              <div class="actions" style="margin-top:12px;">
+                <button class="button primary" id="catalogAskButton" type="button">Katalogdan Sor</button>
+              </div>
+              <div class="note" id="catalogAskMeta">Katalog sorusu sorulmadi.</div>
+              <div class="answer-box">
+                <div id="catalogAnswer" class="answer-text">Katalog cevabi burada gorunecek.</div>
+              </div>
+              <div class="stats-grid">
+                <div class="stat-card">
+                  <div class="stat-label">Katalog Kaydi</div>
+                  <div class="stat-value" id="catalogMatchCount">0</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Yuklu Belge</div>
+                  <div class="stat-value" id="catalogDocumentCount">0</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Hazir Kapsam</div>
+                  <div class="stat-value" id="catalogScopeReady">Hayir</div>
+                </div>
+              </div>
+              <div class="field" style="margin-top:16px;">
+                <label for="multiDocumentQuestion">Bu Raporlar Uzerinden Soru</label>
+                <input id="multiDocumentQuestion" type="text" placeholder="Ornek: Bu raporlarda ortak test kosullari nelerdir?" />
+              </div>
+              <div class="search-grid" style="margin-top:12px; grid-template-columns:minmax(0,2fr) 210px 160px;">
+                <div class="field">
+                  <label for="multiDocumentMode">Mod</label>
+                  <select id="multiDocumentMode">
+                    <option value="hybrid">hybrid</option>
+                    <option value="semantic">semantic</option>
+                    <option value="keyword">keyword</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="multiDocumentLimit">Kaynak Limiti</label>
+                  <select id="multiDocumentLimit">
+                    <option value="4">4</option>
+                    <option value="6" selected>6</option>
+                    <option value="8">8</option>
+                    <option value="10">10</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>&nbsp;</label>
+                  <button class="button primary" id="multiDocumentAskButton" type="button" style="width:100%;">Icerikten Sor</button>
+                </div>
+              </div>
+              <div class="note" id="multiDocumentMeta">Ikinci asama soru sorulmadi.</div>
+              <div class="catalog-workspace">
+                <div class="panel">
+                  <div class="panel-title">Icerik Cevabi</div>
+                  <div class="answer-box">
+                    <div id="multiDocumentAnswer" class="answer-text">Secilen rapor grubunun icerik cevabi burada gorunecek.</div>
+                  </div>
+                  <div class="panel-title" style="margin-top:16px;">Kullanilan Belgeler</div>
+                  <div id="multiDocumentDocuments" class="cards">
+                    <div class="empty">Yuklu ve eslesen belgeler burada listelenecek.</div>
+                  </div>
+                </div>
+                <div class="panel">
+                  <div class="panel-title">Belge Karsilastirma Tablosu</div>
+                  <div class="table-box" id="multiDocumentComparison">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Belge</th>
+                          <th>Cevap</th>
+                          <th>Guven</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colspan="3" class="small">Karsilastirma sonuclari burada yer alacak.</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="panel-title" style="margin-top:16px;">Eslesen Katalog Kayitlari</div>
+                  <div id="catalogMatches" class="cards">
+                    <div class="empty">Eslesen katalog kayitlari burada listelenecek.</div>
+                  </div>
+                  <div class="panel-title" style="margin-top:16px;">Kaynak Pasajlar</div>
+                  <div id="multiDocumentSources" class="cards">
+                    <div class="empty">Kaynak pasajlar burada listelenecek.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="section" data-module-title="Kategori Tarayici" data-module-key="graph">
+          <div class="section-head">
+            <div>
+              <h2>Kategori Tarayici</h2>
+              <p>Katalog ve yuklu raporlari kategori agaci, belge tablosu ve yogunluk grafikleriyle incele.</p>
+            </div>
+            <button class="expand-button" type="button" data-expand-module>Buyut</button>
+          </div>
+          <div class="actions">
+            <button class="button primary" id="graphRefreshButton" type="button">Veriyi Yenile</button>
+          </div>
+          <div class="note" id="graphStatus">Kategori verisi henuz yuklenmedi.</div>
+          <div class="graph-dashboard" id="graphStats">
+            <div class="stat-card"><div class="stat-label">Kategori</div><div class="stat-value">0</div></div>
+            <div class="stat-card"><div class="stat-label">Belge</div><div class="stat-value">0</div></div>
+            <div class="stat-card"><div class="stat-label">En Yogun</div><div class="stat-value">-</div></div>
+          </div>
+          <div class="graph-browser">
+            <aside class="graph-sidebar">
+              <div class="panel-title">Kategori Agaci</div>
+              <div id="graphTree" class="category-tree">
+                <div class="empty">Kategoriler burada listelenecek.</div>
+              </div>
+            </aside>
+            <div class="graph-main">
+              <div class="graph-controls">
+                <div class="field">
+                  <label for="graphSearchInput">Arama</label>
+                  <input id="graphSearchInput" type="text" placeholder="Belge adi, etiket, durum veya yil ara" />
+                </div>
+                <div class="field">
+                  <label for="graphCategoryFilter">Kategori</label>
+                  <select id="graphCategoryFilter">
+                    <option value="all">Tum kategoriler</option>
+                  </select>
+                </div>
+              </div>
+              <div class="panel-title">Kategori Yogunlugu</div>
+              <div id="graphDensityChart" class="density-chart">
+                <div class="empty">Yogunluk grafigi burada gorunecek.</div>
+              </div>
+              <div class="panel-title">Belgeler</div>
+              <div class="document-table-wrap">
+                <table class="document-table">
+                  <thead>
+                    <tr>
+                      <th>Ad</th>
+                      <th>Tur</th>
+                      <th>Tarih</th>
+                      <th>Etiket</th>
+                      <th>Durum</th>
+                    </tr>
+                  </thead>
+                  <tbody id="graphDocumentsTable">
+                    <tr><td colspan="5" class="small">Belge listesi burada gorunecek.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="section" data-module-title="Soru-Cevap" data-module-key="qa">
+          <div class="section-head">
+            <div>
+              <h2>Soru-Cevap</h2>
+              <p>Rapora dogal dilde soru sor. Sistem ilgili chunk'lari bulup metne dayali kisa bir cevap dondursun.</p>
+            </div>
+            <button class="expand-button" type="button" data-expand-module>Buyut</button>
+          </div>
+          <div class="ask-grid">
+            <div class="field">
+              <label for="askQuestion">Soru</label>
+              <input id="askQuestion" type="text" placeholder="Ornek: Bu raporda maksimum gerilme nedir?" />
+            </div>
+            <div class="field">
+              <label for="askMode">Mod</label>
+              <select id="askMode">
+                <option value="hybrid">hybrid</option>
+                <option value="semantic">semantic</option>
+                <option value="keyword">keyword</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="askDocumentId">Belge ID</label>
+              <input id="askDocumentId" type="number" min="1" placeholder="Opsiyonel" />
+            </div>
+            <div class="field">
+              <label>&nbsp;</label>
+              <button class="button primary" id="askButton" type="button" style="width:100%;">Sor</button>
+            </div>
+          </div>
+          <div class="note" id="askMeta">Soru sorulmadi.</div>
+          <div class="qa-layout">
+            <div class="panel">
+              <div class="panel-title">Cevap</div>
+              <div class="answer-box">
+                <div id="answerText" class="answer-text">Cevap burada gorunecek.</div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-title">Kaynaklar</div>
+              <div id="answerSources" class="cards">
+                <div class="empty">Kullanilan kaynak pasajlar burada listelenecek.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="section" data-module-title="Rapor Yazma Destegi" data-module-key="writing">
+          <div class="section-head">
+            <div>
+              <h2>Rapor Yazma Destegi</h2>
+              <p>Baslik, amac, anahtar kelimeler ve ham notlar ver. Sistem bunlari daha duzgun bir rapor taslagina cevirsin ve benzer raporlardan ornek pasajlar getirsin.</p>
+            </div>
+            <button class="expand-button" type="button" data-expand-module>Buyut</button>
+          </div>
+          <div class="draft-grid">
+            <div class="panel">
+              <div class="field">
+                <label for="draftTitle">Rapor Basligi</label>
+                <input id="draftTitle" type="text" placeholder="Ornek: BIG-E Yol Verisi Toplama Degerlendirme Raporu" />
+              </div>
+              <div class="search-grid">
+                <div class="field">
+                  <label for="draftType">Rapor Turu</label>
+                  <input id="draftType" type="text" placeholder="Ornek: Test Degerlendirme Raporu" />
+                </div>
+                <div class="field">
+                  <label for="draftMode">Mod</label>
+                  <select id="draftMode">
+                    <option value="keyword">keyword</option>
+                    <option value="hybrid">hybrid</option>
+                    <option value="semantic">semantic</option>
+                  </select>
+                </div>
+              </div>
+              <div class="search-grid">
+                <div class="field">
+                  <label for="draftReportNo">Rapor No</label>
+                  <input id="draftReportNo" type="text" placeholder="Ornek: 2025-BIG-e-NVH-01" />
+                </div>
+                <div class="field">
+                  <label for="draftReportDate">Tarih</label>
+                  <input id="draftReportDate" type="text" placeholder="Ornek: 13.01.2025" />
+                </div>
+              </div>
+              <div class="search-grid">
+                <div class="field">
+                  <label for="draftPreparedBy">Hazirlayan</label>
+                  <input id="draftPreparedBy" type="text" placeholder="Ornek: KEMAL DEMIR" />
+                </div>
+                <div class="field">
+                  <label for="draftRequestedBy">Talep Eden</label>
+                  <input id="draftRequestedBy" type="text" placeholder="Ornek: ERKAN KUTLU" />
+                </div>
+              </div>
+              <div class="field">
+                <label for="draftCheckedBy">Kontrol</label>
+                <input id="draftCheckedBy" type="text" placeholder="Ornek: EROL CIFCI, A.SALIH YILMAZ" />
+              </div>
+              <div class="actions" style="margin-top:12px;">
+                <button class="button primary" id="draftQuickButton" type="button" style="flex:1;">Hizli Rapor Olustur</button>
+                <button class="button primary" id="draftDetailedButton" type="button" style="flex:1;">Detayli Rapor Olustur</button>
+              </div>
+              <div class="draft-toolbar">
+                <button class="button secondary" id="draftSampleButton" type="button">Ornek Doldur</button>
+                <button class="button secondary" id="draftClearButton" type="button">Temizle</button>
+              </div>
+              <div class="field" style="margin-top:16px;">
+                <label for="draftObjective">Amac</label>
+                <textarea id="draftObjective" placeholder="Bu raporun neyi anlatmasini istedigini yaz."></textarea>
+              </div>
+              <div class="field" style="margin-top:16px;">
+                <label for="draftKeywords">Anahtar Kelimeler</label>
+                <input id="draftKeywords" type="text" placeholder="Ornek: yol verisi, parkur, titreşim, test senaryosu" />
+              </div>
+              <div class="field" style="margin-top:16px;">
+                <label for="draftNotes">Ham Notlar / Veriler</label>
+                <textarea id="draftNotes" placeholder="Madde madde notlarini, sayisal degerleri veya duzeltmek istedigin cumleleri buraya yaz."></textarea>
+              </div>
+              <div class="note" id="draftMeta">Taslak uretilmedi.</div>
+              <div class="draft-hint">Once baslik ve notlari gir, taslagi uret, sonra metni kontrol edip kopyala veya PDF olarak indir.</div>
+            </div>
+            <div class="panel">
+              <div class="panel-title">Taslak Metin</div>
+              <div class="draft-toolbar">
+                <button class="button secondary" id="draftCopyButton" type="button" disabled>Kopyala</button>
+                <button class="button secondary" id="draftPdfButton" type="button" disabled>PDF Indir</button>
+              </div>
+              <div class="draft-box">
+                <pre id="draftOutput" class="draft-text">Taslak burada gorunecek.</pre>
+              </div>
+              <div class="panel-title" style="margin-top:16px;">Referans Kaynaklar</div>
+              <div id="draftSources" class="cards">
+                <div class="empty">Taslak icin kullanilan referans pasajlar burada listelenecek.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="module-modal" id="moduleModal" aria-hidden="true">
+    <div class="module-modal-shell">
+      <div class="module-modal-bar">
+        <div class="module-modal-title" id="moduleModalTitle">Modul</div>
+        <button class="module-modal-close" id="moduleModalClose" type="button">Kapat</button>
+      </div>
+      <div class="module-modal-body" id="moduleModalBody"></div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
