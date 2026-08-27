@@ -1,0 +1,26 @@
+{
+  "_comment": [
+    "Her yaprak parça tam olarak BIR alt yapiya gider. Eslesme kurallari:",
+    "  *   tek segment icinde eslesir     -> /Vehicle/*/Wheel_*",
+    "  **  segmentleri asarak eslesir     -> /Vehicle/FrontAxle.1/**",
+    "Oncelik: once ** icermeyen desenler, sonra daha cok harf iceren desen,",
+    "en son bu dosyadaki yazim sirasi. Bu yuzden 'Tekerlek Grubu' aks",
+    "desenlerini yener ve tekerlekler akslarda ikinci kez sayilmaz.",
+    "Hangi desenin kazandigi rollup.json icindeki bucket_conflicts alaninda",
+    "parca parca gorunur; tekerlek kararini oradan denetleyin."
+  ],
+  "buckets": {
+    "Tekerlek Grubu": ["/Vehicle/*/Wheel_*"],
+    "Ön Aks": ["/Vehicle/FrontAxle.1/**"],
+    "Ön Süspansiyon": ["/Vehicle/FrontSuspension.1/**"],
+    "Arka Aks": ["/Vehicle/RearAxle.1/**"],
+    "Arka Süspansiyon": ["/Vehicle/RearSuspension.1/**"],
+    "Direksiyon Kolon": ["/Vehicle/SteeringColumn.1/**"],
+    "Direksiyon Bağlantı": ["/Vehicle/SteeringLinkage.1/**"],
+    "Şase": ["/Vehicle/Chassis.1/**"]
+  },
+  "groups": {
+    "Ön Aks + Süspansiyon": ["Ön Aks", "Ön Süspansiyon"],
+    "Arka Aks + Süspansiyon": ["Arka Aks", "Arka Süspansiyon"]
+  }
+}
