@@ -1,0 +1,29 @@
+DEGISIKLIK ONIZLEMESI
+========================================================================
+Arac    : ARAC / BASE / R01
+Kaynak  : FakeVehicle.CATProduct
+Donusum : catia_vehicle_to_adams_front_wheel_origin (dogrulama max hata 0.000 mm)
+
+ALT YAPI                 ADAMS PARCA                    KUTLE [kg]     ATALET
+------------------------------------------------------------------------------
+Tekerlek Grubu           .vehicle.ges_wheels.gel_mass      248.000        var
+                         (Adams CG mm)                X   1400.000  Y      0.000  Z   -340.000
+Ön Aks                   .vehicle.ges_front_axle.gel_      210.000        var
+                         (Adams CG mm)                X     10.000  Y    -13.333  Z   -323.333
+Ön Süspansiyon           .vehicle.ges_front_susp.gel_      180.000        var
+                         (Adams CG mm)                X      5.000  Y      0.000  Z   -220.000
+Arka Aks                 .vehicle.ges_rear_axle.gel_b      320.000        var
+                         (Adams CG mm)                X   2800.625  Y     -9.375  Z   -353.750
+Arka Süspansiyon         .vehicle.ges_rear_susp.gel_m      178.489        var
+                         (Adams CG mm)                X   2805.000  Y      0.000  Z   -270.000
+Direksiyon Kolon         .vehicle.ges_steering.gel_co       18.000        var
+                         (Adams CG mm)                X    430.000  Y   -360.000  Z    260.000
+Direksiyon Bağlantı      .vehicle.ges_steering.gel_li       12.000        var
+                         (Adams CG mm)                X    220.000  Y    -20.000  Z   -160.000
+Şase                     .vehicle.ges_body.gel_chassi      879.913        var
+                         (Adams CG mm)                X   1500.000  Y      0.000  Z   -185.000
+
+Onceki revizyon yok, karsilastirma yapilamadi.
+
+Yazilacak dosya: export.cmd  (136 satir)
+Onay kodu      : a47de27d193b29e0
