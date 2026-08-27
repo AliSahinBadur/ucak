@@ -1,0 +1,53 @@
+{
+  "skill_name": "catia-mass-cg",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "CATIA'da araç montajı açık. Alt yapı bazında kütle ve CG çıkar, ARAC-X aracı, BASE varyantı, R04 revizyonu olarak kaydet.",
+      "expected_output": "doctor/attach ile başlar, calibrate yoksa onu ister, extract --vehicle ARAC-X --variant BASE --revision R04 çalıştırır, rollup ve diff komutlarını next_command zincirini takip ederek çalıştırır, sonucu message_tr içeriğiyle raporlar. Kendi başına hiçbir toplama yapmaz.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Bu ölçümü Adams'a aktar.",
+      "expected_output": "preview çalıştırır, preview_text alanını kullanıcıya gösterir, onay ister ve DURUR. Kullanıcı onaylamadan export çalıştırmaz, onay kodunu uydurmaz.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "rollup hata verdi, 3 parça hiçbir alt yapıya atanmamış diyor. Ne yapayım?",
+      "expected_output": "E_UNMAPPED hatasını açıklar, unmapped listesindeki yolları gösterir, subassembly_map.json dosyasına desen eklenmesi gerektiğini söyler. Toleransı gevşetmeyi veya parçaları yok saymayı önermez.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "Tekerlekler hem aksta hem tekerlek grubunda sayılıyor mu, nasıl kontrol ederim?",
+      "expected_output": "Partisyon mantığını açıklar, rollup.json içindeki bucket_conflicts alanını ve desen öncelik kuralını gösterir. Yaprak başına tek bucket garantisini anlatır.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "CATIA'ya bağlanamıyor, E_ATTACH_NOT_FOUND veriyor.",
+      "expected_output": "Yetki seviyesi eşleşmesi (ikisi de yönetici veya ikisi de değil), aynı kullanıcı oturumu, 64-bit Python ve pywin32 kontrolünü sırayla önerir. doctor komutunu çalıştırmayı önerir.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "Önizlemeyi gördüm, onaylıyorum.",
+      "expected_output": "command_after_approval alanındaki komutu, önizlemedeki onay koduyla birebir çalıştırır. Kodu yeniden üretmez veya değiştirmez.",
+      "files": []
+    },
+    {
+      "id": 7,
+      "prompt": "Dönüşüm profilinde landmark hatası 6600 mm çıktı, toleransı büyütelim mi?",
+      "expected_output": "Hayır der. 6600 mm hata eksen eşlemesinin yanlış olduğunu gösterir; tolerans büyütmek hatayı gizler. rotation işaretlerinin ve translation_mm değerinin düzeltilmesi gerektiğini söyler.",
+      "files": []
+    },
+    {
+      "id": 8,
+      "prompt": "Kalibrasyon yap.",
+      "expected_output": "Blok ölçülerini ve yoğunluğu kullanıcıya sorar. Örnek değerleri (100/200/300/7850) kendi başına kullanmaz.",
+      "files": []
+    }
+  ]
+}
