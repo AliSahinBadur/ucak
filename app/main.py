@@ -86,6 +86,7 @@ from .services.report_comparison_service import (
     ReportComparisonService,
     resolve_comparison_pdf_path,
 )
+from .services.report_review_service import ReportReviewService
 from .services.report_writer_service import ReportWriterService
 from .services.retrieval_orchestrator import RetrievalOrchestrator
 from .services.search_service import SearchService
@@ -7979,6 +7980,8 @@ def document_preview(
             DocumentPage.page_number == page,
         )
     )
+
+
     if page_row is None:
         page_row = session.scalar(
             select(DocumentPage)
@@ -8013,6 +8016,33 @@ def document_preview(
 </body>
 </html>
         """
+    )
+
+
+@app.get("/documents/{document_id}/review-preview")
+def document_review_preview(
+    document_id: int,
+    rule_id: Annotated[str, Query(min_length=3, max_length=100, pattern=r"^[a-z0-9_.-]+$")],
+    page: Annotated[int, Query(ge=1)] = 1,
+    session: Session = Depends(get_session),
+) -> FileResponse:
+    try:
+        preview_path, highlighted_passages = ReportReviewService(session).build_highlighted_preview(
+            document_id,
+            rule_id,
+            page,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FileResponse(
+        path=preview_path,
+        filename=f"rapor-kontrol-{document_id}.pdf",
+        media_type="application/pdf",
+        content_disposition_type="inline",
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "X-Review-Highlights": str(highlighted_passages),
+        },
     )
 
 

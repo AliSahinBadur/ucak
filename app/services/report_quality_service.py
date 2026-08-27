@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db.models import Document, DocumentPage
+from .llm_provider import LLMProvider
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +39,18 @@ class ReportQualityService:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def answer_question(self, question: str, document_ids: list[int]) -> dict:
+    def answer_question(
+        self,
+        question: str,
+        document_ids: list[int],
+        *,
+        llm_provider: LLMProvider | None = None,
+    ) -> dict:
+        if not self._is_caption_sequence_question(question):
+            from .report_review_service import ReportReviewService
+
+            return ReportReviewService(self.session, llm_provider=llm_provider).answer_question(question, document_ids)
+
         documents = self._load_documents(document_ids)
         if not documents:
             return self._empty_response(question, "Kalite kontrolu icin rapor belirlenemedi.")
@@ -81,6 +93,11 @@ class ReportQualityService:
             "embedding_provider": "document-quality:rules",
             "sources": sources[:8],
         }
+
+    def analyze_documents(self, document_ids: list[int], profile: str = "general") -> dict:
+        from .report_review_service import ReportReviewService
+
+        return ReportReviewService(self.session).analyze_documents(document_ids, profile=profile)
 
     @classmethod
     def extract_captions(cls, pages: list[DocumentPage]) -> list[CaptionOccurrence]:
@@ -227,6 +244,26 @@ class ReportQualityService:
                 selected.append("figure")
             selected.append("image")
         return tuple(selected or ("table", "figure", "image"))
+
+    @classmethod
+    def _is_caption_sequence_question(cls, question: str) -> bool:
+        normalized = cls._normalize_text(question)
+        subject = any(term in normalized for term in ("tablo", "sekil", "resim", "figure", "table"))
+        action = any(
+            term in normalized
+            for term in (
+                "isimlendirme",
+                "adlandirma",
+                "numaralandirma",
+                "numaralari dogru",
+                "sirali mi",
+                "sirayla mi",
+                "sira dogru",
+                "eksik numara",
+                "tekrar eden",
+            )
+        )
+        return subject and action
 
     @staticmethod
     def _caption_kind(label: str) -> str:

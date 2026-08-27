@@ -72,6 +72,10 @@ class DocumentIntelligenceService:
         "peki",
         "bu rapor",
         "su rapor",
+        "secili rapor",
+        "secilen rapor",
+        "secili belge",
+        "secili dokuman",
         "bu iki rapor",
         "bu 2 rapor",
         "bu raporlar",
@@ -188,6 +192,8 @@ class DocumentIntelligenceService:
             return self._metadata_answer(cleaned_question, metadata_scope)
 
         if intent == "quality":
+            if not selected_document_ids and remembered_document_ids:
+                selected_document_ids = remembered_document_ids
             if not selected_document_ids:
                 selected_document_ids = self._search_document_ids(
                     cleaned_question,
@@ -196,7 +202,11 @@ class DocumentIntelligenceService:
                     intent=intent,
                     retrieval_version=normalized_retrieval_version,
                 )[:4]
-            return self.report_quality_service.answer_question(cleaned_question, selected_document_ids)
+            return self.report_quality_service.answer_question(
+                cleaned_question,
+                selected_document_ids,
+                llm_provider=self.llm_provider,
+            )
 
         if intent == "comparison":
             if len(selected_document_ids) < 2:
@@ -1249,6 +1259,19 @@ Cevap:"""
             )
         )
         if quality_subject and quality_action:
+            return "quality"
+        if any(
+            term in normalized
+            for term in (
+                "raporu kontrol et",
+                "rapor kontrolu",
+                "kalite kontrolu",
+                "teknik kontrol",
+                "raporda hata var mi",
+                "raporda eksik var mi",
+                "rapor uygun mu",
+            )
+        ):
             return "quality"
         if any(term in normalized for term in cls.COMPARISON_TERMS) or "hangisi daha" in normalized:
             return "comparison"

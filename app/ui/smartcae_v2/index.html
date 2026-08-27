@@ -211,27 +211,39 @@
                 <span class="chat-process-title"><i aria-hidden="true"></i><strong id="chatProcessTitle">SmartCAE çalışıyor</strong></span>
                 <span class="chat-process-elapsed" id="chatProcessElapsed" aria-label="Geçen süre">0.0 sn</span>
               </div>
-              <div class="chat-process-track" id="chatProcessTrack" role="progressbar" aria-label="Yanıt hazırlama ilerlemesi" aria-valuemin="0" aria-valuemax="100" aria-valuetext="İşlem sürüyor">
+              <div class="chat-process-track" id="chatProcessTrack" role="progressbar" aria-label="Yanıt hazırlama ilerlemesi" aria-valuemin="0" aria-valuemax="100" aria-valuenow="20" aria-valuetext="Kaynak tarama aşaması">
                 <span class="chat-process-fill"></span>
               </div>
-              <div class="chat-process-steps" aria-label="İşlem aşamaları">
-                <span class="done" id="chatProcessRequestStep"><i aria-hidden="true"></i>İstek gönderildi</span>
-                <span class="active" id="chatProcessServerStep"><i aria-hidden="true"></i><span id="chatProcessServerLabel">RAG / LLM işliyor</span></span>
-                <span id="chatProcessResponseStep"><i aria-hidden="true"></i>Yanıt bekleniyor</span>
-              </div>
+              <ol class="chat-process-steps" aria-label="İşlem aşamaları" title="Ara aşamalar işlem süresine göre ilerler; tamamlanma bilgisi sunucu yanıtıyla kesinleşir.">
+                <li class="chat-process-step done" id="chatProcessRequestStep"><i aria-hidden="true">1</i><span><strong>Soru gönderildi</strong><small>Sunucuya iletildi</small></span></li>
+                <li class="chat-process-step active" id="chatProcessRetrievalStep"><i aria-hidden="true">2</i><span><strong>Kaynak tarama</strong><small>Raporlar aranıyor</small></span></li>
+                <li class="chat-process-step" id="chatProcessEvidenceStep"><i aria-hidden="true">3</i><span><strong>Kanıt seçimi</strong><small>Pasajlar sıralanacak</small></span></li>
+                <li class="chat-process-step" id="chatProcessGenerationStep"><i aria-hidden="true">4</i><span><strong>Yanıt üretimi</strong><small>Model hazırlanıyor</small></span></li>
+                <li class="chat-process-step" id="chatProcessResponseStep"><i aria-hidden="true">5</i><span><strong>Tamamlandı</strong><small>Yanıt bekleniyor</small></span></li>
+              </ol>
               <p id="chatProcessDetail">İşlem hazırlanıyor.</p>
             </div>
-            <div class="chat-suggestions" id="chatSuggestions" aria-label="Örnek sorular">
-              <span class="chat-suggestions-label">Örnek sorular</span>
-              <button class="quality-example" type="button" data-prompt="RAPOR-KODU raporundaki tablo ve şekil numaralandırması doğru mu yapılmış?" data-assistant-mode="report" data-select-token="RAPOR-KODU" title="Rapor kodunu değiştirerek tablo ve şekil sırasını kontrol et"><span aria-hidden="true">🔢</span>Tablo / şekil kontrolü</button>
-              <button type="button" data-prompt="SmartCAE AI ne yapar?" data-assistant-mode="auto"><span aria-hidden="true">🤖</span>SmartCAE AI ne yapar?</button>
-              <button type="button" data-prompt="Bu uygulama ne yapar?" data-assistant-mode="auto"><span aria-hidden="true">💡</span>Uygulama nedir?</button>
-              <button type="button" data-prompt="Kendinden bahset" data-assistant-mode="auto"><span aria-hidden="true">💬</span>Kendinden bahset</button>
-              <button type="button" data-prompt="BIG-E konfor raporunda hangi parkurlar var?" data-assistant-mode="report"><span aria-hidden="true">🛣️</span>BIG-E konfor parkurları</button>
-              <button type="button" data-prompt="Alternatör braket raporunda doğal frekans kaç Hz?" data-assistant-mode="report"><span aria-hidden="true">📈</span>Alternatör braket</button>
-              <button type="button" data-prompt="TASE sıcaklık testinde kaç sensör kullanıldı?" data-assistant-mode="report"><span aria-hidden="true">🌡️</span>TASE sensör</button>
+            <div class="chat-suggestions" id="chatSuggestions" aria-label="Skill'ler ve örnek sorular">
+              <div class="chat-suggestion-section skill-suggestions" data-suggestion-section="skills">
+                <span class="chat-suggestions-label">Skill'ler</span>
+                <div class="chat-suggestion-track">
+                  <button class="skill-example report-review-skill" type="button" data-prompt="RAPOR-KODU raporu kontrol et; hata, eksik ve tutarsızlıkları sayfa kanıtlarıyla göster." data-context-prompt="Bu raporu kontrol et; hata, eksik ve tutarsızlıkları sayfa kanıtlarıyla göster." data-context-multi-prompt="Bu raporları kontrol et; hata, eksik ve tutarsızlıkları ayrı ayrı sayfa kanıtlarıyla göster." data-assistant-mode="report" data-select-token="RAPOR-KODU" title="Soldan seçilen raporu; rapor no, tarih, zorunlu bölümler, tablo/şekil referansları, ondalık biçimi ve metin çıkarımı açısından kontrol eder"><span aria-hidden="true">✅</span>Rapor kontrolü</button>
+                  <button class="skill-example quality-example" type="button" data-prompt="RAPOR-KODU raporundaki tablo ve şekil numaralandırması doğru mu yapılmış?" data-assistant-mode="report" data-select-token="RAPOR-KODU" title="Rapor kodunu değiştirerek tablo ve şekil sırasını kontrol et"><span aria-hidden="true">🔢</span>Tablo / şekil kontrolü</button>
+                </div>
+              </div>
+              <div class="chat-suggestion-section example-suggestions" data-suggestion-section="examples">
+                <span class="chat-suggestions-label">Örnek sorular</span>
+                <div class="chat-suggestion-track">
+                  <button type="button" data-prompt="SmartCAE AI ne yapar?" data-assistant-mode="auto"><span aria-hidden="true">🤖</span>SmartCAE AI ne yapar?</button>
+                  <button type="button" data-prompt="Bu uygulama ne yapar?" data-assistant-mode="auto"><span aria-hidden="true">💡</span>Uygulama nedir?</button>
+                  <button type="button" data-prompt="Kendinden bahset" data-assistant-mode="auto"><span aria-hidden="true">💬</span>Kendinden bahset</button>
+                  <button type="button" data-prompt="BIG-E konfor raporunda hangi parkurlar var?" data-assistant-mode="report"><span aria-hidden="true">🛣️</span>BIG-E konfor parkurları</button>
+                  <button type="button" data-prompt="Alternatör braket raporunda doğal frekans kaç Hz?" data-assistant-mode="report"><span aria-hidden="true">📈</span>Alternatör braket</button>
+                  <button type="button" data-prompt="TASE sıcaklık testinde kaç sensör kullanıldı?" data-assistant-mode="report"><span aria-hidden="true">🌡️</span>TASE sensör</button>
+                </div>
+              </div>
             </div>
-            <p class="inline-status" id="chatStatus" role="status">Asistan hazır.</p>
+            <p class="inline-status" id="chatStatus" role="status" hidden></p>
             <form class="chat-composer" id="chatComposer">
               <textarea id="chatInput" rows="1" minlength="2" maxlength="1000" required placeholder="Mühendislik sorunu yaz..." aria-label="Asistana mesaj yaz"></textarea>
               <div class="composer-row">

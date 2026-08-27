@@ -78,8 +78,10 @@
   const chatProcessTitle = document.getElementById("chatProcessTitle");
   const chatProcessElapsed = document.getElementById("chatProcessElapsed");
   const chatProcessTrack = document.getElementById("chatProcessTrack");
-  const chatProcessServerStep = document.getElementById("chatProcessServerStep");
-  const chatProcessServerLabel = document.getElementById("chatProcessServerLabel");
+  const chatProcessRequestStep = document.getElementById("chatProcessRequestStep");
+  const chatProcessRetrievalStep = document.getElementById("chatProcessRetrievalStep");
+  const chatProcessEvidenceStep = document.getElementById("chatProcessEvidenceStep");
+  const chatProcessGenerationStep = document.getElementById("chatProcessGenerationStep");
   const chatProcessResponseStep = document.getElementById("chatProcessResponseStep");
   const chatProcessDetail = document.getElementById("chatProcessDetail");
   const chatSendButton = document.getElementById("chatSendButton");
@@ -130,6 +132,7 @@
   let sourceResizePointerId = null;
   let chatProcessTimerId = null;
   let chatProcessStartedAt = 0;
+  let chatProcessExpectsRetrieval = true;
   const defaultEvidenceWidth = 340;
   const minimumEvidenceWidth = 280;
   const defaultSourceWidth = 304;
@@ -296,14 +299,9 @@
     `;
   }
 
-  function evidenceFactHtml(label, value, wide = false) {
+  function evidenceFactHtml(label, value) {
     if (!String(value || "").trim()) return "";
-    return `<div class="evidence-fact${wide ? " evidence-fact-wide" : ""}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
-  }
-
-  function evidenceDetailHtml(label, value) {
-    if (!String(value || "").trim()) return "";
-    return `<div><dt>${escapeHtml(label)}</dt><dd title="${escapeHtml(value)}">${escapeHtml(value)}</dd></div>`;
+    return `<div class="evidence-fact"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
   }
 
   function showToast(message) {
@@ -436,18 +434,20 @@
     }
   }
 
-  function previewDocument(documentId, pageNumber = 1, trigger = null) {
+  function previewDocument(documentId, pageNumber = 1, trigger = null, previewUrl = "") {
     const id = Number(documentId);
     const page = Math.max(1, Number(pageNumber) || 1);
     const documentData = documentById(id);
     state.previewDocumentId = id;
     previewReturnFocus = trigger instanceof HTMLElement ? trigger : null;
     sourcePreviewTitle.textContent = documentData?.title || `Doküman ${id}`;
-    sourcePreviewMeta.textContent = `${fileTypeLabel(documentData)} · Sayfa ${page}`;
+    const isReviewPreview = String(previewUrl || "").includes("/review-preview");
+    sourcePreviewMeta.textContent = `${fileTypeLabel(documentData)} · Sayfa ${page}${isReviewPreview ? " · Kontrol kanıtı işaretli" : ""}`;
     sourcePreviewLoading.hidden = false;
     sourcePreviewPane.hidden = false;
     evidencePanel.classList.add("preview-active");
-    sourcePreviewFrame.src = `/documents/${id}/preview?page=${page}#page=${page}&view=FitH&toolbar=0&navpanes=0`;
+    const previewBase = String(previewUrl || "").trim() || `/documents/${id}/preview?page=${page}`;
+    sourcePreviewFrame.src = `${previewBase}#page=${page}&view=FitH&toolbar=0&navpanes=0`;
     setEvidenceOpen(true, { returnFocus: trigger });
     window.requestAnimationFrame(() => sourcePreviewPane.scrollIntoView({ block: "start", behavior: "smooth" }));
   }
@@ -703,7 +703,7 @@
         <div class="message-bubble"><span class="message-author">SmartCAE AI</span><p>Yeni çalışma hazır. Bir mühendislik sorusu sorabilir veya soldan doküman seçebilirsin.</p></div>
       </article>
     `;
-    chatStatus.textContent = "Asistan hazır.";
+    setChatStatus();
     chatInput.value = "";
     resizeChatInput();
     chatSuggestions.hidden = false;
@@ -729,6 +729,53 @@
     return seconds > 0 && seconds < 0.1 ? "<0.1 sn" : `${seconds.toFixed(1)} sn`;
   }
 
+  function setChatStatus(message = "") {
+    chatStatus.textContent = message;
+    chatStatus.hidden = !message;
+  }
+
+  function setChatProcessStep(step, stateName, label, detail) {
+    step.className = `chat-process-step${stateName ? ` ${stateName}` : ""}`;
+    if (label) step.querySelector("strong").textContent = label;
+    if (detail) step.querySelector("small").textContent = detail;
+  }
+
+  function setChatProcessProgress(value, label) {
+    const progress = Math.max(0, Math.min(100, Number(value) || 0));
+    chatProcess.style.setProperty("--process-progress", `${progress}%`);
+    chatProcessTrack.setAttribute("aria-valuenow", String(progress));
+    chatProcessTrack.setAttribute("aria-valuetext", label);
+  }
+
+  function updateChatProcessStage(milliseconds) {
+    if (chatProcess.dataset.state !== "running") return;
+    if (!chatProcessExpectsRetrieval) {
+      setChatProcessStep(chatProcessRetrievalStep, "skipped", "Kaynak tarama", "Genel modda gerekmiyor");
+      setChatProcessStep(chatProcessEvidenceStep, "skipped", "Kanıt seçimi", "Kaynak kullanılmayacak");
+      setChatProcessStep(chatProcessGenerationStep, "active", "Yanıt üretimi", "Genel model cevaplıyor");
+      setChatProcessProgress(72, "Yanıt üretimi aşaması");
+      return;
+    }
+    if (milliseconds < 1800) {
+      setChatProcessStep(chatProcessRetrievalStep, "active", "Kaynak tarama", "Raporlar ve pasajlar aranıyor");
+      setChatProcessStep(chatProcessEvidenceStep, "", "Kanıt seçimi", "En ilgili pasajlar seçilecek");
+      setChatProcessStep(chatProcessGenerationStep, "", "Yanıt üretimi", "Model sırasını bekliyor");
+      setChatProcessProgress(24, "Kaynak tarama aşaması");
+      return;
+    }
+    if (milliseconds < 4500) {
+      setChatProcessStep(chatProcessRetrievalStep, "done", "Kaynak tarama", "RAG araması yürütüldü");
+      setChatProcessStep(chatProcessEvidenceStep, "active", "Kanıt seçimi", "Pasajlar sıralanıyor");
+      setChatProcessStep(chatProcessGenerationStep, "", "Yanıt üretimi", "Model sırasını bekliyor");
+      setChatProcessProgress(48, "Kanıt seçimi aşaması");
+      return;
+    }
+    setChatProcessStep(chatProcessRetrievalStep, "done", "Kaynak tarama", "RAG araması yürütüldü");
+    setChatProcessStep(chatProcessEvidenceStep, "done", "Kanıt seçimi", "İlgili pasajlar işleniyor");
+    setChatProcessStep(chatProcessGenerationStep, "active", "Yanıt üretimi", "Model kaynaklı cevap yazıyor");
+    setChatProcessProgress(74, "Yanıt üretimi aşaması");
+  }
+
   function stopChatProcessTimer() {
     if (chatProcessTimerId !== null) {
       window.clearInterval(chatProcessTimerId);
@@ -738,14 +785,18 @@
 
   function updateChatProcessElapsed() {
     if (!chatProcessStartedAt) return;
-    chatProcessElapsed.textContent = formatChatProcessElapsed(performance.now() - chatProcessStartedAt);
+    const elapsed = performance.now() - chatProcessStartedAt;
+    chatProcessElapsed.textContent = formatChatProcessElapsed(elapsed);
+    updateChatProcessStage(elapsed);
   }
 
   function resetChatProcess() {
     stopChatProcessTimer();
     chatProcessStartedAt = 0;
+    chatProcessExpectsRetrieval = true;
     chatProcess.hidden = true;
     chatProcess.dataset.state = "idle";
+    chatProcess.style.removeProperty("--process-progress");
   }
 
   function startChatProcess() {
@@ -755,18 +806,19 @@
     chatProcess.dataset.state = "running";
     chatProcessTitle.textContent = "SmartCAE çalışıyor";
     chatProcessElapsed.textContent = "0.0 sn";
-    chatProcessTrack.removeAttribute("aria-valuenow");
-    chatProcessTrack.setAttribute("aria-valuetext", "İşlem sürüyor");
-    chatProcessServerStep.className = "active";
-    chatProcessResponseStep.className = "";
+    chatProcessExpectsRetrieval = chatAssistantMode.value !== "general";
+    setChatProcessStep(chatProcessRequestStep, "done", "Soru gönderildi", "Sunucuya iletildi");
+    setChatProcessStep(chatProcessRetrievalStep, "", "Kaynak tarama", "Başlatılıyor");
+    setChatProcessStep(chatProcessEvidenceStep, "", "Kanıt seçimi", "Bekliyor");
+    setChatProcessStep(chatProcessGenerationStep, "", "Yanıt üretimi", "Bekliyor");
+    setChatProcessStep(chatProcessResponseStep, "", "Tamamlandı", "Yanıt bekleniyor");
     const assistantLabel = chatAssistantMode.selectedOptions[0]?.textContent?.trim() || "Otomatik";
     const searchLabel = chatSearchMode.selectedOptions[0]?.textContent?.trim() || "Hibrit";
-    const processorLabel = chatAssistantMode.value === "general" ? "LLM yanıt üretiyor" : "RAG / LLM işliyor";
     const contextLabel = state.selectedDocumentIds.size
       ? `${state.selectedDocumentIds.size} seçili doküman`
       : "Tüm dokümanlar";
-    chatProcessServerLabel.textContent = processorLabel;
-    chatProcessDetail.textContent = `${assistantLabel} · ${retrievalVersionLabel(chatRetrievalVersion.value)} · ${searchLabel} · ${contextLabel}`;
+    const engineLabel = retrievalVersionLabel(chatRetrievalVersion.value).replaceAll(" · ", " ");
+    chatProcessDetail.textContent = `Mod: ${assistantLabel} · Motor: ${engineLabel} · Arama: ${searchLabel} · Kapsam: ${contextLabel}`;
     updateChatProcessElapsed();
     chatProcessTimerId = window.setInterval(updateChatProcessElapsed, 100);
   }
@@ -778,23 +830,34 @@
     if (error) {
       chatProcess.dataset.state = "error";
       chatProcessTitle.textContent = "İşlem tamamlanamadı";
-      chatProcessServerStep.className = "error";
-      chatProcessServerLabel.textContent = "Sunucu işlemi başarısız";
-      chatProcessResponseStep.className = "error";
-      chatProcessResponseStep.lastChild.textContent = " Yanıt alınamadı";
+      [chatProcessRetrievalStep, chatProcessEvidenceStep, chatProcessGenerationStep].forEach(step => {
+        if (step.classList.contains("active")) setChatProcessStep(step, "error", null, "Aşama tamamlanamadı");
+      });
+      setChatProcessStep(chatProcessResponseStep, "error", "Tamamlanamadı", "Yanıt alınamadı");
+      chatProcess.style.setProperty("--process-progress", "100%");
       chatProcessTrack.removeAttribute("aria-valuenow");
       chatProcessTrack.setAttribute("aria-valuetext", "İşlem hata ile tamamlandı");
       chatProcessDetail.textContent = error;
       return elapsedText;
     }
     chatProcess.dataset.state = "complete";
-    chatProcessTitle.textContent = "İşlem tamamlandı";
-    chatProcessServerStep.className = "done";
-    chatProcessServerLabel.textContent = retrievalUsed ? "RAG tamamlandı" : "LLM tamamlandı";
-    chatProcessResponseStep.className = "done";
-    chatProcessResponseStep.lastChild.textContent = " Yanıt hazır";
-    chatProcessTrack.setAttribute("aria-valuenow", "100");
-    chatProcessTrack.setAttribute("aria-valuetext", "İşlem tamamlandı");
+    chatProcessTitle.textContent = "Yanıt hazır";
+    setChatProcessStep(chatProcessRequestStep, "done", "Soru gönderildi", "Sunucuya iletildi");
+    if (retrievalUsed) {
+      setChatProcessStep(chatProcessRetrievalStep, "done", "Kaynak tarama", sourceCount ? `${sourceCount} kaynak bulundu` : "Kaynak bulunamadı");
+      setChatProcessStep(
+        chatProcessEvidenceStep,
+        sourceCount ? "done" : "skipped",
+        "Kanıt seçimi",
+        sourceCount && Number.isFinite(Number(confidence)) ? `Güven ${formatScore(confidence)}` : "Kanıt kullanılmadı",
+      );
+    } else {
+      setChatProcessStep(chatProcessRetrievalStep, "skipped", "Kaynak tarama", "Genel yanıtta kullanılmadı");
+      setChatProcessStep(chatProcessEvidenceStep, "skipped", "Kanıt seçimi", "Kaynak kullanılmadı");
+    }
+    setChatProcessStep(chatProcessGenerationStep, "done", "Yanıt üretimi", "Model yanıtı oluşturdu");
+    setChatProcessStep(chatProcessResponseStep, "done", "Tamamlandı", `${elapsedText} içinde hazırlandı`);
+    setChatProcessProgress(100, "İşlem tamamlandı");
     const engineLabel = retrievalUsed ? retrievalVersionLabel(chatRetrievalVersion.value) : "Genel model";
     const confidenceLabel = Number.isFinite(Number(confidence)) ? ` · güven ${formatScore(confidence)}` : "";
     chatProcessDetail.textContent = `${engineLabel} · ${sourceCount} kaynak${confidenceLabel}`;
@@ -851,66 +914,92 @@
         : (pageCount ? `${pageCount} sayfa` : "Doküman kaynağı");
       const rawExcerpt = item.chunk_text || item.excerpt || item.summary || "İlgili kaynak pasajı.";
       const excerpt = cleanEvidenceExcerpt(rawExcerpt, title) || "İlgili kaynak pasajı.";
-      const reportCode = item.report_code || documentData.report_code || "";
       const authors = item.authors || documentData.authors || "";
       const reportDate = item.report_date || documentData.report_date || "";
       const reportTopic = item.report_title || documentData.report_title || "";
       const discipline = item.discipline || documentData.discipline || "";
-      const vehicle = item.vehicle_name || documentData.vehicle_name || "";
-      const sourcePath = item.source_path || documentData.source_path || "";
-      const fileName = item.file_name || documentData.file_name || "";
-      const createdAt = item.created_at || documentData.created_at || "";
+      const isReviewEvidence = item.source_kind === "report_review";
+      const reviewRuleId = String(item.review_rule_id || "");
+      const reviewSeverity = ["critical", "warning", "info"].includes(item.review_severity)
+        ? item.review_severity
+        : "warning";
+      const reviewSeverityLabel = {
+        critical: "Kritik",
+        warning: "Uyarı",
+        info: "Bilgi",
+      }[reviewSeverity];
+      const reviewMessage = String(item.review_message || "").trim();
+      const suggestedFix = String(item.suggested_fix || "").trim();
+      const reviewEngine = String(item.review_engine || "").trim();
+      const isSemanticReview = reviewEngine.startsWith("llm:");
+      const reviewRuleLabel = String(item.section_title || reviewRuleId || "Kontrol bulgusu").trim();
+      const reviewPreviewUrl = isReviewEvidence
+        && item.review_highlight_available
+        && fileType === "PDF"
+        && reviewRuleId
+        ? `/documents/${documentId}/review-preview?rule_id=${encodeURIComponent(reviewRuleId)}&page=${Math.max(1, pageStart || 1)}`
+        : "";
       const relevance = Number(item.combined_score);
-      const relevanceLabel = Number.isFinite(relevance) && relevance > 0
+      const relevanceLabel = !isReviewEvidence && Number.isFinite(relevance) && relevance > 0
         ? (relevance <= 1 ? `${formatRelevance(relevance)} eşleşme` : `${relevance.toFixed(2)} puan`)
         : "";
       const tableHtml = evidenceTableHtml(excerpt);
       const visibleFacts = [
         evidenceFactHtml("Hazırlayan", authors),
         evidenceFactHtml("Rapor tarihi", reportDate),
-        evidenceFactHtml("Rapor konusu", reportTopic, true),
-      ].join("");
-      const detailRows = [
-        evidenceDetailHtml("Rapor no", reportCode),
-        evidenceDetailHtml("Araç / proje", vehicle),
-        evidenceDetailHtml("Kategori", discipline),
-        evidenceDetailHtml("Eşleşen bölüm", item.section_title || ""),
-        evidenceDetailHtml("Toplam sayfa", pageCount ? String(pageCount) : ""),
-        evidenceDetailHtml("Dosya adı", fileName),
-        evidenceDetailHtml("Sisteme eklenme", createdAt),
-        evidenceDetailHtml("Dosya konumu", sourcePath),
+        evidenceFactHtml("Rapor konusu", reportTopic),
       ].join("");
       const openAttributes = documentId
         ? ` data-evidence-document="${documentId}" role="link" tabindex="0" aria-label="${escapeHtml(`${title} orijinal dosyasını aç`)}"`
         : "";
       return `
-        <article class="evidence-card${documentId ? " is-openable" : ""}"${openAttributes}>
+        <article class="evidence-card${documentId ? " is-openable" : ""}${isReviewEvidence ? ` is-review-evidence review-${reviewSeverity}` : ""}"${openAttributes}>
           <div class="evidence-card-head">
             <strong>${escapeHtml(title)}</strong>
-            <span class="evidence-index">K${index + 1}</span>
+            <div class="evidence-card-tools">
+              ${documentId ? `
+                <button class="result-action-button evidence-action-button preview-action" type="button" data-evidence-preview="${documentId}" data-evidence-page="${Math.max(1, pageStart || 1)}"${reviewPreviewUrl ? ` data-evidence-preview-url="${escapeHtml(reviewPreviewUrl)}"` : ""} aria-label="${escapeHtml(`${title} önizlemesini göster`)}" title="${isReviewEvidence && reviewPreviewUrl ? "İşaretli kontrol kanıtını aç" : "Kaynak önizlemesi"}">
+                  <svg aria-hidden="true"><use href="#icon-eye"></use></svg>
+                </button>
+                <button class="result-action-button evidence-action-button folder-action" type="button" data-evidence-folder="${documentId}" aria-label="${escapeHtml(`${title} klasörünü aç`)}" title="Bulunduğu klasörü aç">
+                  <svg aria-hidden="true"><use href="#icon-folder-open"></use></svg>
+                </button>
+              ` : ""}
+              <span class="evidence-index">${isReviewEvidence ? "B" : "K"}${index + 1}</span>
+            </div>
           </div>
           <div class="evidence-tags">
             <span class="evidence-tag file">${escapeHtml(fileType)}</span>
             <span class="evidence-tag">${escapeHtml(pages)}</span>
             ${discipline ? `<span class="evidence-tag">${escapeHtml(discipline)}</span>` : ""}
             ${relevanceLabel ? `<span class="evidence-tag score">${escapeHtml(relevanceLabel)}</span>` : ""}
+            ${isReviewEvidence ? `<span class="evidence-tag review-severity ${reviewSeverity}">${escapeHtml(reviewSeverityLabel)}</span>` : ""}
+            ${isSemanticReview ? '<span class="evidence-tag semantic-engine">LLM destekli</span>' : ""}
           </div>
-          ${visibleFacts ? `<div class="evidence-facts">${visibleFacts}</div>` : ""}
-          ${tableHtml || `<p class="evidence-excerpt">${escapeHtml(clampText(excerpt, 420))}</p>`}
-          ${(detailRows || tableHtml || excerpt.length > 420) ? `
-            <details class="evidence-details">
-              <summary>Belge detayları ve tam pasaj</summary>
-              ${detailRows ? `<dl>${detailRows}</dl>` : ""}
-              <div class="evidence-full-passage"><span>Kaynak pasajı</span><p>${escapeHtml(excerpt)}</p></div>
-            </details>
+          ${isReviewEvidence ? `
+            <div class="review-evidence-callout ${reviewSeverity}">
+              <span>${escapeHtml(reviewRuleLabel)}</span>
+              <strong>${escapeHtml(reviewMessage || "Kontrol edilmesi gereken bir bulgu var.")}</strong>
+              ${suggestedFix ? `<p><b>Öneri:</b> ${escapeHtml(suggestedFix)}</p>` : ""}
+              ${reviewPreviewUrl ? `
+                <button class="review-preview-cta" type="button" data-evidence-preview="${documentId}" data-evidence-page="${Math.max(1, pageStart || 1)}" data-evidence-preview-url="${escapeHtml(reviewPreviewUrl)}" aria-label="${escapeHtml(`${title} işaretli PDF kanıtını aç`)}">
+                  <svg aria-hidden="true"><use href="#icon-eye"></use></svg>
+                  <span>İşaretli PDF kanıtını aç</span>
+                </button>
+              ` : ""}
+            </div>
           ` : ""}
+          ${visibleFacts ? `<div class="evidence-facts">${visibleFacts}</div>` : ""}
+          ${isReviewEvidence
+            ? `<div class="review-evidence-proof"><span>Sayfa kanıtı</span><p>${escapeHtml(clampText(excerpt, 420))}</p></div>`
+            : (tableHtml || `<p class="evidence-excerpt">${escapeHtml(clampText(excerpt, 420))}</p>`)}
         </article>
       `;
     }).join("");
     evidenceList.querySelectorAll("[data-evidence-document]").forEach(card => {
       const documentId = Number(card.dataset.evidenceDocument);
       card.addEventListener("click", event => {
-        if (event.target.closest("details, summary, button, a")) return;
+        if (event.target.closest("button, a")) return;
         openDocument(documentId);
       });
       card.addEventListener("keydown", event => {
@@ -920,6 +1009,23 @@
         openDocument(documentId);
       });
     });
+    evidenceList.querySelectorAll("[data-evidence-preview]").forEach(button => {
+      button.addEventListener("click", event => {
+        event.stopPropagation();
+        previewDocument(
+          Number(button.dataset.evidencePreview),
+          Number(button.dataset.evidencePage || 1),
+          button,
+          button.dataset.evidencePreviewUrl || "",
+        );
+      });
+    });
+    evidenceList.querySelectorAll("[data-evidence-folder]").forEach(button => {
+      button.addEventListener("click", event => {
+        event.stopPropagation();
+        openDocumentFolder(Number(button.dataset.evidenceFolder), button);
+      });
+    });
   }
 
   async function sendChatMessage(message) {
@@ -927,7 +1033,7 @@
     if (chatSendButton.disabled) return;
     if (cleanMessage.length < 2 || cleanMessage.length > 1000) {
       const validationMessage = "Mesaj 2 ile 1000 karakter arasında olmalı.";
-      chatStatus.textContent = validationMessage;
+      setChatStatus(validationMessage);
       showToast(validationMessage);
       return;
     }
@@ -938,7 +1044,7 @@
     chatInput.value = "";
     resizeChatInput();
     chatSendButton.disabled = true;
-    chatStatus.textContent = "Kaynaklar taranıyor ve yanıt hazırlanıyor…";
+    setChatStatus();
     startChatProcess();
 
     try {
@@ -969,19 +1075,17 @@
         ? `${sources.length} kaynak · güven ${formatScore(data.confidence)}`
         : "Bu yanıt için doküman kaynağı kullanılmadı.");
       if (sources.length) setEvidenceOpen(true);
-      const elapsedText = finishChatProcess({
+      finishChatProcess({
         sourceCount: sources.length,
         confidence: data.confidence,
         retrievalUsed: Boolean(data.retrieval_used),
       });
-      chatStatus.textContent = sources.length
-        ? `${sources.length} kaynakla yanıtlandı · güven ${formatScore(data.confidence)} · ${elapsedText}`
-        : `Yanıt tamamlandı · ${elapsedText}`;
+      setChatStatus();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Asistan yanıt veremedi.";
       appendMessage("assistant", `Yanıt oluşturulamadı: ${message}`);
       const elapsedText = finishChatProcess({ error: message });
-      chatStatus.textContent = `${message} · ${elapsedText}`;
+      setChatStatus(`${message} · ${elapsedText}`);
     } finally {
       chatSendButton.disabled = false;
       chatInput.focus();
@@ -1014,12 +1118,7 @@
       const authors = item.authors || documentData.authors || "";
       const reportDate = item.report_date || documentData.report_date || "";
       const reportTopic = item.report_title || documentData.report_title || "";
-      const reportCode = item.report_code || documentData.report_code || "";
       const discipline = item.discipline || documentData.discipline || "";
-      const vehicle = item.vehicle_name || documentData.vehicle_name || "";
-      const sourcePath = item.source_path || documentData.source_path || "";
-      const fileName = item.file_name || documentData.file_name || "";
-      const createdAt = item.created_at || documentData.created_at || "";
       const relevance = Number(item.combined_score);
       const relevanceLabel = Number.isFinite(relevance) && relevance > 0
         ? (relevance <= 1 ? `${formatRelevance(relevance)} eşleşme` : `${relevance.toFixed(2)} puan`)
@@ -1027,17 +1126,7 @@
       const visibleFacts = [
         evidenceFactHtml("Hazırlayan", authors),
         evidenceFactHtml("Rapor tarihi", reportDate),
-        evidenceFactHtml("Rapor konusu", reportTopic, true),
-      ].join("");
-      const detailRows = [
-        evidenceDetailHtml("Rapor no", reportCode),
-        evidenceDetailHtml("Araç / proje", vehicle),
-        evidenceDetailHtml("Kategori", discipline),
-        evidenceDetailHtml("Eşleşen bölüm", item.section_title || ""),
-        evidenceDetailHtml("Toplam sayfa", pageCount ? String(pageCount) : ""),
-        evidenceDetailHtml("Dosya adı", fileName),
-        evidenceDetailHtml("Sisteme eklenme", createdAt),
-        evidenceDetailHtml("Dosya konumu", sourcePath),
+        evidenceFactHtml("Rapor konusu", reportTopic),
       ].join("");
       const tableHtml = evidenceTableHtml(excerpt);
       return `
@@ -1053,13 +1142,6 @@
         </div>
         ${visibleFacts ? `<div class="evidence-facts result-evidence-facts">${visibleFacts}</div>` : ""}
         ${tableHtml || `<p class="result-excerpt">${escapeHtml(clampText(excerpt, 640))}</p>`}
-        ${(detailRows || tableHtml || excerpt.length > 640) ? `
-          <details class="evidence-details result-details">
-            <summary>Belge detayları ve tam pasaj</summary>
-            ${detailRows ? `<dl>${detailRows}</dl>` : ""}
-            <div class="evidence-full-passage"><span>Kaynak pasajı</span><p>${escapeHtml(excerpt)}</p></div>
-          </details>
-        ` : ""}
         <div class="result-card-footer">
           <div class="result-meta">${item.section_title ? `Eşleşen bölüm: ${escapeHtml(item.section_title)}` : "Kaynak pasajı"}</div>
           <div class="result-card-actions" aria-label="Doküman işlemleri">
@@ -1073,7 +1155,7 @@
     searchResults.querySelectorAll("[data-result-card-document]").forEach(card => {
       const openResult = () => openDocument(Number(card.dataset.resultCardDocument));
       card.addEventListener("click", event => {
-        if (event.target.closest("button, details, summary, a")) return;
+        if (event.target.closest("button, a")) return;
         openResult();
       });
       card.addEventListener("keydown", event => {
@@ -1426,7 +1508,7 @@
   chatRetrievalVersion.addEventListener("change", () => {
     const selectedLabel = retrievalVersionLabel(chatRetrievalVersion.value);
     resetChat();
-    chatStatus.textContent = `${selectedLabel} seçildi. Yeni sohbet bağlamı hazır.`;
+    setChatStatus(`${selectedLabel} seçildi. Yeni sohbet bağlamı hazır.`);
   });
 
   heroComposer.addEventListener("submit", event => {
@@ -1457,15 +1539,23 @@
 
   chatSuggestions.querySelectorAll("[data-prompt]").forEach(button => {
     button.addEventListener("click", () => {
-      const prompt = button.dataset.prompt || "";
-      const selectToken = button.dataset.selectToken || "";
+      const selectedCount = state.selectedDocumentIds.size;
+      const contextPrompt = selectedCount > 1
+        ? button.dataset.contextMultiPrompt
+        : button.dataset.contextPrompt;
+      const prompt = selectedCount > 0 && contextPrompt
+        ? contextPrompt
+        : button.dataset.prompt || "";
+      const selectToken = selectedCount > 0 && contextPrompt
+        ? ""
+        : button.dataset.selectToken || "";
       chatInput.value = prompt;
       if (button.dataset.assistantMode) chatAssistantMode.value = button.dataset.assistantMode;
       chatInput.focus();
       const tokenStart = selectToken ? prompt.indexOf(selectToken) : -1;
       if (tokenStart >= 0) chatInput.setSelectionRange(tokenStart, tokenStart + selectToken.length);
       else chatInput.setSelectionRange(prompt.length, prompt.length);
-      chatStatus.textContent = "Örnek soru hazır. Metni düzenleyip gönderebilirsin.";
+      setChatStatus("Örnek soru hazır. Metni düzenleyip gönderebilirsin.");
     });
   });
 

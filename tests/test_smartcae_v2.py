@@ -160,8 +160,11 @@ def test_smartcae_v2_chat_workspace_and_light_emoji_rail_contract() -> None:
     assert 'id="chatProcessElapsed"' in html
     assert 'role="progressbar" aria-label="Yanıt hazırlama ilerlemesi"' in html
     assert 'id="chatProcessRequestStep"' in html
-    assert 'id="chatProcessServerStep"' in html
+    assert 'id="chatProcessRetrievalStep"' in html
+    assert 'id="chatProcessEvidenceStep"' in html
+    assert 'id="chatProcessGenerationStep"' in html
     assert 'id="chatProcessResponseStep"' in html
+    assert 'id="chatStatus" role="status" hidden' in html
     assert 'id="chatRetrievalVersion"' in html
     assert '<option value="v2">v2 · Beta</option>' in html
     assert '<option value="v3">v3 · Haystack</option>' in html
@@ -180,18 +183,28 @@ def test_smartcae_v2_chat_workspace_and_light_emoji_rail_contract() -> None:
     assert 'return "RAG v3 · Haystack"' in script
     assert "function startChatProcess()" in script
     assert "function finishChatProcess(" in script
+    assert "function updateChatProcessStage(milliseconds)" in script
+    assert "function setChatProcessProgress(value, label)" in script
     assert "window.setInterval(updateChatProcessElapsed, 100)" in script
     assert "startChatProcess();" in script
     assert "const elapsedText = finishChatProcess({" in script
     assert 'chatProcess.dataset.state = "complete"' in script
     assert 'chatProcess.dataset.state = "error"' in script
     assert ".chat-process-track" in css
-    assert '.chat-process[data-state="running"] .chat-process-fill' in css
-    assert "@keyframes process-slide" in css
+    assert "width: var(--process-progress, 20%)" in css
+    assert ".chat-process-step.active" in css
+    assert ".chat-process-step.skipped" in css
     assert ".rag-version-control select" in css
     assert "flex-direction: column; flex-wrap: nowrap" in css
     assert ".chat-controls::-webkit-scrollbar" in css
-    assert 'aria-label="Örnek sorular"' in html
+    assert 'aria-label="Skill\'ler ve örnek sorular"' in html
+    assert 'data-suggestion-section="skills"' in html
+    assert 'data-suggestion-section="examples"' in html
+    assert "Skill'ler" in html
+    assert 'data-prompt="RAPOR-KODU raporu kontrol et; hata, eksik ve tutarsızlıkları sayfa kanıtlarıyla göster."' in html
+    assert 'data-context-prompt="Bu raporu kontrol et; hata, eksik ve tutarsızlıkları sayfa kanıtlarıyla göster."' in html
+    assert 'data-context-multi-prompt="Bu raporları kontrol et; hata, eksik ve tutarsızlıkları ayrı ayrı sayfa kanıtlarıyla göster."' in html
+    assert "Rapor kontrolü" in html
     assert 'id="chatInput" rows="1"' in html
     assert 'data-select-token="RAPOR-KODU"' in html
     assert 'data-prompt="SmartCAE AI ne yapar?" data-assistant-mode="auto"' in html
@@ -201,7 +214,11 @@ def test_smartcae_v2_chat_workspace_and_light_emoji_rail_contract() -> None:
     assert "Alternatör braket" in html
     assert "TASE sensör" in html
     assert 'chatInput.setSelectionRange(tokenStart, tokenStart + selectToken.length)' in script
-    assert 'chatStatus.textContent = "Örnek soru hazır. Metni düzenleyip gönderebilirsin."' in script
+    assert "const selectedCount = state.selectedDocumentIds.size" in script
+    assert "button.dataset.contextMultiPrompt" in script
+    assert "selectedCount > 0 && contextPrompt" in script
+    assert 'setChatStatus("Örnek soru hazır. Metni düzenleyip gönderebilirsin.")' in script
+    assert "kaynakla yanıtlandı" not in script
     assert 'button.addEventListener("click", () => sendChatMessage(button.dataset.prompt))' not in script
     assert "👤" not in script
     assert ".user-message .message-avatar" not in css
@@ -216,8 +233,10 @@ def test_smartcae_v2_chat_workspace_and_light_emoji_rail_contract() -> None:
     assert 'body[data-active-view="chat"] .chat-stage' in css
     assert 'height: calc(100dvh - 12px)' in css
     assert ".chat-suggestions-label" in css
-    assert ".chat-suggestions::-webkit-scrollbar" in css
-    assert ".chat-suggestions::-webkit-scrollbar-thumb" in css
+    assert "grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.1fr)" in css
+    assert ".chat-suggestion-track::-webkit-scrollbar" in css
+    assert ".chat-suggestion-section + .chat-suggestion-section" in css
+    assert ".chat-suggestion-track::-webkit-scrollbar-thumb" in css
     assert "scrollbar-width: thin" in css
     assert "scrollbar-gutter: stable" in css
     assert ".chat-view {\n  padding: 6px 0;" in css
@@ -231,14 +250,17 @@ def test_smartcae_v2_chat_workspace_and_light_emoji_rail_contract() -> None:
     assert "function parseFlowRateTable(value)" in script
     assert 'evidenceFactHtml("Hazırlayan", authors)' in script
     assert 'evidenceFactHtml("Rapor tarihi", reportDate)' in script
-    assert 'evidenceFactHtml("Rapor konusu", reportTopic, true)' in script
-    assert 'evidenceDetailHtml("Dosya konumu", sourcePath)' in script
+    assert 'evidenceFactHtml("Rapor konusu", reportTopic)' in script
+    assert 'evidenceFactHtml("Rapor konusu", reportTopic, true)' not in script
     assert '`${relevance.toFixed(2)} puan`' in script
-    assert "Belge detayları ve tam pasaj" in script
-    assert 'event.target.closest("details, summary, button, a")' in script
+    assert "function evidenceDetailHtml" not in script
+    assert "Belge detayları ve tam pasaj" not in script
+    assert 'event.target.closest("button, a")' in script
     assert ".evidence-facts" in css
+    assert "grid-template-columns: repeat(3, minmax(0, 1fr))" in css
+    assert ".evidence-fact-wide" not in css
     assert ".evidence-table-wrap" in css
-    assert ".evidence-details" in css
+    assert ".evidence-details" not in css
 
     rail_hover = re.search(r"\.rail-button:hover\s*\{([^}]*)\}", css, re.DOTALL)
     rail_active = re.search(r"\.rail-button\.active\s*\{([^}]*)\}", css, re.DOTALL)
@@ -270,15 +292,28 @@ def test_smartcae_v2_search_cards_open_files_and_offer_folder_and_inline_preview
     assert 'data-result-card-document="${documentId}"' in script
     assert 'data-result-folder="${documentId}"' in script
     assert 'data-result-preview="${documentId}"' in script
+    assert 'data-evidence-folder="${documentId}"' in script
+    assert 'data-evidence-preview="${documentId}"' in script
+    assert 'data-evidence-preview-url="${escapeHtml(reviewPreviewUrl)}"' in script
+    assert 'class="review-preview-cta"' in script
+    assert "İşaretli PDF kanıtını aç" in script
+    assert ".review-preview-cta" in css
+    assert "openDocumentFolder(Number(button.dataset.evidenceFolder), button)" in script
+    assert "Number(button.dataset.evidencePreview)" in script
+    assert 'source_kind === "report_review"' in script
+    assert 'reviewEngine.startsWith("llm:")' in script
+    assert 'LLM destekli' in script
+    assert 'Kontrol kanıtı işaretli' in script
     assert "data-result-document" not in script
-    assert 'event.target.closest("button, details, summary, a")' in script
+    assert 'event.target.closest("button, a")' in script
     assert 'class="evidence-facts result-evidence-facts"' in script
     assert 'class="evidence-tags result-tags"' in script
-    assert 'class="evidence-details result-details"' in script
+    assert 'class="evidence-details result-details"' not in script
     assert 'cleanEvidenceExcerpt(item.chunk_text, title)' in script
     assert 'evidenceTableHtml(excerpt)' in script
     assert 'fetch(`/documents/${Number(documentId)}/open-folder`' in script
-    assert 'sourcePreviewFrame.src = `/documents/${id}/preview?page=${page}' in script
+    assert 'const previewBase = String(previewUrl || "").trim() || `/documents/${id}/preview?page=${page}`' in script
+    assert 'sourcePreviewFrame.src = `${previewBase}#page=${page}&view=FitH&toolbar=0&navpanes=0`' in script
     assert 'evidencePanel.classList.add("preview-active")' in script
     assert 'evidencePanel.classList.remove("preview-active")' in script
     assert ".result-action-button" in css
@@ -286,13 +321,20 @@ def test_smartcae_v2_search_cards_open_files_and_offer_folder_and_inline_preview
     assert "background: #fff5d9" in css
     assert ".result-action-button.preview-action" in css
     assert "background: #eaf4ff" in css
+    assert ".evidence-card-tools" in css
+    assert ".evidence-action-button" in css
+    assert ".evidence-card.is-review-evidence" in css
+    assert ".review-evidence-callout" in css
+    assert ".review-evidence-proof" in css
+    assert ".evidence-tag.semantic-engine" in css
     assert ".result-evidence-facts" in css
     assert ".result-card .evidence-table" in css
-    assert ".result-details" in css
+    assert ".result-details" not in css
     assert ".source-preview-pane" in css
     assert ".evidence-panel.preview-active .source-preview-canvas" in css
     assert '@app.post("/documents/{document_id}/open-folder")' in main_source
     assert '@app.get("/documents/{document_id}/preview")' in main_source
+    assert '@app.get("/documents/{document_id}/review-preview")' in main_source
 
 
 def test_smartcae_v2_evidence_panel_is_resizable_on_desktop() -> None:

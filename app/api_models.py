@@ -231,6 +231,15 @@ class AnswerSourceResponse(BaseModel):
     keyword_score: float = Field(default=0.0)
     semantic_score: float = Field(default=0.0)
     combined_score: float = Field(default=0.0)
+    source_kind: Literal["retrieval", "report_review"] = "retrieval"
+    review_rule_id: str | None = None
+    review_category: str | None = None
+    review_severity: Literal["critical", "warning", "info"] | None = None
+    review_status: Literal["fail", "needs_review"] | None = None
+    review_message: str | None = None
+    suggested_fix: str | None = None
+    review_engine: str | None = None
+    review_highlight_available: bool = False
 
 
 class AskResponse(BaseModel):

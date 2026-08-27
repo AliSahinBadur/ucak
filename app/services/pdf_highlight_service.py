@@ -118,7 +118,7 @@ class PdfHighlightService:
                 title_bar=APP_BRAND.display_name,
             )
             annotation[NameObject("/Contents")] = TextStringObject(request.label[:240])
-            annotation[NameObject("/CA")] = FloatObject(0.38)
+            annotation[NameObject("/CA")] = FloatObject(0.58)
             writer.add_annotation(page_number=page_index, annotation=annotation)
 
             highlighted_passages += 1

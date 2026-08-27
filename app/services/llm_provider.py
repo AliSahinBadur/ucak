@@ -80,27 +80,46 @@ class OllamaLLMProvider:
         options: dict[str, float | int] = {"temperature": temperature}
         if max_tokens is not None:
             options["num_predict"] = max_tokens
+        return self._chat(prompt, options=options)
+
+    def _chat(
+        self,
+        prompt: str,
+        *,
+        options: dict[str, float | int],
+        output_format: str | dict | None = None,
+    ) -> str:
+        request_payload: dict = {
+            "model": self.model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "options": options,
+        }
+        if output_format is not None:
+            request_payload["format"] = output_format
         with httpx.Client(timeout=self.timeout_seconds) as client:
             response = client.post(
                 f"{OLLAMA_HOST}/api/chat",
-                json={
-                    "model": self.model_name,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "stream": False,
-                    "options": options,
-                },
+                json=request_payload,
             )
             response.raise_for_status()
             payload = response.json()
         return str(payload["message"]["content"])
 
     def generate_json(self, prompt: str, schema: type[SchemaT]) -> SchemaT:
-        raw_text = self.generate(prompt, temperature=0.0)
+        raw_text = self._chat(
+            prompt,
+            options={"temperature": 0.0, "num_predict": 1200},
+            output_format=schema.model_json_schema(),
+        )
         try:
-            payload = json.loads(_extract_json_object(raw_text))
-            return schema.model_validate(payload)
+            return schema.model_validate_json(raw_text)
         except (json.JSONDecodeError, ValidationError) as exc:
-            raise RuntimeError("LLM returned invalid JSON.") from exc
+            try:
+                payload = json.loads(_extract_json_object(raw_text))
+                return schema.model_validate(payload)
+            except (json.JSONDecodeError, ValidationError) as fallback_exc:
+                raise RuntimeError("LLM returned invalid JSON.") from fallback_exc
 
 
 def _extract_json_object(value: str) -> str:
