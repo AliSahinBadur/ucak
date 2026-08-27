@@ -29,6 +29,30 @@ vermez.
   rapor içi dayanak ve metin içi çelişki adayları aranıyor. Yalnızca belirtilen
   sayfada birebir doğrulanabilen alıntılar bulguya dönüşüyor; uydurma veya eksik
   kanıtlı sonuçlar eleniyor.
+- Aşama 4 tamamlandı: katalog disiplini veya rapor kimliğinden otomatik olarak
+  NVH, CFD, Durability ve Test/Validasyon profili seçiliyor. Genel kurallara ek
+  olarak disipline özgü yöntem, sınır şartı, ölçüm düzeni, sayısal kanıt, kabul
+  kriteri ve sonuç izlenebilirliği kontrol ediliyor.
+- Aşama 5 başladı: kaynak kartlarındaki bulgular insan tarafından `Onayla` veya
+  `Geçersiz` kararıyla işaretlenebiliyor. Kararlar doküman ve bulgu kimliğiyle
+  veritabanında saklanıyor; güncel bulgular ve insan kararları PDF kontrol kaydı
+  olarak dışa aktarılabiliyor.
+- İki rapor seçildiğinde `Revizyon kontrolü` skill'i, kural ve disiplin profili
+  bulgularını yeni, giderilen ve devam eden başlıklar olarak karşılaştırıyor.
+  Bu karşılaştırma tam metin redline yerine kontrol bulgularının değişimini izler.
+
+## Aşama 4 Profilleri
+
+| Profil | Ek kontroller |
+| --- | --- |
+| NVH | Sensör/nokta, eksen, çalışma koşulu, sinyal işleme, standart ve sonuç yorumu |
+| CFD | Çözüm modeli, sınır şartları, ağ/mesh, yakınsama/zaman adımı ve birimli sonuç karşılaştırması |
+| Durability | Malzeme, yük/mesnet, sonlu eleman ağı, bağlantı/temas ve sonuç-kriter bağı |
+| Test/Validasyon | Test objesi, ekipman, koşullar, prosedür, kabul kararı ve kalibrasyon/cihaz kimliği |
+
+Profil kontrolleri fiziksel doğruluk kararı vermez. Eksik dokümantasyon
+`needs_review` olarak işaretlenir; test cihazı kalibrasyon bilgisi gibi her rapora
+uygulanamayabilecek alanlar bilgi seviyesinde gösterilir.
 
 ## Bulgu Sözleşmesi
 

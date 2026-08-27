@@ -10,6 +10,7 @@ from app.services.document_intelligence_service import DocumentIntelligenceServi
 from app.services.llm_provider import DisabledLLMProvider
 from app.services.report_quality_service import ReportQualityService
 from app.services.report_review_service import ReportReviewService
+from app.services.report_review_export_service import ReportReviewExportService
 
 
 class FakeSemanticLLMProvider:
@@ -59,6 +60,36 @@ class ReportQualityServiceTests(unittest.TestCase):
             )
         self.session.commit()
         return int(document.id)
+
+    def _link_catalog(
+        self,
+        document_id: int,
+        *,
+        report_code: str,
+        discipline: str,
+        report_title: str,
+    ) -> None:
+        catalog_entry = ReportCatalogEntry(
+            report_code=report_code,
+            vehicle_name="SYN",
+            report_title=report_title,
+            discipline=discipline,
+            report_date="2026-08-27",
+            authors="TEST HAZIRLAYAN",
+            source_path=f"V:\\RAPORLAR\\{report_code}",
+            row_hash=(f"profile-{document_id}-{discipline}" + "0" * 64)[:64],
+        )
+        self.session.add(catalog_entry)
+        self.session.flush()
+        self.session.add(
+            CatalogDocumentLink(
+                catalog_entry_id=int(catalog_entry.id),
+                document_id=document_id,
+                source_path=catalog_entry.source_path,
+                match_method="test",
+            )
+        )
+        self.session.commit()
 
     def test_reports_complete_table_and_figure_sequences(self) -> None:
         document_id = self._add_document(
@@ -186,6 +217,183 @@ class ReportQualityServiceTests(unittest.TestCase):
 
         rule_ids = {finding["rule_id"] for finding in review["findings"]}
         self.assertNotIn("metadata.required_fields", rule_ids)
+
+    def test_auto_profile_detection_applies_all_discipline_rule_sets(self) -> None:
+        documents = {
+            "nvh": self._add_document(
+                "SYN-NVH-001",
+                [
+                    (
+                        "RAPOR NO: SYN-NVH-001 TARIH: 2026-08-27 HAZIRLAYAN: TEST KONTROL: TEST "
+                        "KAPSAM Sensor koltuk uzerinde x ekseni yonunde, 50 km/h parkur kosulunda olcum yapti."
+                    ),
+                    (
+                        "SONUCLAR gRMS ve crest faktor, 0-80 Hz frekans araliginda filtre ve "
+                        "agirliklandirma ile hesaplandi. ISO 2631 limitine gore sonuc uygun bulundu."
+                    ),
+                ],
+            ),
+            "cfd": self._add_document(
+                "SYN-CFD-001",
+                [
+                    (
+                        "RAPOR NO: SYN-CFD-001 TARIH: 2026-08-27 HAZIRLAYAN: TEST KONTROL: TEST "
+                        "KAPSAM Fluent solver ve k-epsilon modeli kullanildi. Sinir sartlari inlet debi "
+                        "ve outlet basinci olarak tanimlandi."
+                    ),
+                    (
+                        "Mesh hucre sayisi ve grid kalitesi raporlandi. Residual convergence ile "
+                        "yakinsama izlendi. SONUCLAR Mevcut tasarim 0,108 m3/s, oneri 0,123 m3/s "
+                        "debi sagladi ve hedefle karsilastirildi."
+                    ),
+                ],
+            ),
+            "durability": self._add_document(
+                "SYN-DUR-001",
+                [
+                    (
+                        "RAPOR NO: SYN-DUR-001 TARIH: 2026-08-27 HAZIRLAYAN: TEST KONTROL: TEST "
+                        "KAPSAM Malzeme S235, Young modulu ve akma dayanimi tanimlandi. Uygulanan yuk "
+                        "10 kN kuvvet, sinir sartlari fixed mesnettir."
+                    ),
+                    (
+                        "Sonlu eleman mesh yapisi, civata baglanti ve contact tanimlari verildi. "
+                        "SONUCLAR Von Mises gerilme ve deformasyon, akma dayanimi ve emniyet katsayisi "
+                        "ile karsilastirilarak uygun bulundu."
+                    ),
+                ],
+            ),
+            "test": self._add_document(
+                "SYN-TEST-001",
+                [
+                    (
+                        "RAPOR NO: SYN-TEST-001 TARIH: 2026-08-27 HAZIRLAYAN: TEST KONTROL: TEST "
+                        "KAPSAM Arac konfigurasyonu, sicaklik sensoru ve ortam sicakligi kaydedildi. "
+                        "Test yontemi 30 dakika 1500 rpm calisma olarak uygulandi."
+                    ),
+                    (
+                        "Cihaz seri no ve kalibrasyon sertifika no kaydedildi. SONUCLAR Kabul kriteri "
+                        "maksimum 90 derece C limitidir; test sonucu OK olarak degerlendirildi."
+                    ),
+                ],
+            ),
+        }
+        disciplines = {
+            "nvh": "NVH",
+            "cfd": "CFD",
+            "durability": "DURABILITY",
+            "test": "TEST",
+        }
+        for profile, document_id in documents.items():
+            self._link_catalog(
+                document_id,
+                report_code=f"SYN-{profile.upper()}-001",
+                discipline=disciplines[profile],
+                report_title=f"{profile} profil testi",
+            )
+
+        review = ReportQualityService(self.session).analyze_documents(list(documents.values()))
+
+        results_by_profile = {item["profile"]: item for item in review["documents"]}
+        self.assertEqual(set(documents), set(results_by_profile))
+        for profile, result in results_by_profile.items():
+            profile_checks = [check for check in result["checks"] if check["category"] == profile]
+            self.assertTrue(profile_checks)
+            self.assertTrue(all(check["status"] == "pass" for check in profile_checks))
+
+    def test_nvh_profile_marks_missing_frequency_processing_for_review(self) -> None:
+        document_id = self._add_document(
+            "SYN-NVH-MISSING",
+            [
+                (
+                    "RAPOR NO: SYN-NVH-MISSING TARIH: 2026-08-27 HAZIRLAYAN: TEST KONTROL: TEST "
+                    "KAPSAM Sensor koltuk uzerinde x ekseninde, 30 km/h parkur kosulunda olcum yapti."
+                ),
+                "SONUCLAR gRMS degeri ISO 2631 limitine gore uygun olarak degerlendirildi.",
+            ],
+        )
+        self._link_catalog(
+            document_id,
+            report_code="SYN-NVH-MISSING",
+            discipline="NVH",
+            report_title="Eksik sinyal isleme testi",
+        )
+
+        review = ReportQualityService(self.session).analyze_documents([document_id])
+
+        self.assertEqual("nvh", review["documents"][0]["profile"])
+        finding = next(
+            item for item in review["findings"] if item["rule_id"] == "nvh.signal_processing"
+        )
+        self.assertEqual("needs_review", finding["status"])
+        self.assertIn("frekans / filtre / agirliklandirma", finding["message"])
+
+    def test_review_decision_persists_and_pdf_export_includes_review(self) -> None:
+        document_id = self._add_document(
+            "SYN-REVIEW-DECISION",
+            ["KAPSAM Kisa teknik aciklama.\nSONUCLAR Sonuc metni."],
+        )
+        service = ReportReviewService(self.session)
+        review = service.analyze_documents([document_id])
+        finding = next(
+            item for item in review["findings"] if item["rule_id"] == "metadata.required_fields"
+        )
+
+        decision = service.record_decision(
+            document_id=document_id,
+            finding_key=finding["finding_key"],
+            rule_id=finding["rule_id"],
+            decision="confirmed",
+            note="Kapak alanlari gercekten eksik.",
+            reviewer="Test Muhendisi",
+        )
+        refreshed = service.analyze_documents([document_id])
+        refreshed_finding = next(
+            item for item in refreshed["findings"] if item["finding_key"] == finding["finding_key"]
+        )
+        pdf_content = ReportReviewExportService.build_pdf(refreshed)
+
+        self.assertEqual("confirmed", decision["decision"])
+        self.assertEqual("confirmed", refreshed_finding["human_decision"])
+        self.assertEqual("Kapak alanlari gercekten eksik.", refreshed_finding["human_decision_note"])
+        self.assertEqual(1, refreshed["summary"]["human_decisions"]["confirmed"])
+        self.assertTrue(pdf_content.startswith(b"%PDF"))
+        self.assertGreater(len(pdf_content), 2000)
+
+    def test_revision_review_reports_new_resolved_and_continuing_rules(self) -> None:
+        old_document_id = self._add_document(
+            "SYN-REV-A",
+            [
+                (
+                    "KAPSAM Eski revizyon incelendi. SONUCLAR Sonuc yazildi. "
+                    "Olcumler 1,25 MPa ve 1.50 MPa. DOSYA: V:\\RAPORLAR\\SYN-REV-A"
+                )
+            ],
+        )
+        new_document_id = self._add_document(
+            "SYN-REV-B",
+            [
+                (
+                    "RAPOR NO: SYN-REV-B TARIH: 2026-08-27 HAZIRLAYAN: TEST KONTROL: TEST "
+                    "KAPSAM Yeni revizyon incelendi. Olcumler 1,25 MPa ve 1.50 MPa."
+                )
+            ],
+        )
+
+        result = ReportQualityService(self.session).answer_question(
+            "Bu iki raporun rapor kontrolu bulgularini revizyon bazinda karsilastir; "
+            "yeni, giderilen ve devam eden bulgulari goster.",
+            [old_document_id, new_document_id],
+        )
+
+        comparison = result["revision_comparison"]
+        self.assertIn("structure.required_sections", comparison["new"])
+        self.assertIn("metadata.required_fields", comparison["resolved"])
+        self.assertIn("content.embedded_paths", comparison["resolved"])
+        self.assertIn("numbers.decimal_style", comparison["continuing"])
+        self.assertIn("Yeni bulgular", result["answer"])
+        self.assertTrue(any(source.get("review_revision_change") == "resolved" for source in result["sources"]))
+        self.assertTrue(all(isinstance(source["page_start"], int) for source in result["sources"]))
 
     def test_general_review_returns_structured_caption_sequence_finding(self) -> None:
         document_id = self._add_document(

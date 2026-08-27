@@ -25,7 +25,7 @@ def test_smartcae_v2_is_separate_from_the_legacy_workspace() -> None:
     assert '@app.get("/app"' in main_source
     assert 'data-module-filter="upload"' in main_source
     assert 'data-smartcae-version="2"' in v2_html
-    assert 'href="/"' in v2_html
+    assert 'href="/legacy"' in v2_html
     assert "/smartcae-v2/assets/smartcae-v2.css?v=__APP_VERSION__" in v2_html
     assert "/smartcae-v2/assets/smartcae-v2.js?v=__APP_VERSION__" in v2_html
     assert '"__SMARTCAE_V2_LINK__"' in main_source
@@ -35,13 +35,20 @@ def test_smartcae_v2_is_separate_from_the_legacy_workspace() -> None:
 @pytest.mark.skipif(APP_VARIANT != "big_agent", reason="SmartCAE V2 is served only by the big_agent variant")
 def test_smartcae_v2_route_and_assets_are_served_for_big_agent() -> None:
     with TestClient(app) as client:
+        root_page = client.get("/")
         page = client.get("/smartcae-v2")
+        legacy_page = client.get("/legacy")
         stylesheet = client.get("/smartcae-v2/assets/smartcae-v2.css")
         script = client.get("/smartcae-v2/assets/smartcae-v2.js")
         documents = client.get("/documents/list?limit=1")
 
+    assert root_page.status_code == 200
+    assert 'data-smartcae-version="2"' in root_page.text
     assert page.status_code == 200
     assert 'data-smartcae-version="2"' in page.text
+    assert legacy_page.status_code == 200
+    assert 'data-smartcae-version="2"' not in legacy_page.text
+    assert 'class="smartcae-v2-link"' in legacy_page.text
     assert f"smartcae-v2.css?v={main_module.APP_VERSION}" in page.text
     assert f"smartcae-v2.js?v={main_module.APP_VERSION}" in page.text
     assert f'id="systemVersionLabel">v{main_module.APP_VERSION}</small>' in page.text
@@ -190,6 +197,10 @@ def test_smartcae_v2_chat_workspace_and_light_emoji_rail_contract() -> None:
     assert "const elapsedText = finishChatProcess({" in script
     assert 'chatProcess.dataset.state = "complete"' in script
     assert 'chatProcess.dataset.state = "error"' in script
+    assert 'id="chatProcessToggle"' in html
+    assert "function scheduleChatProcessCompact()" in script
+    assert 'chatProcess.classList.toggle("compact", compact)' in script
+    assert ".chat-process.compact .chat-process-track" in css
     assert ".chat-process-track" in css
     assert "width: var(--process-progress, 20%)" in css
     assert ".chat-process-step.active" in css
@@ -285,6 +296,8 @@ def test_smartcae_v2_search_cards_open_files_and_offer_folder_and_inline_preview
     assert 'id="sourcePreviewFrame"' in html
     assert 'id="icon-folder-open"' in html
     assert 'id="icon-eye"' in html
+    assert 'id="exportReviewButton"' in html
+    assert "Revizyon kontrolü" in html
     assert 'href="#icon-folder-open"' in script
     assert 'href="#icon-eye"' in script
     assert 'class="result-action-button folder-action"' in script
@@ -296,8 +309,15 @@ def test_smartcae_v2_search_cards_open_files_and_offer_folder_and_inline_preview
     assert 'data-evidence-preview="${documentId}"' in script
     assert 'data-evidence-preview-url="${escapeHtml(reviewPreviewUrl)}"' in script
     assert 'class="review-preview-cta"' in script
+    assert 'data-review-decision="confirmed"' in script
+    assert 'data-review-decision="dismissed"' in script
+    assert 'fetch("/report-review/decisions"' in script
+    assert 'window.location.assign(`/report-review/export?' in script
+    assert 'review_revision_change' in script
     assert "İşaretli PDF kanıtını aç" in script
     assert ".review-preview-cta" in css
+    assert ".review-decision-row" in css
+    assert ".evidence-tag.revision-change.new" in css
     assert "openDocumentFolder(Number(button.dataset.evidenceFolder), button)" in script
     assert "Number(button.dataset.evidencePreview)" in script
     assert 'source_kind === "report_review"' in script
@@ -325,7 +345,8 @@ def test_smartcae_v2_search_cards_open_files_and_offer_folder_and_inline_preview
     assert ".evidence-action-button" in css
     assert ".evidence-card.is-review-evidence" in css
     assert ".review-evidence-callout" in css
-    assert ".review-evidence-proof" in css
+    assert "Sayfa kanıtı" not in script
+    assert ".review-evidence-proof" not in css
     assert ".evidence-tag.semantic-engine" in css
     assert ".result-evidence-facts" in css
     assert ".result-card .evidence-table" in css
@@ -335,6 +356,8 @@ def test_smartcae_v2_search_cards_open_files_and_offer_folder_and_inline_preview
     assert '@app.post("/documents/{document_id}/open-folder")' in main_source
     assert '@app.get("/documents/{document_id}/preview")' in main_source
     assert '@app.get("/documents/{document_id}/review-preview")' in main_source
+    assert '"/report-review/decisions"' in main_source
+    assert '@app.get("/report-review/export")' in main_source
 
 
 def test_smartcae_v2_evidence_panel_is_resizable_on_desktop() -> None:

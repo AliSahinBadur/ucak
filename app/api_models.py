@@ -219,6 +219,25 @@ class ChatRequest(BaseModel):
     use_llm_answer: bool = False
 
 
+class ReportReviewDecisionRequest(BaseModel):
+    document_id: int = Field(ge=1)
+    finding_key: str = Field(min_length=16, max_length=64, pattern=r"^[a-f0-9]+$")
+    rule_id: str = Field(min_length=3, max_length=120, pattern=r"^[a-z0-9_.-]+$")
+    decision: Literal["open", "confirmed", "dismissed"]
+    note: str = Field(default="", max_length=1000)
+    reviewer: str = Field(default="", max_length=120)
+
+
+class ReportReviewDecisionResponse(BaseModel):
+    document_id: int
+    finding_key: str
+    rule_id: str
+    decision: Literal["open", "confirmed", "dismissed"]
+    note: str = ""
+    reviewer: str = ""
+    decided_at: str | None = None
+
+
 class AnswerSourceResponse(BaseModel):
     document_id: int
     document_title: str
@@ -240,6 +259,12 @@ class AnswerSourceResponse(BaseModel):
     suggested_fix: str | None = None
     review_engine: str | None = None
     review_highlight_available: bool = False
+    review_finding_key: str | None = None
+    human_decision: Literal["open", "confirmed", "dismissed"] = "open"
+    human_decision_note: str = ""
+    human_reviewer: str = ""
+    human_decided_at: str | None = None
+    review_revision_change: Literal["new", "resolved", "continuing"] | None = None
 
 
 class AskResponse(BaseModel):

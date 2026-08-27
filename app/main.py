@@ -52,6 +52,8 @@ from .api_models import (
     ReportComparisonRequest,
     ReportComparisonResponse,
     ReportComparisonUploadResponse,
+    ReportReviewDecisionRequest,
+    ReportReviewDecisionResponse,
     SearchResponse,
     StorageCheckResponse,
 )
@@ -87,6 +89,7 @@ from .services.report_comparison_service import (
     resolve_comparison_pdf_path,
 )
 from .services.report_review_service import ReportReviewService
+from .services.report_review_export_service import ReportReviewExportService
 from .services.report_writer_service import ReportWriterService
 from .services.retrieval_orchestrator import RetrievalOrchestrator
 from .services.search_service import SearchService
@@ -589,8 +592,12 @@ def smartcae_v2_page() -> HTMLResponse:
 
 @app.get("/app/", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/app", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/legacy/", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/legacy", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/", response_class=HTMLResponse)
 def upload_page(request: Request) -> HTMLResponse:
+    if APP_VARIANT == "big_agent" and request.url.path == "/":
+        return smartcae_v2_page()
     if APP_VARIANT == "raporhub" and request.url.path == "/":
         return HTMLResponse(
             RAPORHUB_LANDING_DIR.joinpath("index.html").read_text(encoding="utf-8"),
@@ -7152,9 +7159,7 @@ def chat(
     ):
         history.pop()
 
-    if payload.assistant_mode == "general" or (
-        payload.assistant_mode == "auto" and _is_general_chat_message(payload.message)
-    ):
+    if _should_use_general_chat(payload.assistant_mode, payload.message):
         answer_text, provider_name, confidence = _chat_general_answer(payload.message, history)
         history.append({"role": "user", "content": payload.message})
         history.append({"role": "assistant", "content": answer_text})
@@ -7236,6 +7241,14 @@ def _is_general_chat_message(message: str) -> bool:
     return True
 
 
+def _should_use_general_chat(assistant_mode: str, message: str) -> bool:
+    return (
+        assistant_mode == "general"
+        or _is_chat_small_talk(message)
+        or (assistant_mode == "auto" and _is_general_chat_message(message))
+    )
+
+
 def _is_application_meta_message(normalized: str) -> bool:
     identity_phrases = {
         "kendinden bahset",
@@ -7290,6 +7303,11 @@ def _is_chat_small_talk(message: str) -> bool:
         "ne haber",
         "gunaydin",
         "iyi aksamlar",
+        "sagol",
+        "sag ol",
+        "tesekkur",
+        "tesekkurler",
+        "eyvallah",
     }
     return normalized in small_talk_phrases or (
         len(normalized.split()) <= 3
@@ -7339,6 +7357,10 @@ def _is_report_focused_message(normalized: str) -> bool:
 
 def _chat_general_answer(message: str, history: list[dict] | None = None) -> tuple[str, str, float]:
     normalized = _fold_chat_text(message)
+    if len(normalized.split()) <= 5 and any(
+        phrase in normalized for phrase in ("sagol", "sag ol", "tesekkur", "eyvallah")
+    ):
+        return "Rica ederim.", "chat-direct", 1.0
     if any(phrase in normalized for phrase in ("adam misin", "insan misin", "robot musun", "gercek misin")):
         return (
             f"Ben insan degilim; {APP_BRAND.display_name} icinde calisan yapay zeka destekli bir rapor asistaniyim. "
@@ -8042,6 +8064,43 @@ def document_review_preview(
         headers={
             "Cache-Control": "private, max-age=3600",
             "X-Review-Highlights": str(highlighted_passages),
+        },
+    )
+
+
+@app.post(
+    "/report-review/decisions",
+    response_model=ReportReviewDecisionResponse,
+)
+def save_report_review_decision(
+    payload: ReportReviewDecisionRequest,
+    session: Session = Depends(get_session),
+) -> ReportReviewDecisionResponse:
+    try:
+        result = ReportReviewService(session).record_decision(**payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return ReportReviewDecisionResponse(**result)
+
+
+@app.get("/report-review/export")
+def export_report_review(
+    document_ids: Annotated[list[int], Query()],
+    session: Session = Depends(get_session),
+) -> Response:
+    normalized_ids = list(dict.fromkeys(int(item) for item in document_ids if int(item) > 0))
+    if not normalized_ids or len(normalized_ids) > 8:
+        raise HTTPException(status_code=422, detail="Select between 1 and 8 documents.")
+    review = ReportReviewService(session).analyze_documents(normalized_ids)
+    if not review["summary"]["documents_analyzed"]:
+        raise HTTPException(status_code=404, detail="No report could be reviewed.")
+    pdf_content = ReportReviewExportService.build_pdf(review)
+    return Response(
+        content=pdf_content,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'attachment; filename="smartcae-rapor-kontrol.pdf"',
+            "Cache-Control": "no-store",
         },
     )
 

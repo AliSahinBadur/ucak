@@ -1316,6 +1316,34 @@ body[data-active-view="chat"] .chat-stage {
   gap: 12px;
 }
 
+.chat-process-head-actions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 7px;
+}
+
+.chat-process-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--muted);
+}
+.chat-process-toggle:hover { border-color: var(--red); color: var(--red-strong); }
+.chat-process-toggle:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+.chat-process-toggle svg { width: 13px; height: 13px; transform: rotate(90deg); transition: transform 160ms ease; }
+
+.chat-process.compact { margin-top: 3px; padding-top: 5px; padding-bottom: 5px; }
+.chat-process.compact .chat-process-toggle svg { transform: rotate(0); }
+.chat-process.compact .chat-process-track,
+.chat-process.compact .chat-process-steps,
+.chat-process.compact > p { display: none; }
+
 .chat-process-title {
   gap: 7px;
   min-width: 0;
@@ -1551,6 +1579,8 @@ body[data-active-view="chat"] .chat-stage {
 .chat-suggestions .skill-example { font-weight: 800; }
 .chat-suggestions .report-review-skill { border-color: #a8c9dd; background: #f1f8fc; color: #235f80; }
 .chat-suggestions .report-review-skill:hover { border-color: #4b94bb; color: #174d6a; }
+.chat-suggestions .revision-review-skill { border-color: #a9d2c3; background: #f0f9f5; color: #176548; }
+.chat-suggestions .revision-review-skill:hover { border-color: #52a988; color: #104f39; }
 .chat-suggestions .quality-example { border-color: #e3bdc5; background: #fff7f9; color: var(--red-strong); }
 .chat-suggestions button span { font-size: 13px; }
 .chat-suggestions[hidden] { display: none; }
@@ -1851,6 +1881,7 @@ body.evidence-open .evidence-panel {
 }
 
 .evidence-head strong { display: block; margin-top: 3px; font-size: 17px; }
+.evidence-head-actions { display: flex; align-items: center; gap: 6px; }
 .evidence-intro { margin: 18px 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 .evidence-list { display: grid; min-width: 0; gap: 10px; }
 
@@ -2344,6 +2375,10 @@ body.evidence-open .evidence-panel.preview-active {
   color: #60428f;
 }
 
+.evidence-tag.revision-change.new { border-color: #e2b861; background: #fff7df; color: #805a08; }
+.evidence-tag.revision-change.resolved { border-color: #9fd0bc; background: #ebf8f2; color: #176548; }
+.evidence-tag.revision-change.continuing { border-color: #b7c5ce; background: #f1f4f6; color: #51606a; }
+
 .review-evidence-callout {
   margin-top: 9px;
   padding: 10px;
@@ -2362,8 +2397,7 @@ body.evidence-open .evidence-panel.preview-active {
   background: #f2f9ff;
 }
 
-.review-evidence-callout > span,
-.review-evidence-proof > span {
+.review-evidence-callout > span {
   display: block;
   color: var(--muted);
   font-size: 8px;
@@ -2386,15 +2420,38 @@ body.evidence-open .evidence-panel.preview-active {
   line-height: 1.5;
 }
 
-.review-evidence-proof {
-  margin-top: 9px;
+.review-decision-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
   padding-top: 9px;
-  border-top: 1px dashed var(--line);
+  border-top: 1px solid rgba(121, 87, 8, 0.18);
 }
 
-.review-evidence-proof > p {
-  margin: 5px 0 0;
-  color: var(--ink-soft);
-  font-size: 9px;
-  line-height: 1.55;
+.review-decision-row > span {
+  color: #795708;
+  font-size: 8px;
+  font-weight: 900;
 }
+
+.review-decision-row[data-review-state="confirmed"] > span { color: #176548; }
+.review-decision-row[data-review-state="dismissed"] > span { color: #6f7775; }
+.review-decision-row > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+
+.review-decision-row button {
+  min-height: 27px;
+  padding: 0 8px;
+  border: 1px solid #d7c37f;
+  border-radius: 6px;
+  background: #fff;
+  color: #654c0d;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.review-decision-row button:hover { border-color: #af8c27; background: #fff8df; }
+.review-decision-row button[aria-pressed="true"] { border-color: #2d9273; background: #e6f5ef; color: #176548; }
+.review-decision-row button[data-review-decision="dismissed"][aria-pressed="true"] { border-color: #9ba3a1; background: #eef1f0; color: #535c5a; }
+.review-decision-row .review-decision-reset { border-color: transparent; background: transparent; color: var(--muted); }

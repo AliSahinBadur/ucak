@@ -12,7 +12,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import DATA_DIR
-from ..db.models import CatalogDocumentLink, Document, DocumentPage, ReportCatalogEntry
+from ..db.models import (
+    CatalogDocumentLink,
+    Document,
+    DocumentPage,
+    ReportCatalogEntry,
+    ReportReviewDecision,
+)
 from .document_path_service import resolve_document_file_path
 from .llm_provider import DisabledLLMProvider, LLMProvider
 from .pdf_highlight_service import PdfHighlightRequest, PdfHighlightService
@@ -36,7 +42,7 @@ class ReportFinding:
     engine: str = "rules"
 
     def to_dict(self) -> dict:
-        return {
+        payload = {
             "document_id": self.document_id,
             "document_title": self.document_title,
             "file_name": self.file_name,
@@ -51,6 +57,8 @@ class ReportFinding:
             "suggested_fix": self.suggested_fix,
             "engine": self.engine,
         }
+        payload["finding_key"] = ReportReviewService.finding_key(payload)
+        return payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,16 +193,289 @@ class ReportReviewService:
             "_check_embedded_paths",
         ),
     )
+    PROFILE_LABELS = {
+        "general": "Genel",
+        "nvh": "NVH",
+        "cfd": "CFD",
+        "durability": "Durability",
+        "test": "Test / Validasyon",
+    }
+    PROFILE_ALIASES = {
+        "general": "general",
+        "genel": "general",
+        "auto": "auto",
+        "otomatik": "auto",
+        "nvh": "nvh",
+        "noise vibration harshness": "nvh",
+        "cfd": "cfd",
+        "computational fluid dynamics": "cfd",
+        "dur": "durability",
+        "durability": "durability",
+        "dayanim": "durability",
+        "fatigue": "durability",
+        "test": "test",
+        "validation": "test",
+        "validasyon": "test",
+    }
+    PROFILE_RULES = {
+        "nvh": (
+            ReportRuleDefinition(
+                "nvh.measurement_setup",
+                "NVH olcum duzeni ve kosullari",
+                "nvh",
+                "_check_nvh_measurement_setup",
+            ),
+            ReportRuleDefinition(
+                "nvh.signal_processing",
+                "NVH sinyal isleme tanimi",
+                "nvh",
+                "_check_nvh_signal_processing",
+            ),
+            ReportRuleDefinition(
+                "nvh.acceptance_basis",
+                "NVH kabul ve yorumlama dayanagi",
+                "nvh",
+                "_check_nvh_acceptance_basis",
+            ),
+        ),
+        "cfd": (
+            ReportRuleDefinition(
+                "cfd.model_boundary_setup",
+                "CFD model ve sinir sartlari",
+                "cfd",
+                "_check_cfd_model_boundary_setup",
+            ),
+            ReportRuleDefinition(
+                "cfd.numerical_evidence",
+                "CFD ag ve yakinsama kaniti",
+                "cfd",
+                "_check_cfd_numerical_evidence",
+            ),
+            ReportRuleDefinition(
+                "cfd.result_traceability",
+                "CFD sonuc ve karsilastirma izlenebilirligi",
+                "cfd",
+                "_check_cfd_result_traceability",
+            ),
+        ),
+        "durability": (
+            ReportRuleDefinition(
+                "durability.material_definition",
+                "Dayanim malzeme tanimi",
+                "durability",
+                "_check_durability_material_definition",
+            ),
+            ReportRuleDefinition(
+                "durability.load_boundary_setup",
+                "Dayanim yuk ve sinir sartlari",
+                "durability",
+                "_check_durability_load_boundary_setup",
+            ),
+            ReportRuleDefinition(
+                "durability.model_evidence",
+                "Dayanim model ve ag kaniti",
+                "durability",
+                "_check_durability_model_evidence",
+            ),
+            ReportRuleDefinition(
+                "durability.result_criterion",
+                "Dayanim sonuc ve kabul kriteri",
+                "durability",
+                "_check_durability_result_criterion",
+            ),
+        ),
+        "test": (
+            ReportRuleDefinition(
+                "test.setup_traceability",
+                "Test duzeni ve kosul izlenebilirligi",
+                "test",
+                "_check_test_setup_traceability",
+            ),
+            ReportRuleDefinition(
+                "test.procedure_traceability",
+                "Test yontemi ve uygulama izlenebilirligi",
+                "test",
+                "_check_test_procedure_traceability",
+            ),
+            ReportRuleDefinition(
+                "test.acceptance_result",
+                "Test kabul kriteri ve sonuc",
+                "test",
+                "_check_test_acceptance_result",
+            ),
+            ReportRuleDefinition(
+                "test.measurement_traceability",
+                "Test cihaz kalibrasyon izlenebilirligi",
+                "test",
+                "_check_test_measurement_traceability",
+            ),
+        ),
+    }
 
     def __init__(self, session: Session, llm_provider: LLMProvider | None = None) -> None:
         self.session = session
         self.llm_provider = llm_provider or DisabledLLMProvider()
+
+    @staticmethod
+    def finding_key(finding: dict) -> str:
+        evidence = finding.get("evidence") or []
+        payload = "|".join(
+            (
+                str(finding.get("document_id") or ""),
+                str(finding.get("rule_id") or ""),
+                str(finding.get("page_start") or ""),
+                str(finding.get("page_end") or ""),
+                str(finding.get("message") or ""),
+                "\n".join(str(item) for item in evidence[:3]),
+            )
+        )
+        return hashlib.sha256(payload.encode("utf-8", errors="ignore")).hexdigest()
+
+    def record_decision(
+        self,
+        *,
+        document_id: int,
+        finding_key: str,
+        rule_id: str,
+        decision: str,
+        note: str = "",
+        reviewer: str = "",
+    ) -> dict:
+        if self.session.get(Document, int(document_id)) is None:
+            raise ValueError("Document not found.")
+        normalized_decision = str(decision or "").strip().casefold()
+        if normalized_decision not in {"open", "confirmed", "dismissed"}:
+            raise ValueError("Invalid review decision.")
+
+        row = self.session.scalar(
+            select(ReportReviewDecision).where(
+                ReportReviewDecision.document_id == int(document_id),
+                ReportReviewDecision.finding_key == finding_key,
+            )
+        )
+        if row is None:
+            row = ReportReviewDecision(
+                document_id=int(document_id),
+                finding_key=finding_key,
+                rule_id=rule_id,
+                decision=normalized_decision,
+            )
+            self.session.add(row)
+        row.rule_id = rule_id
+        row.decision = normalized_decision
+        row.note = str(note or "").strip() or None
+        row.reviewer = str(reviewer or "").strip() or None
+        self.session.commit()
+        self.session.refresh(row)
+        return self._decision_dict(row)
+
+    @classmethod
+    def is_revision_comparison_question(cls, question: str) -> bool:
+        normalized = cls._normalize_text(question)
+        return "revizyon" in normalized and any(
+            term in normalized
+            for term in ("karsilastir", "kiyasla", "yeni bulgu", "giderilen", "devam eden")
+        )
+
+    def answer_revision_comparison(self, question: str, document_ids: list[int]) -> dict:
+        normalized_ids = list(dict.fromkeys(int(item) for item in document_ids if int(item) > 0))[:2]
+        review = self.analyze_documents(normalized_ids)
+        if len(review["documents"]) != 2:
+            return ReportQualityService._empty_response(
+                question,
+                "Revizyon karsilastirmasi icin tam olarak iki rapor secilmelidir.",
+            )
+
+        left, right = review["documents"]
+        left_by_rule = self._findings_by_rule(left.get("findings", []))
+        right_by_rule = self._findings_by_rule(right.get("findings", []))
+        left_rules = set(left_by_rule)
+        right_rules = set(right_by_rule)
+        changes = {
+            "new": sorted(right_rules - left_rules),
+            "resolved": sorted(left_rules - right_rules),
+            "continuing": sorted(left_rules & right_rules),
+        }
+
+        lines = [
+            f"Revizyon kontrolu: {left['document_title']} -> {right['document_title']}",
+            (
+                f"{len(changes['new'])} yeni, {len(changes['resolved'])} giderilen ve "
+                f"{len(changes['continuing'])} devam eden kontrol basligi bulundu."
+            ),
+        ]
+        if left.get("profile") != right.get("profile"):
+            lines.append(
+                "Profil degisikligi: "
+                f"{left.get('profile_label', 'Genel')} -> {right.get('profile_label', 'Genel')}."
+            )
+        for change, label in (
+            ("new", "Yeni bulgular"),
+            ("resolved", "Giderilen bulgular"),
+            ("continuing", "Devam eden bulgular"),
+        ):
+            lines.append(f"{label}:")
+            if not changes[change]:
+                lines.append("- Yok.")
+                continue
+            grouped = right_by_rule if change != "resolved" else left_by_rule
+            for rule_id in changes[change][:8]:
+                finding = grouped[rule_id][0]
+                page_label = self._page_label(finding.get("page_start"), finding.get("page_end"))
+                suffix = f" ({page_label})" if page_label else ""
+                lines.append(f"- {self._rule_label(rule_id)}: {finding['message']}{suffix}")
+
+        lines.append(
+            "Bu karsilastirma kural ve disiplin profili bulgularini izler; metinsel degisikligin "
+            "tam redline karsilastirmasi degildir."
+        )
+        sources: list[dict] = []
+        for change in ("new", "resolved", "continuing"):
+            grouped = right_by_rule if change != "resolved" else left_by_rule
+            for rule_id in changes[change]:
+                finding = grouped[rule_id][0]
+                if finding.get("page_start") is None:
+                    continue
+                source = self._source_for_finding(finding)
+                source["review_revision_change"] = change
+                sources.append(source)
+                if len(sources) >= 8:
+                    break
+            if len(sources) >= 8:
+                break
+        return {
+            "question": question,
+            "mode": "keyword",
+            "answer": "\n".join(lines),
+            "answer_found": True,
+            "confidence": 1.0,
+            "embedding_provider": "document-quality:revision-rules",
+            "sources": sources,
+            "review": review,
+            "revision_comparison": {
+                "left_document_id": int(left["document_id"]),
+                "right_document_id": int(right["document_id"]),
+                "new": changes["new"],
+                "resolved": changes["resolved"],
+                "continuing": changes["continuing"],
+            },
+        }
+
+    @staticmethod
+    def _findings_by_rule(findings: list[dict]) -> dict[str, list[dict]]:
+        grouped: dict[str, list[dict]] = {}
+        for finding in findings:
+            rule_id = str(finding.get("rule_id") or "").strip()
+            if rule_id:
+                grouped.setdefault(rule_id, []).append(finding)
+        return grouped
 
     def answer_question(self, question: str, document_ids: list[int]) -> dict:
         review = self.analyze_documents(document_ids)
         rule_summary = dict(review["summary"])
         semantic = self._run_semantic_review(document_ids)
         self._merge_semantic_review(review, semantic)
+        self._apply_human_decisions(review)
         summary = review["summary"]
         if not summary["documents_analyzed"]:
             response = ReportQualityService._empty_response(
@@ -211,6 +492,13 @@ class ReportReviewService:
                 f"{rule_summary['needs_review']} kural insan incelemesi istiyor."
             ),
         ]
+        applied_profiles = [
+            self.PROFILE_LABELS.get(profile_name, profile_name)
+            for profile_name, count in review.get("profiles", {}).items()
+            if count and profile_name != "general"
+        ]
+        if applied_profiles:
+            lines.append("Uygulanan disiplin profili: " + ", ".join(applied_profiles) + ".")
         if semantic["status"] == "completed":
             lines.append(
                 f"LLM destekli anlamsal kontrol tamamlandi; {semantic['finding_count']} kanitli bulgu uretildi."
@@ -485,14 +773,104 @@ Rapor metni:
             1 for finding in all_semantic_findings if finding.severity == "info"
         )
 
-    def analyze_documents(self, document_ids: list[int], profile: str = "general") -> dict:
-        normalized_profile = self._normalize_text(profile).strip() or "general"
-        if normalized_profile != "general":
-            normalized_profile = "general"
+    @staticmethod
+    def _decision_dict(row: ReportReviewDecision) -> dict:
+        decided_at = row.updated_at or row.created_at
+        return {
+            "document_id": int(row.document_id),
+            "finding_key": row.finding_key,
+            "rule_id": row.rule_id,
+            "decision": row.decision,
+            "note": row.note or "",
+            "reviewer": row.reviewer or "",
+            "decided_at": decided_at.isoformat() if decided_at else None,
+        }
 
+    def _apply_human_decisions(self, review: dict) -> None:
+        document_ids = sorted(
+            {
+                int(document.get("document_id") or 0)
+                for document in review.get("documents", [])
+                if int(document.get("document_id") or 0) > 0
+            }
+        )
+        decisions = self.session.scalars(
+            select(ReportReviewDecision).where(ReportReviewDecision.document_id.in_(document_ids))
+        ).all() if document_ids else []
+        decisions_by_key = {
+            (int(row.document_id), row.finding_key): self._decision_dict(row)
+            for row in decisions
+        }
+        counts = Counter()
+
+        def apply(finding: dict, *, count: bool = False) -> None:
+            finding_key = str(finding.get("finding_key") or self.finding_key(finding))
+            finding["finding_key"] = finding_key
+            decision = decisions_by_key.get((int(finding.get("document_id") or 0), finding_key))
+            finding["human_decision"] = decision["decision"] if decision else "open"
+            finding["human_decision_note"] = decision["note"] if decision else ""
+            finding["human_reviewer"] = decision["reviewer"] if decision else ""
+            finding["human_decided_at"] = decision["decided_at"] if decision else None
+            if count:
+                counts[finding["human_decision"]] += 1
+
+        for finding in review.get("findings", []):
+            apply(finding, count=True)
+        for document in review.get("documents", []):
+            for finding in document.get("findings", []):
+                apply(finding)
+        review.setdefault("summary", {})["human_decisions"] = {
+            "open": counts["open"],
+            "confirmed": counts["confirmed"],
+            "dismissed": counts["dismissed"],
+        }
+
+    @classmethod
+    def _normalize_profile(cls, profile: str) -> str:
+        normalized = " ".join(cls._normalize_text(profile).replace("/", " ").split())
+        return cls.PROFILE_ALIASES.get(normalized, "general")
+
+    @classmethod
+    def _resolve_document_profile(
+        cls,
+        context: ReportAnalysisContext,
+        requested_profile: str,
+    ) -> str:
+        if requested_profile != "auto":
+            return requested_profile
+
+        discipline = cls._normalize_text(context.catalog_metadata.get("discipline", "")).strip()
+        if discipline in cls.PROFILE_ALIASES:
+            resolved = cls.PROFILE_ALIASES[discipline]
+            if resolved not in {"auto", "general"}:
+                return resolved
+
+        identity = cls._normalize_text(
+            " ".join(
+                (
+                    context.document.title,
+                    context.document.file_name,
+                    context.catalog_metadata.get("report_title", ""),
+                )
+            )
+        )
+        profile_patterns = (
+            ("nvh", (r"\bnvh\b", r"gurultu.*titresim", r"titre(?:s|\u015f)im.*konfor")),
+            ("cfd", (r"\bcfd\b", r"akiskanlar dinamigi", r"akiskan analizi", r"defrost analizi")),
+            ("durability", (r"(?:^|[-_ ])dur(?:[-_ ]|$)", r"\bdurability\b", r"dayanim analizi", r"statik analiz")),
+            ("test", (r"(?:^|[-_ ])test(?:[-_ ]|$)", r"test raporu", r"validasyon raporu")),
+        )
+        for profile_name, patterns in profile_patterns:
+            if any(re.search(pattern, identity) for pattern in patterns):
+                return profile_name
+        return "general"
+
+    def analyze_documents(self, document_ids: list[int], profile: str = "auto") -> dict:
+        normalized_profile = self._normalize_profile(profile)
         document_results: list[dict] = []
         all_findings: list[ReportFinding] = []
         status_counts = Counter()
+        profile_counts = Counter()
 
         documents = self._load_documents(document_ids)
         catalog_metadata = self._load_catalog_metadata([int(document.id) for document in documents])
@@ -509,14 +887,17 @@ Rapor metni:
                 document=document,
                 pages=pages,
                 full_text=full_text,
-                normalized_text=self._normalize_text(full_text),
+                normalized_text=" ".join(self._normalize_text(full_text).split()),
                 captions=tuple(ReportQualityService.extract_captions(list(pages))),
                 catalog_metadata=catalog_metadata.get(int(document.id), {}),
             )
+            document_profile = self._resolve_document_profile(context, normalized_profile)
+            profile_counts[document_profile] += 1
             checks: list[dict] = []
             document_findings: list[ReportFinding] = []
 
-            for rule in self.RULES:
+            active_rules = self.RULES + self.PROFILE_RULES.get(document_profile, ())
+            for rule in active_rules:
                 findings = getattr(self, rule.handler_name)(context)
                 if findings is None:
                     status = "not_applicable"
@@ -546,14 +927,17 @@ Rapor metni:
                     "document_title": document.title,
                     "file_name": document.file_name,
                     "page_count": len(pages),
+                    "profile": document_profile,
+                    "profile_label": self.PROFILE_LABELS[document_profile],
                     "checks": checks,
                     "findings": [item.to_dict() for item in document_findings],
                 }
             )
 
         severity_counts = Counter(item.severity for item in all_findings)
-        return {
+        review = {
             "profile": normalized_profile,
+            "profiles": dict(profile_counts),
             "documents": document_results,
             "findings": [item.to_dict() for item in all_findings],
             "summary": {
@@ -569,6 +953,8 @@ Rapor metni:
                 "info": severity_counts["info"],
             },
         }
+        self._apply_human_decisions(review)
+        return review
 
     def _check_required_metadata(self, context: ReportAnalysisContext) -> list[ReportFinding]:
         cover_text = "\n".join(
@@ -611,13 +997,16 @@ Rapor metni:
                 ReportCatalogEntry.report_code,
                 ReportCatalogEntry.report_date,
                 ReportCatalogEntry.authors,
+                ReportCatalogEntry.discipline,
+                ReportCatalogEntry.report_title,
+                ReportCatalogEntry.vehicle_name,
             )
             .join(ReportCatalogEntry, ReportCatalogEntry.id == CatalogDocumentLink.catalog_entry_id)
             .where(CatalogDocumentLink.document_id.in_(normalized_ids))
             .order_by(ReportCatalogEntry.id.desc())
         ).all()
         metadata_by_document: dict[int, dict[str, str]] = {}
-        for document_id, report_code, report_date, authors in rows:
+        for document_id, report_code, report_date, authors, discipline, report_title, vehicle_name in rows:
             metadata = metadata_by_document.setdefault(int(document_id), {})
             if report_code and "report_number" not in metadata:
                 metadata["report_number"] = str(report_code).strip()
@@ -625,6 +1014,12 @@ Rapor metni:
                 metadata["report_date"] = str(report_date).strip()
             if authors and "prepared_by" not in metadata:
                 metadata["prepared_by"] = str(authors).strip()
+            if discipline and "discipline" not in metadata:
+                metadata["discipline"] = str(discipline).strip()
+            if report_title and "report_title" not in metadata:
+                metadata["report_title"] = str(report_title).strip()
+            if vehicle_name and "vehicle_name" not in metadata:
+                metadata["vehicle_name"] = str(vehicle_name).strip()
         return metadata_by_document
 
     def _check_required_sections(self, context: ReportAnalysisContext) -> list[ReportFinding]:
@@ -875,6 +1270,534 @@ Rapor metni:
             )
         ]
 
+    def _check_nvh_measurement_setup(self, context: ReportAnalysisContext) -> list[ReportFinding]:
+        return self._profile_requirement(
+            context,
+            rule_id="nvh.measurement_setup",
+            category="nvh",
+            requirement_groups=(
+                (
+                    "olcum noktasi / sensor",
+                    (
+                        "sensor",
+                        "ivmeolcer",
+                        "akselerometre",
+                        "olcum noktasi",
+                        "koltuk uzerinden",
+                        "ayna uzerinden",
+                        "ivme sensoru",
+                    ),
+                ),
+                (
+                    "eksen / olcum yonu",
+                    (
+                        "x ekseni",
+                        "y ekseni",
+                        "z ekseni",
+                        "x yonu",
+                        "y yonu",
+                        "z yonu",
+                        "dikey eksen",
+                        "boyuna eksen",
+                        "enine eksen",
+                        "olcum yonu",
+                    ),
+                ),
+                (
+                    "calisma / surus kosulu",
+                    (
+                        "test kosulu",
+                        "calisma kosulu",
+                        "parkur",
+                        "km/h",
+                        "arac hizi",
+                        "surus senaryosu",
+                        "otoban",
+                        "bozuk yol",
+                        "rolanti",
+                        "rpm",
+                    ),
+                ),
+            ),
+            message="NVH olcum duzeni raporda tam izlenemiyor.",
+            suggested_fix=(
+                "Sensoru ve olcum noktasini, eksenleri ve her olcumdeki hiz/parkur/calisma "
+                "kosulunu acikca yazin."
+            ),
+        )
+
+    def _check_nvh_signal_processing(self, context: ReportAnalysisContext) -> list[ReportFinding]:
+        return self._profile_requirement(
+            context,
+            rule_id="nvh.signal_processing",
+            category="nvh",
+            requirement_groups=(
+                (
+                    "sonuc metrigi",
+                    ("grms", "rms", "crest faktor", "vdv", "peak", "tepe deger", "fft", "psd", "db(a)", "dba"),
+                ),
+                (
+                    "frekans / filtre / agirliklandirma",
+                    (
+                        "frekans",
+                        "hz",
+                        "ornekleme",
+                        "sampling",
+                        "filtre",
+                        "agirliklandir",
+                        "frequency weighting",
+                        "band",
+                    ),
+                ),
+            ),
+            message="NVH sinyal isleme yontemi raporda tam tanimlanmamis.",
+            suggested_fix=(
+                "RMS/peak/crest gibi metrigi; ornekleme, frekans araligi, filtre veya "
+                "frekans agirliklandirmasi bilgisiyle birlikte belirtin."
+            ),
+        )
+
+    def _check_nvh_acceptance_basis(self, context: ReportAnalysisContext) -> list[ReportFinding]:
+        return self._profile_requirement(
+            context,
+            rule_id="nvh.acceptance_basis",
+            category="nvh",
+            requirement_groups=(
+                (
+                    "standart / limit / kabul kriteri",
+                    ("iso ", "standard", "standart", "kabul kriter", "limit", "esik", "ok/nok"),
+                ),
+                (
+                    "sonuc yorumu",
+                    ("sonuc", "degerlendirme", "uygun", "uygunsuz", "risk", "karsilastir"),
+                ),
+            ),
+            message="NVH sonucunun hangi kritere gore yorumlandigi tam izlenemiyor.",
+            suggested_fix="Kullanilan standart/limit ile olculen degeri yan yana verip sonucu acikca yorumlayin.",
+        )
+
+    def _check_cfd_model_boundary_setup(self, context: ReportAnalysisContext) -> list[ReportFinding]:
+        return self._profile_requirement(
+            context,
+            rule_id="cfd.model_boundary_setup",
+            category="cfd",
+            requirement_groups=(
+                (
+                    "cozum modeli / solver",
+                    (
+                        "solver",
+                        "fluent",
+                        "star-ccm",
+                        "openfoam",
+                        "turbulans",
+                        "k-epsilon",
+                        "k-omega",
+                        "rans",
+                        "navier-stokes",
+                        "cfd modeli",
+                    ),
+                ),
+                (
+                    "sinir sartlari",
+                    (
+                        "sinir sart",
+                        "boundary condition",
+                        "inlet",
+                        "outlet",
+                        "giris hizi",
+                        "cikis basinci",
+                        "debi",
+                        "fan devri",
+                        "sicaklik siniri",
+                    ),
+                ),
+            ),
+            message="CFD cozum modeli veya sinir sartlari raporda tam izlenemiyor.",
+            suggested_fix=(
+                "Solver/fizik modelini ve giris-cikis, debi, basinc, sicaklik gibi sinir "
+                "sartlarini degerleriyle belirtin."
+            ),
+        )
+
+    def _check_cfd_numerical_evidence(self, context: ReportAnalysisContext) -> list[ReportFinding]:
+        return self._profile_requirement(
+            context,
+            rule_id="cfd.numerical_evidence",
+            category="cfd",
+            requirement_groups=(
+                (
+                    "ag / mesh bilgisi",
+                    (
+                        "mesh",
+                        "grid",
+                        "ag yapisi",
+                        "ag kalitesi",
+                        "eleman sayisi",
+                        "hucre sayisi",
+                        "cell count",
+                        "y+",
+                        "inflation",
+                    ),
+                ),
+                (
+                    "yakinsama / zaman adimi",
+                    (
+                        "yakinsama",
+                        "convergence",
+                        "residual",
+                        "iterasyon",
+                        "iteration",
+                        "zaman adimi",
+                        "time step",
+                        "courant",
+                    ),
+                ),
+            ),
+            message="CFD cozumunun sayisal yeterlilik kaniti raporda tam gorunmuyor.",
+            suggested_fix=(
+                "Ag/hucre bilgilerini ve iteratif yakinsama, residual veya zamana bagli "
+                "cozumde zaman adimi kanitini ekleyin."
+            ),
+        )
+
+    def _check_cfd_result_traceability(self, context: ReportAnalysisContext) -> list[ReportFinding]:
+        return self._profile_requirement(
+            context,
+            rule_id="cfd.result_traceability",
+            category="cfd",
+            requirement_groups=(
+                (
+                    "birimli sonuc",
+                    (
+                        "m3/s",
+                        "m3/h",
+                        "m/s",
+                        "kg/s",
+                        " kpa",
+                        " pa",
+                        " bar",
+                        "celsius",
+                        "\u00b0c",
+                        "derece c",
+                        "debi",
+                        "basinc",
+                        "sicaklik",
+                        "hiz dagilimi",
+                    ),
+                ),
+                (
+                    "karsilastirma / kriter",
+                    (
+                        "mevcut tasarim",
+                        "referans tasarim",
+                        "oneri",
+                        "karsilastir",
+                        "iyiles",
+                        "hedef",
+                        "kabul",
+                        "limit",
+                        "uygun",
+                        "sonuc",
+                    ),
+                ),
+            ),
+            message="CFD sonucunun birimi veya karsilastirma dayanagi tam izlenemiyor.",
+            suggested_fix="Ana ciktilari birimleriyle verin ve referans/hedef/kabul kriteriyle karsilastirin.",
+        )
+
+    def _check_durability_material_definition(self, context: ReportAnalysisContext) -> list[ReportFinding]:
+        return self._profile_requirement(
+            context,
+            rule_id="durability.material_definition",
+            category="durability",
+            requirement_groups=(
+                (
+                    "malzeme ve mekanik ozellik",
+                    (
+                        "malzeme",
+                        "elastisite",
+                        "young modulu",
+                        "poisson",
+                        "akma dayanimi",
+                        "akma mukavemeti",
+                        "cekme dayanimi",
+                        "s235",
+                        "s355",
+                        "al 6061",
+                    ),
+                ),
+            ),
+            message="Dayanim hesabinda kullanilan malzeme veya mekanik ozellikler acik degil.",
+            suggested_fix="Her parca icin malzeme adini ve hesapta kullanilan temel mekanik ozellikleri belirtin.",
+        )
+
+    def _check_durability_load_boundary_setup(self, context: ReportAnalysisContext) -> list[ReportFinding]:
+        return self._profile_requirement(
+            context,
+            rule_id="durability.load_boundary_setup",
+            category="durability",
+            requirement_groups=(
+                (
+                    "uygulanan yuk",
+                    ("uygulanan yuk", "kuvvet", "basinc", "tork", "moment", "ivme", "kutle", " kg", " kn"),
+                ),
+                (
+                    "sinir sartlari / mesnet",
+                    ("sinir sart", "mesnet", "sabitlen", "fixed", "support", "constraint", "ankastre"),
+                ),
+            ),
+            message="Dayanim analizinin yuk veya sinir sartlari tam izlenemiyor.",
+            suggested_fix="Yuk buyuklugu/yonu ile sabitleme, mesnet ve temas kosullarini acikca gosterin.",
+        )
+
+    def _check_durability_model_evidence(self, context: ReportAnalysisContext) -> list[ReportFinding]:
+        return self._profile_requirement(
+            context,
+            rule_id="durability.model_evidence",
+            category="durability",
+            requirement_groups=(
+                (
+                    "sonlu eleman / ag",
+                    (
+                        "sonlu eleman",
+                        "fe model",
+                        "fem model",
+                        "2d eleman",
+                        "3d eleman",
+                        "mesh",
+                        "eleman boyutu",
+                        "tetra",
+                        "hexa",
+                        "shell",
+                        "solid element",
+                        "ag yapisi",
+                    ),
+                ),
+                (
+                    "baglanti / temas tanimi",
+                    ("contact", "temas", "baglanti", "kaynak", "weld", "bolt", "civata"),
+                ),
+            ),
+            message="Dayanim modelinin ag veya baglanti/temas tanimi tam izlenemiyor.",
+            suggested_fix="Eleman/mesh yapisini ve modeldeki kaynak, civata, temas ya da baglanti kabullerini yazin.",
+        )
+
+    def _check_durability_result_criterion(self, context: ReportAnalysisContext) -> list[ReportFinding]:
+        return self._profile_requirement(
+            context,
+            rule_id="durability.result_criterion",
+            category="durability",
+            requirement_groups=(
+                (
+                    "sonuc buyuklugu",
+                    (
+                        "von mises",
+                        "gerilme",
+                        "stres",
+                        "stress",
+                        "strain",
+                        "gerinim",
+                        "deformasyon",
+                        "deplasman",
+                        "sehim",
+                        "yer degistirme",
+                        "displacement",
+                        "emniyet katsayi",
+                        "safety factor",
+                        "fatigue life",
+                        "omur",
+                    ),
+                ),
+                (
+                    "kabul dayanagi",
+                    (
+                        "akma dayanimi",
+                        "akma mukavemeti",
+                        "kopma siniri",
+                        "strain siniri",
+                        "izin verilen",
+                        "allowable",
+                        "kabul kriter",
+                        "limit",
+                        "emniyet katsayi",
+                        "safety factor",
+                        "uygun",
+                        "guvenli",
+                        "emniyetli",
+                        "emniyetsiz",
+                        "ok olarak",
+                        "nok olarak",
+                    ),
+                ),
+            ),
+            message="Dayanim sonucu veya kabul kriteri tam izlenemiyor.",
+            suggested_fix="Gerilme/deformasyon/emniyet sonucunu malzeme limiti veya kabul kriteriyle karsilastirin.",
+        )
+
+    def _check_test_setup_traceability(self, context: ReportAnalysisContext) -> list[ReportFinding]:
+        return self._profile_requirement(
+            context,
+            rule_id="test.setup_traceability",
+            category="test",
+            requirement_groups=(
+                (
+                    "test objesi / konfigurasyon",
+                    ("konfigurasyon", "arac", "parca", "numune", "prototip", "seri no", "sase no", "motor", "inverter"),
+                ),
+                (
+                    "olcum cihazi / sensor",
+                    ("sensor", "termokupl", "ivmeolcer", "manometre", "data logger", "olcum cihazi", "test ekipmani", "cihaz"),
+                ),
+                (
+                    "test kosulu / ortam",
+                    ("test kosul", "ortam sicakligi", "hava sicakligi", "parkur", "km/h", "rpm", "yuk", "sure", "dakika", "saat"),
+                ),
+            ),
+            message="Test duzeni, ekipmani veya kosullari tam izlenemiyor.",
+            suggested_fix="Test objesi/konfigurasyonu, olcum ekipmani ve ortam/calisma kosullarini birlikte yazin.",
+        )
+
+    def _check_test_procedure_traceability(self, context: ReportAnalysisContext) -> list[ReportFinding]:
+        return self._profile_requirement(
+            context,
+            rule_id="test.procedure_traceability",
+            category="test",
+            requirement_groups=(
+                (
+                    "yontem / prosedur",
+                    ("test yontemi", "test metodu", "prosedur", "uygulama adim", "test asamalari", "method"),
+                ),
+                (
+                    "sure / calisma noktasi",
+                    ("dakika", "saat", "sure", "km/h", "rpm", "yuk", "cevrim", "cycle", "tur"),
+                ),
+            ),
+            message="Test yontemi veya uygulama suresi/calisma noktasi tam izlenemiyor.",
+            suggested_fix="Tekrarlanabilir test adimlarini, sureyi ve hiz/yuk/devir gibi calisma noktalarini belirtin.",
+        )
+
+    def _check_test_acceptance_result(self, context: ReportAnalysisContext) -> list[ReportFinding]:
+        return self._profile_requirement(
+            context,
+            rule_id="test.acceptance_result",
+            category="test",
+            requirement_groups=(
+                (
+                    "kabul kriteri / limit",
+                    (
+                        "kabul kriter",
+                        "limit deger",
+                        "gereksinim",
+                        "standard",
+                        "standart",
+                        "maksimum",
+                        "minimum",
+                        "hedef deger",
+                    ),
+                ),
+                (
+                    "karar / sonuc",
+                    ("ok olarak", "nok olarak", "uygun", "uygunsuz", "basarili", "basarisiz", "test sonucu", "sonuc"),
+                ),
+            ),
+            message="Test sonucu ile kabul kriteri arasindaki bag tam izlenemiyor.",
+            suggested_fix="Kriter/limit degerini, olculen sonucu ve OK/NOK kararini ayni sonuc bolumunde verin.",
+        )
+
+    def _check_test_measurement_traceability(self, context: ReportAnalysisContext) -> list[ReportFinding]:
+        return self._profile_requirement(
+            context,
+            rule_id="test.measurement_traceability",
+            category="test",
+            requirement_groups=(
+                (
+                    "kalibrasyon / cihaz kimligi",
+                    (
+                        "kalibrasyon",
+                        "kalibre",
+                        "kalibrasyon sertifika",
+                        "cihaz seri",
+                        "cihaz no",
+                        "ekipman no",
+                        "sertifika no",
+                    ),
+                ),
+            ),
+            message="Olcum cihazinin kalibrasyon veya kimlik bilgisi raporda gorunmuyor.",
+            suggested_fix="Uygunsa cihaz kimligini ve gecerli kalibrasyon/sertifika bilgisini rapora ekleyin.",
+            severity="info",
+        )
+
+    def _profile_requirement(
+        self,
+        context: ReportAnalysisContext,
+        *,
+        rule_id: str,
+        category: str,
+        requirement_groups: tuple[tuple[str, tuple[str, ...]], ...],
+        message: str,
+        suggested_fix: str,
+        severity: str = "warning",
+    ) -> list[ReportFinding]:
+        missing = [
+            label
+            for label, aliases in requirement_groups
+            if not any(self._normalize_text(alias) in context.normalized_text for alias in aliases)
+        ]
+        if not missing:
+            return []
+
+        evidence, page_start, page_end = self._profile_page_evidence(
+            context,
+            tuple(alias for _label, aliases in requirement_groups for alias in aliases),
+        )
+        return [
+            self._finding(
+                context,
+                rule_id=rule_id,
+                category=category,
+                severity=severity,
+                status="needs_review",
+                message=message + " Eksik veya acik olmayan alanlar: " + ", ".join(missing) + ".",
+                evidence=evidence,
+                page_start=page_start,
+                page_end=page_end,
+                suggested_fix=suggested_fix,
+            )
+        ]
+
+    def _profile_page_evidence(
+        self,
+        context: ReportAnalysisContext,
+        aliases: tuple[str, ...],
+    ) -> tuple[tuple[str, ...], int | None, int | None]:
+        normalized_aliases = tuple(self._normalize_text(alias) for alias in aliases)
+        matches: list[tuple[int, str]] = []
+        seen: set[tuple[int, str]] = set()
+        for page in context.pages:
+            page_number = int(page.page_number)
+            for raw_line in (page.raw_text or page.clean_text or "").splitlines():
+                line = " ".join(raw_line.split()).strip()
+                if not line or not any(alias in self._normalize_text(line) for alias in normalized_aliases):
+                    continue
+                key = (page_number, line[:500])
+                if key in seen:
+                    continue
+                seen.add(key)
+                matches.append(key)
+                if len(matches) >= 3:
+                    break
+            if len(matches) >= 3:
+                break
+        if not matches:
+            return (), None, None
+        page_numbers = [page_number for page_number, _line in matches]
+        return (
+            tuple(f"Sayfa {page_number}: {line}" for page_number, line in matches),
+            min(page_numbers),
+            max(page_numbers),
+        )
+
     @staticmethod
     def _finding(
         context: ReportAnalysisContext,
@@ -1010,6 +1933,10 @@ Rapor metni:
         for rule in cls.RULES:
             if rule.rule_id == rule_id:
                 return rule.label
+        for rules in cls.PROFILE_RULES.values():
+            for rule in rules:
+                if rule.rule_id == rule_id:
+                    return rule.label
         return rule_id
 
     @classmethod
@@ -1036,6 +1963,11 @@ Rapor metni:
             "suggested_fix": finding["suggested_fix"],
             "review_engine": finding["engine"],
             "review_highlight_available": bool(evidence_text) and finding["engine"] == "rules",
+            "review_finding_key": finding.get("finding_key") or cls.finding_key(finding),
+            "human_decision": finding.get("human_decision", "open"),
+            "human_decision_note": finding.get("human_decision_note", ""),
+            "human_reviewer": finding.get("human_reviewer", ""),
+            "human_decided_at": finding.get("human_decided_at"),
         }
 
     @staticmethod

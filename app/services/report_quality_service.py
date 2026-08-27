@@ -49,7 +49,10 @@ class ReportQualityService:
         if not self._is_caption_sequence_question(question):
             from .report_review_service import ReportReviewService
 
-            return ReportReviewService(self.session, llm_provider=llm_provider).answer_question(question, document_ids)
+            review_service = ReportReviewService(self.session, llm_provider=llm_provider)
+            if len(document_ids) == 2 and review_service.is_revision_comparison_question(question):
+                return review_service.answer_revision_comparison(question, document_ids)
+            return review_service.answer_question(question, document_ids)
 
         documents = self._load_documents(document_ids)
         if not documents:
@@ -94,7 +97,7 @@ class ReportQualityService:
             "sources": sources[:8],
         }
 
-    def analyze_documents(self, document_ids: list[int], profile: str = "general") -> dict:
+    def analyze_documents(self, document_ids: list[int], profile: str = "auto") -> dict:
         from .report_review_service import ReportReviewService
 
         return ReportReviewService(self.session).analyze_documents(document_ids, profile=profile)

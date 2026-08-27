@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from app.main import _is_general_chat_message
+from app.main import _chat_general_answer, _is_general_chat_message, _should_use_general_chat
 
 
 class ChatRoutingTests(unittest.TestCase):
@@ -24,6 +24,16 @@ class ChatRoutingTests(unittest.TestCase):
         ):
             with self.subTest(message=message):
                 self.assertFalse(_is_general_chat_message(message))
+
+    def test_short_thanks_use_general_chat_even_in_report_mode(self) -> None:
+        for message in ("sağol", "teşekkürler", "eyvallah"):
+            with self.subTest(message=message):
+                self.assertTrue(_should_use_general_chat("report", message))
+
+        self.assertFalse(
+            _should_use_general_chat("report", "2025-BIG-E-DUR-01 raporunun sonucu nedir?")
+        )
+        self.assertEqual(("Rica ederim.", "chat-direct", 1.0), _chat_general_answer("sağol"))
 
 
 if __name__ == "__main__":

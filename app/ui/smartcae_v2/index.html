@@ -31,6 +31,7 @@
     <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
     <symbol id="icon-folder-open" viewBox="0 0 24 24"><path d="M3 6.5h6l2 2h10v2.5"/><path d="M3 6.5v12a1.5 1.5 0 0 0 1.5 1.5h13.8a1.5 1.5 0 0 0 1.4-1l2.1-7a1.5 1.5 0 0 0-1.4-2H6.2a1.5 1.5 0 0 0-1.4 1L3 17"/></symbol>
     <symbol id="icon-eye" viewBox="0 0 24 24"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+    <symbol id="icon-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 19h16"/></symbol>
   </svg>
 
   <div class="app-shell">
@@ -46,7 +47,7 @@
         <button class="rail-button" type="button" data-view-target="compare" aria-label="Karşılaştırma" title="Karşılaştırma"><span class="rail-emoji" aria-hidden="true">⚖️</span></button>
         <button class="rail-button" type="button" data-view-target="writing" aria-label="Doküman hazırlama" title="Doküman hazırlama"><span class="rail-emoji" aria-hidden="true">📝</span></button>
       </div>
-      <a class="rail-button rail-legacy" href="/" aria-label="Eski SmartCAE arayüzünü aç" title="Eski arayüz"><svg><use href="#icon-external"/></svg></a>
+      <a class="rail-button rail-legacy" href="/legacy" aria-label="Eski SmartCAE arayüzünü aç" title="Eski arayüz"><svg><use href="#icon-external"/></svg></a>
     </nav>
 
     <aside class="source-sidebar" id="sourceSidebar" aria-label="Doküman kaynakları">
@@ -103,7 +104,7 @@
           </div>
         </div>
         <div class="topbar-actions">
-          <a class="legacy-link" href="/">Eski arayüz</a>
+          <a class="legacy-link" href="/legacy">Eski arayüz</a>
           <button class="system-chip" id="systemStatusButton" type="button" aria-expanded="false" aria-controls="systemStatusPopover">
             <span class="status-dot checking" id="systemStatusDot"></span>
             <span class="system-chip-copy">
@@ -209,7 +210,10 @@
             <div class="chat-process" id="chatProcess" data-state="idle" role="status" aria-live="polite" hidden>
               <div class="chat-process-head">
                 <span class="chat-process-title"><i aria-hidden="true"></i><strong id="chatProcessTitle">SmartCAE çalışıyor</strong></span>
-                <span class="chat-process-elapsed" id="chatProcessElapsed" aria-label="Geçen süre">0.0 sn</span>
+                <div class="chat-process-head-actions">
+                  <span class="chat-process-elapsed" id="chatProcessElapsed" aria-label="Geçen süre">0.0 sn</span>
+                  <button class="chat-process-toggle" id="chatProcessToggle" type="button" aria-label="İşlem ayrıntılarını daralt" aria-expanded="true" title="İşlem ayrıntılarını aç veya daralt"><svg aria-hidden="true"><use href="#icon-chevron"/></svg></button>
+                </div>
               </div>
               <div class="chat-process-track" id="chatProcessTrack" role="progressbar" aria-label="Yanıt hazırlama ilerlemesi" aria-valuemin="0" aria-valuemax="100" aria-valuenow="20" aria-valuetext="Kaynak tarama aşaması">
                 <span class="chat-process-fill"></span>
@@ -228,6 +232,7 @@
                 <span class="chat-suggestions-label">Skill'ler</span>
                 <div class="chat-suggestion-track">
                   <button class="skill-example report-review-skill" type="button" data-prompt="RAPOR-KODU raporu kontrol et; hata, eksik ve tutarsızlıkları sayfa kanıtlarıyla göster." data-context-prompt="Bu raporu kontrol et; hata, eksik ve tutarsızlıkları sayfa kanıtlarıyla göster." data-context-multi-prompt="Bu raporları kontrol et; hata, eksik ve tutarsızlıkları ayrı ayrı sayfa kanıtlarıyla göster." data-assistant-mode="report" data-select-token="RAPOR-KODU" title="Soldan seçilen raporu; rapor no, tarih, zorunlu bölümler, tablo/şekil referansları, ondalık biçimi ve metin çıkarımı açısından kontrol eder"><span aria-hidden="true">✅</span>Rapor kontrolü</button>
+                  <button class="skill-example revision-review-skill" type="button" data-prompt="Bu iki raporun rapor kontrolü bulgularını revizyon bazında karşılaştır; yeni, giderilen ve devam eden bulguları göster." data-context-multi-prompt="Bu iki raporun rapor kontrolü bulgularını revizyon bazında karşılaştır; yeni, giderilen ve devam eden bulguları göster." data-assistant-mode="report" title="Soldan iki rapor seç; yeni revizyonda oluşan, giderilen ve devam eden kontrol bulgularını karşılaştırır"><span aria-hidden="true">🔄</span>Revizyon kontrolü</button>
                   <button class="skill-example quality-example" type="button" data-prompt="RAPOR-KODU raporundaki tablo ve şekil numaralandırması doğru mu yapılmış?" data-assistant-mode="report" data-select-token="RAPOR-KODU" title="Rapor kodunu değiştirerek tablo ve şekil sırasını kontrol et"><span aria-hidden="true">🔢</span>Tablo / şekil kontrolü</button>
                 </div>
               </div>
@@ -324,7 +329,10 @@
       <div class="evidence-resizer" id="evidenceResizer" role="separator" aria-label="Kaynaklar panelinin genişliğini ayarla" aria-orientation="vertical" aria-valuemin="280" aria-valuemax="720" aria-valuenow="340" tabindex="0" title="Sürükleyerek genişliği ayarla; çift tıklayarak sıfırla"></div>
       <div class="evidence-head">
         <div><span class="overline">KANIT ALANI</span><strong>Kaynaklar</strong></div>
-        <button class="icon-button" id="closeEvidencePanel" type="button" aria-label="Kanıt panelini kapat"><svg><use href="#icon-close"/></svg></button>
+        <div class="evidence-head-actions">
+          <button class="icon-button" id="exportReviewButton" type="button" aria-label="Kontrol kaydını PDF olarak indir" title="Kontrol kaydını PDF olarak indir" hidden><svg><use href="#icon-download"/></svg></button>
+          <button class="icon-button" id="closeEvidencePanel" type="button" aria-label="Kanıt panelini kapat"><svg><use href="#icon-close"/></svg></button>
+        </div>
       </div>
       <section class="source-preview-pane" id="sourcePreviewPane" aria-label="Doküman önizlemesi" hidden>
         <div class="source-preview-head">

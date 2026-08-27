@@ -36,6 +36,7 @@
   const evidenceResizer = document.getElementById("evidenceResizer");
   const evidenceToggle = document.getElementById("evidenceToggle");
   const closeEvidencePanel = document.getElementById("closeEvidencePanel");
+  const exportReviewButton = document.getElementById("exportReviewButton");
   const evidenceList = document.getElementById("evidenceList");
   const evidenceIntro = document.getElementById("evidenceIntro");
   const sourcePreviewPane = document.getElementById("sourcePreviewPane");
@@ -77,6 +78,7 @@
   const chatProcess = document.getElementById("chatProcess");
   const chatProcessTitle = document.getElementById("chatProcessTitle");
   const chatProcessElapsed = document.getElementById("chatProcessElapsed");
+  const chatProcessToggle = document.getElementById("chatProcessToggle");
   const chatProcessTrack = document.getElementById("chatProcessTrack");
   const chatProcessRequestStep = document.getElementById("chatProcessRequestStep");
   const chatProcessRetrievalStep = document.getElementById("chatProcessRetrievalStep");
@@ -131,6 +133,7 @@
   let evidenceResizePointerId = null;
   let sourceResizePointerId = null;
   let chatProcessTimerId = null;
+  let chatProcessCollapseTimerId = null;
   let chatProcessStartedAt = 0;
   let chatProcessExpectsRetrieval = true;
   const defaultEvidenceWidth = 340;
@@ -783,6 +786,84 @@
     }
   }
 
+  async function saveReviewDecision(item, decision, trigger) {
+    const button = trigger instanceof HTMLButtonElement ? trigger : null;
+    const documentId = Number(item?.document_id || 0);
+    const findingKey = String(item?.review_finding_key || "");
+    const ruleId = String(item?.review_rule_id || "");
+    if (!documentId || !findingKey || !ruleId) {
+      showToast("Bu bulgu için karar kaydı oluşturulamadı.");
+      return;
+    }
+    if (button) button.disabled = true;
+    try {
+      const response = await fetch("/report-review/decisions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          document_id: documentId,
+          finding_key: findingKey,
+          rule_id: ruleId,
+          decision,
+          note: "",
+          reviewer: "",
+        }),
+      });
+      const data = await readJson(response);
+      if (!response.ok) throw new Error(requestError(data, "İnceleme kararı kaydedilemedi."));
+      item.human_decision = data.decision;
+      item.human_decision_note = data.note || "";
+      item.human_reviewer = data.reviewer || "";
+      item.human_decided_at = data.decided_at || null;
+      renderEvidence(state.evidence, evidenceIntro.textContent);
+      showToast(data.decision === "confirmed" ? "Bulgu onaylandı." : data.decision === "dismissed" ? "Bulgu geçersiz olarak işaretlendi." : "Bulgu kararı kaldırıldı.");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "İnceleme kararı kaydedilemedi.");
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  function exportReviewPdf() {
+    const documentIds = [...new Set(
+      state.evidence
+        .filter(item => item.source_kind === "report_review")
+        .map(item => Number(item.document_id || 0))
+        .filter(Boolean),
+    )].slice(0, 8);
+    if (!documentIds.length) {
+      showToast("Dışa aktarılacak kontrol kaydı bulunamadı.");
+      return;
+    }
+    const params = new URLSearchParams();
+    documentIds.forEach(documentId => params.append("document_ids", String(documentId)));
+    window.location.assign(`/report-review/export?${params.toString()}`);
+  }
+
+  function stopChatProcessCollapseTimer() {
+    if (chatProcessCollapseTimerId !== null) {
+      window.clearTimeout(chatProcessCollapseTimerId);
+      chatProcessCollapseTimerId = null;
+    }
+  }
+
+  function setChatProcessCompact(compact) {
+    chatProcess.classList.toggle("compact", compact);
+    chatProcessToggle.setAttribute("aria-expanded", String(!compact));
+    chatProcessToggle.setAttribute(
+      "aria-label",
+      compact ? "İşlem ayrıntılarını aç" : "İşlem ayrıntılarını daralt",
+    );
+  }
+
+  function scheduleChatProcessCompact() {
+    stopChatProcessCollapseTimer();
+    chatProcessCollapseTimerId = window.setTimeout(() => {
+      setChatProcessCompact(true);
+      chatProcessCollapseTimerId = null;
+    }, 4000);
+  }
+
   function updateChatProcessElapsed() {
     if (!chatProcessStartedAt) return;
     const elapsed = performance.now() - chatProcessStartedAt;
@@ -792,15 +873,19 @@
 
   function resetChatProcess() {
     stopChatProcessTimer();
+    stopChatProcessCollapseTimer();
     chatProcessStartedAt = 0;
     chatProcessExpectsRetrieval = true;
     chatProcess.hidden = true;
     chatProcess.dataset.state = "idle";
+    setChatProcessCompact(false);
     chatProcess.style.removeProperty("--process-progress");
   }
 
   function startChatProcess() {
     stopChatProcessTimer();
+    stopChatProcessCollapseTimer();
+    setChatProcessCompact(false);
     chatProcessStartedAt = performance.now();
     chatProcess.hidden = false;
     chatProcess.dataset.state = "running";
@@ -838,6 +923,8 @@
       chatProcessTrack.removeAttribute("aria-valuenow");
       chatProcessTrack.setAttribute("aria-valuetext", "İşlem hata ile tamamlandı");
       chatProcessDetail.textContent = error;
+      chatSuggestions.hidden = false;
+      scheduleChatProcessCompact();
       return elapsedText;
     }
     chatProcess.dataset.state = "complete";
@@ -861,6 +948,8 @@
     const engineLabel = retrievalUsed ? retrievalVersionLabel(chatRetrievalVersion.value) : "Genel model";
     const confidenceLabel = Number.isFinite(Number(confidence)) ? ` · güven ${formatScore(confidence)}` : "";
     chatProcessDetail.textContent = `${engineLabel} · ${sourceCount} kaynak${confidenceLabel}`;
+    chatSuggestions.hidden = false;
+    scheduleChatProcessCompact();
     return elapsedText;
   }
 
@@ -891,6 +980,7 @@
   function renderEvidence(items, intro = "") {
     closeDocumentPreview();
     state.evidence = Array.isArray(items) ? items : [];
+    exportReviewButton.hidden = !state.evidence.some(item => item.source_kind === "report_review");
     chatEvidenceCount.textContent = `${state.evidence.length} kaynak`;
     evidenceIntro.textContent = intro || (
       state.evidence.length
@@ -931,6 +1021,23 @@
       const reviewMessage = String(item.review_message || "").trim();
       const suggestedFix = String(item.suggested_fix || "").trim();
       const reviewEngine = String(item.review_engine || "").trim();
+      const reviewFindingKey = String(item.review_finding_key || "").trim();
+      const humanDecision = ["confirmed", "dismissed"].includes(item.human_decision)
+        ? item.human_decision
+        : "open";
+      const humanDecisionLabel = {
+        open: "İnceleme bekliyor",
+        confirmed: "Onaylandı",
+        dismissed: "Geçersiz",
+      }[humanDecision];
+      const revisionChange = ["new", "resolved", "continuing"].includes(item.review_revision_change)
+        ? item.review_revision_change
+        : "";
+      const revisionChangeLabel = {
+        new: "Yeni bulgu",
+        resolved: "Giderildi",
+        continuing: "Devam ediyor",
+      }[revisionChange] || "";
       const isSemanticReview = reviewEngine.startsWith("llm:");
       const reviewRuleLabel = String(item.section_title || reviewRuleId || "Kontrol bulgusu").trim();
       const reviewPreviewUrl = isReviewEvidence
@@ -974,6 +1081,7 @@
             ${discipline ? `<span class="evidence-tag">${escapeHtml(discipline)}</span>` : ""}
             ${relevanceLabel ? `<span class="evidence-tag score">${escapeHtml(relevanceLabel)}</span>` : ""}
             ${isReviewEvidence ? `<span class="evidence-tag review-severity ${reviewSeverity}">${escapeHtml(reviewSeverityLabel)}</span>` : ""}
+            ${revisionChangeLabel ? `<span class="evidence-tag revision-change ${revisionChange}">${escapeHtml(revisionChangeLabel)}</span>` : ""}
             ${isSemanticReview ? '<span class="evidence-tag semantic-engine">LLM destekli</span>' : ""}
           </div>
           ${isReviewEvidence ? `
@@ -987,12 +1095,20 @@
                   <span>İşaretli PDF kanıtını aç</span>
                 </button>
               ` : ""}
+              ${reviewFindingKey ? `
+                <div class="review-decision-row" data-review-state="${humanDecision}">
+                  <span>${escapeHtml(humanDecisionLabel)}</span>
+                  <div>
+                    <button type="button" data-review-decision="confirmed" data-review-index="${index}" aria-pressed="${humanDecision === "confirmed"}">Onayla</button>
+                    <button type="button" data-review-decision="dismissed" data-review-index="${index}" aria-pressed="${humanDecision === "dismissed"}">Geçersiz</button>
+                    ${humanDecision !== "open" ? `<button class="review-decision-reset" type="button" data-review-decision="open" data-review-index="${index}">Kaldır</button>` : ""}
+                  </div>
+                </div>
+              ` : ""}
             </div>
           ` : ""}
           ${visibleFacts ? `<div class="evidence-facts">${visibleFacts}</div>` : ""}
-          ${isReviewEvidence
-            ? `<div class="review-evidence-proof"><span>Sayfa kanıtı</span><p>${escapeHtml(clampText(excerpt, 420))}</p></div>`
-            : (tableHtml || `<p class="evidence-excerpt">${escapeHtml(clampText(excerpt, 420))}</p>`)}
+          ${isReviewEvidence ? "" : (tableHtml || `<p class="evidence-excerpt">${escapeHtml(clampText(excerpt, 420))}</p>`)}
         </article>
       `;
     }).join("");
@@ -1024,6 +1140,13 @@
       button.addEventListener("click", event => {
         event.stopPropagation();
         openDocumentFolder(Number(button.dataset.evidenceFolder), button);
+      });
+    });
+    evidenceList.querySelectorAll("[data-review-decision]").forEach(button => {
+      button.addEventListener("click", event => {
+        event.stopPropagation();
+        const item = state.evidence[Number(button.dataset.reviewIndex)];
+        saveReviewDecision(item, button.dataset.reviewDecision, button);
       });
     });
   }
@@ -1485,6 +1608,7 @@
     setEvidenceWidth(nextWidth);
   });
   closeSourcePreviewButton.addEventListener("click", () => closeDocumentPreview({ restoreFocus: true }));
+  exportReviewButton.addEventListener("click", exportReviewPdf);
   sourcePreviewFrame.addEventListener("load", () => { sourcePreviewLoading.hidden = true; });
   mobileScrim.addEventListener("click", closeTransientPanels);
   refreshDocumentsButton.addEventListener("click", () => loadDocuments());
@@ -1505,6 +1629,10 @@
   documentPageFilter.addEventListener("input", renderDocumentGrid);
   globalFilePicker.addEventListener("change", () => uploadDocuments(globalFilePicker.files));
   newChatButton.addEventListener("click", resetChat);
+  chatProcessToggle.addEventListener("click", () => {
+    stopChatProcessCollapseTimer();
+    setChatProcessCompact(!chatProcess.classList.contains("compact"));
+  });
   chatRetrievalVersion.addEventListener("change", () => {
     const selectedLabel = retrievalVersionLabel(chatRetrievalVersion.value);
     resetChat();
