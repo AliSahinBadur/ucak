@@ -34,7 +34,8 @@ if exist "!PROJECT_PATH!\.venv\Scripts\python.exe" (
 
 if "!PYTHON_PATH!"=="" (
     echo.
-    echo [HATA] Python bulunamadi. Lutfen Python'u kurun veya PATH'e ekleyin.
+    echo [HATA] Python bulunamadi.
+    echo Lutfen Python'u kurun veya PATH'e ekleyin.
     echo.
     pause
     exit /b 1
