@@ -14,6 +14,8 @@
     activeView: "home",
     documents: [],
     selectedDocumentIds: new Set(),
+    comparisonDocumentIds: [],
+    comparisonReferenceId: null,
     sourceFilter: "all",
     chatHistory: [],
     evidence: [],
@@ -101,8 +103,16 @@
   const searchResults = document.getElementById("searchResults");
 
   const compareForm = document.getElementById("compareForm");
-  const compareLeft = document.getElementById("compareLeft");
-  const compareRight = document.getElementById("compareRight");
+  const compareDocumentFilter = document.getElementById("compareDocumentFilter");
+  const compareDocumentPicker = document.getElementById("compareDocumentPicker");
+  const compareAddButton = document.getElementById("compareAddButton");
+  const compareAddContextButton = document.getElementById("compareAddContextButton");
+  const compareSelection = document.getElementById("compareSelection");
+  const compareSelectedCount = document.getElementById("compareSelectedCount");
+  const compareMode = document.getElementById("compareMode");
+  const compareModeNote = document.getElementById("compareModeNote");
+  const comparePairEstimate = document.getElementById("comparePairEstimate");
+  const compareRunButton = document.getElementById("compareRunButton");
   const compareStatus = document.getElementById("compareStatus");
   const comparisonSummary = document.getElementById("comparisonSummary");
   const comparisonResults = document.getElementById("comparisonResults");
@@ -612,16 +622,87 @@
     });
   }
 
-  function renderCompareOptions() {
-    const currentLeft = compareLeft.value;
-    const currentRight = compareRight.value;
-    const options = '<option value="">Seçiniz</option>' + state.documents.map(document => (
-      `<option value="${Number(document.document_id)}">${escapeHtml(document.title)}</option>`
+  function comparisonPairCount() {
+    const count = state.comparisonDocumentIds.length;
+    if (count < 2) return 0;
+    return compareMode.value === "all_pairs" ? (count * (count - 1)) / 2 : count - 1;
+  }
+
+  function renderComparePicker() {
+    const currentValue = compareDocumentPicker.value;
+    const query = compareDocumentFilter.value.trim().toLocaleLowerCase("tr-TR");
+    const selected = new Set(state.comparisonDocumentIds);
+    const available = state.documents.filter(document => {
+      const id = Number(document.document_id);
+      if (selected.has(id)) return false;
+      if (!query) return true;
+      return `${document.title || ""} ${document.file_name || ""}`.toLocaleLowerCase("tr-TR").includes(query);
+    });
+    compareDocumentPicker.innerHTML = '<option value="">Doküman seç</option>' + available.map(document => (
+      `<option value="${Number(document.document_id)}">${escapeHtml(document.title)} · ${escapeHtml(fileTypeLabel(document))}</option>`
     )).join("");
-    compareLeft.innerHTML = options;
-    compareRight.innerHTML = options;
-    if (state.documents.some(item => String(item.document_id) === currentLeft)) compareLeft.value = currentLeft;
-    if (state.documents.some(item => String(item.document_id) === currentRight)) compareRight.value = currentRight;
+    if (available.some(item => String(item.document_id) === currentValue)) {
+      compareDocumentPicker.value = currentValue;
+    }
+    compareAddButton.disabled = !Number(compareDocumentPicker.value);
+  }
+
+  function renderComparisonSelection() {
+    const validIds = state.comparisonDocumentIds.filter(id => documentById(id));
+    state.comparisonDocumentIds = validIds;
+    if (!validIds.includes(Number(state.comparisonReferenceId))) {
+      state.comparisonReferenceId = validIds[0] || null;
+    }
+    compareSelectedCount.textContent = `${validIds.length} doküman seçildi`;
+    if (!validIds.length) {
+      compareSelection.innerHTML = '<p class="empty-state">Karşılaştırmak için en az iki doküman ekle.</p>';
+    } else {
+      compareSelection.innerHTML = validIds.map((id, index) => {
+        const documentData = documentById(id);
+        const reference = Number(state.comparisonReferenceId) === id;
+        return `
+          <article class="compare-source-card ${reference ? "reference" : ""}" role="listitem">
+            <label class="compare-reference-control" title="Referans doküman">
+              <input type="radio" name="compareReference" value="${id}" ${reference ? "checked" : ""}>
+              <span aria-hidden="true">★</span><span class="visually-hidden">Referans yap</span>
+            </label>
+            <span class="file-badge">${escapeHtml(fileTypeLabel(documentData))}</span>
+            <div class="compare-source-copy"><strong>${escapeHtml(documentData.title || `Doküman ${index + 1}`)}</strong><small>${escapeHtml(documentData.file_name || "")}</small></div>
+            <span class="compare-source-role">${reference ? "Referans" : `${index + 1}. kaynak`}</span>
+            <button class="icon-button compare-remove-button" type="button" data-remove-comparison="${id}" aria-label="${escapeHtml(documentData.title || "Doküman")} kaynağını kaldır">×</button>
+          </article>
+        `;
+      }).join("");
+    }
+    const pairCount = comparisonPairCount();
+    comparePairEstimate.textContent = String(pairCount);
+    compareRunButton.disabled = validIds.length < 2;
+    compareRunButton.textContent = validIds.length >= 2
+      ? `${validIds.length} dokümanı karşılaştır`
+      : "Dokümanları karşılaştır";
+    compareModeNote.textContent = compareMode.value === "all_pairs"
+      ? `Her doküman diğerleriyle karşılaştırılır; toplam ${pairCount} ayrı işlem çalışır.`
+      : `Referans doküman diğer ${Math.max(validIds.length - 1, 0)} dokümanla karşılaştırılır.`;
+    renderComparePicker();
+  }
+
+  function addComparisonDocument(documentId) {
+    const id = Number(documentId);
+    if (!id || !documentById(id) || state.comparisonDocumentIds.includes(id)) return false;
+    state.comparisonDocumentIds.push(id);
+    if (!state.comparisonReferenceId) state.comparisonReferenceId = id;
+    renderComparisonSelection();
+    return true;
+  }
+
+  function addContextDocumentsToComparison() {
+    let added = 0;
+    state.selectedDocumentIds.forEach(id => {
+      if (addComparisonDocument(id)) added += 1;
+    });
+    compareStatus.textContent = added
+      ? `${added} bağlam dokümanı karşılaştırma listesine eklendi.`
+      : "Bağlamda eklenebilecek yeni doküman yok.";
   }
 
   function renderWorkspaceMetrics() {
@@ -639,7 +720,7 @@
     renderSourceDocuments();
     renderRecentDocuments();
     renderDocumentGrid();
-    renderCompareOptions();
+    renderComparisonSelection();
     renderWorkspaceMetrics();
     renderContext();
   }
@@ -1337,86 +1418,143 @@
 
   function comparisonEvidenceItems(data) {
     const result = [];
-    [...(data.similarities || []), ...(data.differences || [])].slice(0, 12).forEach(item => {
-      if (item.left) result.push({ ...item.left, summary: item.summary });
-      if (item.right) result.push({ ...item.right, summary: item.summary });
+    (data.comparisons || []).forEach(comparison => {
+      const pairResult = comparison.result || {};
+      [...(pairResult.similarities || []), ...(pairResult.differences || [])].forEach(item => {
+        if (item.left) result.push({ ...item.left, summary: item.summary });
+        if (item.right) result.push({ ...item.right, summary: item.summary });
+      });
     });
-    return result;
+    return result.slice(0, 18);
+  }
+
+  function comparisonKindLabel(kind) {
+    return {
+      common: "Ortak",
+      changed: "Değişen",
+      conflict: "Çelişki",
+      unique: "Yalnız bulunan",
+    }[kind] || "Bulgu";
+  }
+
+  function renderAggregateRows(data) {
+    const documents = Array.isArray(data.documents) ? data.documents : [];
+    const rows = Array.isArray(data.rows) ? data.rows : [];
+    if (!rows.length) return "";
+    return `
+      <section class="comparison-insights" aria-labelledby="comparisonInsightsTitle">
+        <div class="comparison-results-heading"><div><span class="overline">TOPLU GÖRÜNÜM</span><h2 id="comparisonInsightsTitle">Dokümanlar arası bulgular</h2></div><span>${rows.length} konu grubu</span></div>
+        <div class="comparison-insight-list">
+          ${rows.slice(0, 24).map(row => {
+            const present = (row.present_in || []).map(index => documents[Number(index)]?.title).filter(Boolean);
+            const missing = (row.missing_from || []).map(index => documents[Number(index)]?.title).filter(Boolean);
+            return `
+              <article class="comparison-insight ${escapeHtml(row.kind || "common")}">
+                <div class="comparison-insight-head"><span class="comparison-kind-badge">${comparisonKindLabel(row.kind)}</span><strong>${escapeHtml(row.topic || "Teknik bulgu")}</strong><span>Güven ${formatScore(row.confidence)}</span></div>
+                <p>${escapeHtml(row.summary || "")}</p>
+                <div class="comparison-document-tags">
+                  ${present.map(title => `<span title="Bu konuda kanıt bulundu">${escapeHtml(title)}</span>`).join("")}
+                  ${missing.length ? `<span class="missing" title="Bu konu için eşleşen kanıt bulunmadı">Eksik: ${escapeHtml(missing.join(", "))}</span>` : ""}
+                </div>
+              </article>
+            `;
+          }).join("")}
+        </div>
+      </section>
+    `;
+  }
+
+  function renderPairComparison(comparison, index, documents) {
+    const result = comparison.result || {};
+    const left = documents[Number(comparison.left_index)] || result.left || {};
+    const right = documents[Number(comparison.right_index)] || result.right || {};
+    const items = [
+      ...(result.similarities || []).map(item => ({ ...item, displayKind: "Benzerlik" })),
+      ...(result.differences || []).map(item => ({ ...item, displayKind: "Fark" })),
+    ];
+    const viewerLink = result.comparison_id ? `
+      <a class="secondary-button compact-button" href="/report-comparison/${encodeURIComponent(result.comparison_id)}/viewer" target="_blank" rel="noopener noreferrer">Renkli PDF görünümü</a>
+    ` : "";
+    return `
+      <details class="comparison-pair" ${index === 0 ? "open" : ""}>
+        <summary>
+          <span class="comparison-pair-index">${String(index + 1).padStart(2, "0")}</span>
+          <span class="comparison-pair-titles"><strong>${escapeHtml(left.title || "Doküman A")}</strong><span>↔</span><strong>${escapeHtml(right.title || "Doküman B")}</strong></span>
+          <span class="comparison-pair-metrics"><b>${Number(result.similarity_count || 0)}</b> ortak · <b>${Number(result.difference_count || 0)}</b> fark · ${formatScore(result.coverage)} kapsam</span>
+        </summary>
+        <div class="comparison-pair-body">
+          <div class="comparison-pair-actions">${viewerLink}<span>${escapeHtml(result.generation_provider || "deterministic")}${result.cache_hit ? " · önbellekten" : ""}</span></div>
+          ${items.length ? `<div class="comparison-pair-items">${items.slice(0, 20).map(item => `
+            <article class="comparison-card compact">
+              <div class="comparison-card-head"><h3>${escapeHtml(item.topic || "Teknik bulgu")}</h3><span class="comparison-kind">${item.displayKind}</span></div>
+              <p>${escapeHtml(item.summary || "")}</p>
+              <div class="result-meta">Güven ${formatScore(item.confidence)}${item.difference_type ? ` · ${escapeHtml(item.difference_type)}` : ""}</div>
+            </article>
+          `).join("")}</div>` : '<p class="empty-state">Bu ikili için karşılaştırılabilir pasaj bulunamadı.</p>'}
+        </div>
+      </details>
+    `;
   }
 
   function renderComparison(data) {
     comparisonSummary.hidden = false;
     comparisonSummary.innerHTML = `
+      <div><span>Doküman</span><strong>${Number(data.source_count || 0)}</strong></div>
+      <div><span>Karşılaştırma</span><strong>${Number(data.comparison_count || 0)}</strong></div>
       <div><span>Benzerlik</span><strong>${Number(data.similarity_count || 0)}</strong></div>
       <div><span>Fark</span><strong>${Number(data.difference_count || 0)}</strong></div>
       <div><span>Kapsam</span><strong>${formatScore(data.coverage)}</strong></div>
-      <div><span>Üretim</span><strong>${escapeHtml(data.generation_provider || "—")}</strong></div>
     `;
-    const items = [
-      ...(data.similarities || []).map(item => ({ ...item, displayKind: "Benzerlik" })),
-      ...(data.differences || []).map(item => ({ ...item, displayKind: "Fark" })),
-    ];
-    if (!items.length) {
+    const comparisons = Array.isArray(data.comparisons) ? data.comparisons : [];
+    const documents = Array.isArray(data.documents) ? data.documents : [];
+    if (!comparisons.length) {
       comparisonResults.innerHTML = '<p class="empty-state">Karşılaştırılabilir pasaj bulunamadı.</p>';
     } else {
-      comparisonResults.innerHTML = items.map(item => `
-        <article class="comparison-card">
-          <div class="comparison-card-head"><h3>${escapeHtml(item.topic || "Teknik bulgu")}</h3><span class="comparison-kind">${item.displayKind}</span></div>
-          <p>${escapeHtml(item.summary || "")}</p>
-          <div class="result-meta">Güven ${formatScore(item.confidence)} · ${escapeHtml(item.left?.document_title || "Doküman A")} ↔ ${escapeHtml(item.right?.document_title || "Doküman B")}</div>
-        </article>
-      `).join("");
-    }
-    if (data.comparison_id) {
-      const viewer = document.createElement("a");
-      viewer.className = "primary-button";
-      viewer.href = `/report-comparison/${encodeURIComponent(data.comparison_id)}/viewer`;
-      viewer.target = "_blank";
-      viewer.rel = "noopener noreferrer";
-      viewer.textContent = "Renkli PDF görünümünü aç";
-      comparisonResults.prepend(viewer);
+      comparisonResults.innerHTML = `
+        ${renderAggregateRows(data)}
+        <section class="comparison-pairs" aria-labelledby="comparisonPairsTitle">
+          <div class="comparison-results-heading"><div><span class="overline">AYRINTILI SONUÇLAR</span><h2 id="comparisonPairsTitle">İkili karşılaştırmalar</h2></div><span>${comparisons.length} karşılaştırma</span></div>
+          ${comparisons.map((comparison, index) => renderPairComparison(comparison, index, documents)).join("")}
+        </section>
+      `;
     }
     const evidence = comparisonEvidenceItems(data);
-    renderEvidence(evidence, `${data.left?.title || "Doküman A"} ve ${data.right?.title || "Doküman B"} kaynakları.`);
+    renderEvidence(evidence, `${Number(data.source_count || documents.length)} dokümandaki karşılaştırma kaynakları.`);
     if (evidence.length) setEvidenceOpen(true);
   }
 
   async function runComparison() {
-    const leftId = Number(compareLeft.value);
-    const rightId = Number(compareRight.value);
-    if (!leftId || !rightId) {
-      compareStatus.textContent = "İki dokümanı da seçmelisin.";
+    const sourceIds = [...state.comparisonDocumentIds];
+    if (sourceIds.length < 2) {
+      compareStatus.textContent = "En az iki farklı doküman eklemelisin.";
       return;
     }
-    if (leftId === rightId) {
-      compareStatus.textContent = "Aynı doküman kendiyle karşılaştırılamaz.";
-      return;
-    }
-    const submitButton = compareForm.querySelector('button[type="submit"]');
-    submitButton.disabled = true;
-    compareStatus.textContent = "Dokümanlar karşılaştırılıyor…";
+    const referenceIndex = Math.max(sourceIds.indexOf(Number(state.comparisonReferenceId)), 0);
+    compareRunButton.disabled = true;
+    compareStatus.textContent = `${comparisonPairCount()} karşılaştırma hazırlanıyor…`;
     comparisonSummary.hidden = true;
     comparisonResults.innerHTML = '<p class="empty-state">Karşılaştırma hazırlanıyor.</p>';
     try {
-      const response = await fetch("/report-comparison", {
+      const response = await fetch("/report-comparison/multi", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
-          left: { document_id: leftId },
-          right: { document_id: rightId },
+          sources: sourceIds.map(documentId => ({ document_id: documentId })),
+          mode: compareMode.value,
+          reference_index: referenceIndex,
           use_llm: true,
         }),
       });
       const data = await readJson(response);
       if (!response.ok) throw new Error(requestError(data, "Karşılaştırma tamamlanamadı."));
       renderComparison(data);
-      compareStatus.textContent = `${Number(data.similarity_count || 0)} benzerlik ve ${Number(data.difference_count || 0)} fark bulundu.`;
+      compareStatus.textContent = `${Number(data.comparison_count || 0)} karşılaştırmada ${Number(data.similarity_count || 0)} benzerlik ve ${Number(data.difference_count || 0)} fark bulundu.`;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Karşılaştırma tamamlanamadı.";
       compareStatus.textContent = message;
       comparisonResults.innerHTML = `<p class="empty-state">${escapeHtml(message)}</p>`;
     } finally {
-      submitButton.disabled = false;
+      compareRunButton.disabled = state.comparisonDocumentIds.length < 2;
     }
   }
 
@@ -1690,6 +1828,38 @@
   searchForm.addEventListener("submit", event => {
     event.preventDefault();
     runSearch();
+  });
+
+  compareDocumentFilter.addEventListener("input", renderComparePicker);
+  compareDocumentPicker.addEventListener("change", () => {
+    compareAddButton.disabled = !Number(compareDocumentPicker.value);
+  });
+  compareAddButton.addEventListener("click", () => {
+    if (addComparisonDocument(compareDocumentPicker.value)) {
+      compareDocumentFilter.value = "";
+      compareStatus.textContent = "Doküman karşılaştırma listesine eklendi.";
+      renderComparePicker();
+    }
+  });
+  compareDocumentPicker.addEventListener("dblclick", () => compareAddButton.click());
+  compareAddContextButton.addEventListener("click", addContextDocumentsToComparison);
+  compareMode.addEventListener("change", renderComparisonSelection);
+  compareSelection.addEventListener("change", event => {
+    const control = event.target.closest('input[name="compareReference"]');
+    if (!control) return;
+    state.comparisonReferenceId = Number(control.value);
+    renderComparisonSelection();
+  });
+  compareSelection.addEventListener("click", event => {
+    const button = event.target.closest("[data-remove-comparison]");
+    if (!button) return;
+    const id = Number(button.dataset.removeComparison);
+    state.comparisonDocumentIds = state.comparisonDocumentIds.filter(item => item !== id);
+    if (Number(state.comparisonReferenceId) === id) {
+      state.comparisonReferenceId = state.comparisonDocumentIds[0] || null;
+    }
+    renderComparisonSelection();
+    compareStatus.textContent = "Doküman karşılaştırma listesinden çıkarıldı.";
   });
 
   compareForm.addEventListener("submit", event => {

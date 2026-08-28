@@ -49,6 +49,8 @@ from .api_models import (
     MultiDocumentAskRequest,
     MultiDocumentAskResponse,
     ReindexEmbeddingsResponse,
+    ReportComparisonMultiRequest,
+    ReportComparisonMultiResponse,
     ReportComparisonRequest,
     ReportComparisonResponse,
     ReportComparisonUploadResponse,
@@ -6933,6 +6935,35 @@ def compare_reports(
     except Exception as exc:
         logger.exception("Report comparison failed.")
         raise HTTPException(status_code=500, detail="Rapor karsilastirmasi tamamlanamadi.") from exc
+
+
+@app.post("/report-comparison/multi", response_model=ReportComparisonMultiResponse)
+def compare_multiple_reports(
+    payload: ReportComparisonMultiRequest,
+    session: Session = Depends(get_session),
+) -> ReportComparisonMultiResponse:
+    sources = [source.model_dump() for source in payload.sources]
+    for source in sources:
+        selected_count = int(bool(source.get("document_id"))) + int(bool(source.get("upload_token")))
+        if selected_count != 1:
+            raise HTTPException(status_code=400, detail="Her dokuman icin tek bir kaynak sec.")
+    if payload.reference_index >= len(sources):
+        raise HTTPException(status_code=400, detail="Referans dokuman secimi gecersiz.")
+    try:
+        service = ReportComparisonService(session)
+        return ReportComparisonMultiResponse(
+            **service.compare_many(
+                sources,
+                mode=payload.mode,
+                reference_index=payload.reference_index,
+                use_llm=payload.use_llm,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Multi-report comparison failed.")
+        raise HTTPException(status_code=500, detail="Dokuman karsilastirmasi tamamlanamadi.") from exc
 
 
 @app.get("/report-comparison/{comparison_id}/pdf/{side}")

@@ -125,7 +125,7 @@ def test_smartcae_v2_has_functional_workspace_targets_and_no_placeholder_links()
         'fetch("/documents/list?limit=300"',
         'fetch("/ingest/batch"',
         "fetch(`/search?${params}`",
-        'fetch("/report-comparison"',
+        'fetch("/report-comparison/multi"',
         'fetch("/draft-report"',
         'fetch("/draft-report/pdf"',
     ):
@@ -138,6 +138,33 @@ def test_smartcae_v2_has_functional_workspace_targets_and_no_placeholder_links()
     assert 'minlength="2" maxlength="1000"' in html
     assert 'aria-hidden="true" inert' in html
     assert "evidencePanel.inert = !evidenceOpen" in script
+
+
+def test_smartcae_v2_comparison_supports_an_unbounded_dynamic_source_list() -> None:
+    html = (V2_DIR / "index.html").read_text(encoding="utf-8")
+    script = (V2_DIR / "assets" / "smartcae-v2.js").read_text(encoding="utf-8")
+    css = (V2_DIR / "assets" / "smartcae-v2.css").read_text(encoding="utf-8")
+
+    assert 'id="compareDocumentFilter"' in html
+    assert 'id="compareDocumentPicker"' in html
+    assert 'id="compareSelection"' in html
+    assert 'id="compareMode"' in html
+    assert '<option value="reference">Referansa göre</option>' in html
+    assert '<option value="all_pairs">Tüm doküman çiftleri</option>' in html
+    assert 'id="comparePairEstimate"' in html
+    assert 'id="compareRunButton"' in html
+    assert 'id="compareLeft"' not in html
+    assert 'id="compareRight"' not in html
+
+    assert "comparisonDocumentIds: []" in script
+    assert "comparisonReferenceId: null" in script
+    assert 'fetch("/report-comparison/multi"' in script
+    assert "sources: sourceIds.map(documentId => ({ document_id: documentId }))" in script
+    assert 'compareMode.value === "all_pairs" ? (count * (count - 1)) / 2 : count - 1' in script
+    assert ".slice(0," not in script[script.index("async function runComparison"):script.index("function buildDraftPayload")]
+    assert ".compare-source-card" in css
+    assert ".comparison-pair" in css
+    assert ".comparison-insight-list" in css
 
 
 def test_smartcae_v2_search_heading_moves_to_the_dynamic_topbar() -> None:

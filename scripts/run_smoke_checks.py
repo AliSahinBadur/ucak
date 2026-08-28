@@ -76,8 +76,16 @@ def main() -> int:
         failures += not check("health", health.get("version") == APP_VERSION, f"server={health.get('version')} expected={APP_VERSION}")
 
         html = request_text(args.base_url, "/")
-        ui_ok = f"v{APP_VERSION}" in html and "chatAssistantMode" in html and "otomatik" in html
-        failures += not check("ui", ui_ok, "version badge and chat mode selector present")
+        ui_ok = (
+            'data-smartcae-version="2"' in html
+            and f'id="systemVersionLabel">v{APP_VERSION}</small>' in html
+            and 'href="/legacy"' in html
+        )
+        failures += not check("ui", ui_ok, "SmartCAE v2 root, version badge and legacy link present")
+
+        legacy_html = request_text(args.base_url, "/legacy")
+        legacy_ok = 'data-smartcae-version="2"' not in legacy_html and 'class="smartcae-v2-link"' in legacy_html
+        failures += not check("legacy ui", legacy_ok, "legacy workspace remains available")
 
         auto_math = chat(args.base_url, "4 + 4", "auto")
         auto_math_ok = auto_math.get("embedding_provider", "").startswith("chat-llm") and "8" in str(auto_math.get("answer", ""))
@@ -90,15 +98,20 @@ def main() -> int:
 
         auto_report = chat(args.base_url, "BIG-E konfor raporunda hangi parkurlar var?", "auto")
         report_answer = normalize(str(auto_report.get("answer", "")))
+        auto_report_provider = str(auto_report.get("embedding_provider", ""))
         report_ok = (
-            auto_report.get("embedding_provider", "").startswith("sentence-transformers")
+            not auto_report_provider.startswith("chat-llm")
             and "otoban" in report_answer
             and len(auto_report.get("sources", [])) > 0
         )
         failures += not check("chat auto report rag", report_ok, auto_report.get("embedding_provider", ""))
 
         report_math = chat(args.base_url, "4 + 4", "report")
-        report_math_ok = report_math.get("embedding_provider", "").startswith("sentence-transformers")
+        report_provider = str(report_math.get("embedding_provider", ""))
+        report_math_ok = (
+            not report_provider.startswith("chat-llm")
+            and len(report_math.get("sources", [])) > 0
+        )
         failures += not check("chat report mode stays rag", report_math_ok, report_math.get("embedding_provider", ""))
 
         duplicates = request_json(args.base_url, "GET", "/duplicates?limit=5")

@@ -112,6 +112,13 @@ class ReportComparisonRequest(BaseModel):
     use_llm: bool = True
 
 
+class ReportComparisonMultiRequest(BaseModel):
+    sources: list[ReportComparisonSourceRequest] = Field(min_length=2)
+    mode: Literal["reference", "all_pairs"] = "reference"
+    reference_index: int = Field(default=0, ge=0)
+    use_llm: bool = True
+
+
 class ReportComparisonUploadResponse(BaseModel):
     upload_token: str
     source_ref: str
@@ -183,6 +190,56 @@ class ReportComparisonResponse(BaseModel):
     generation_provider: str
     llm_used: bool
     cache_hit: bool
+
+
+class ReportComparisonPairResponse(BaseModel):
+    pair_key: str
+    left_index: int
+    right_index: int
+    left_source_ref: str
+    right_source_ref: str
+    result: ReportComparisonResponse
+
+
+class ReportComparisonTopicEvidenceResponse(BaseModel):
+    document_index: int
+    source_ref: str
+    document_title: str
+    file_name: str
+    page_start: int | None = None
+    page_end: int | None = None
+    section_title: str | None = None
+    excerpt: str
+
+
+class ReportComparisonTopicRowResponse(BaseModel):
+    id: str
+    kind: Literal["common", "changed", "conflict", "unique"]
+    topic: str
+    summary: str
+    present_in: list[int]
+    missing_from: list[int]
+    confidence: float
+    evidence: list[ReportComparisonTopicEvidenceResponse]
+
+
+class ReportComparisonMultiResponse(BaseModel):
+    comparison_id: str
+    mode: Literal["reference", "all_pairs"]
+    reference_index: int
+    documents: list[ReportComparisonDocumentResponse]
+    comparisons: list[ReportComparisonPairResponse]
+    rows: list[ReportComparisonTopicRowResponse]
+    source_count: int
+    comparison_count: int
+    similarity_count: int
+    difference_count: int
+    matched_pair_count: int
+    coverage: float
+    embedding_provider: str
+    generation_providers: list[str]
+    llm_used: bool
+    cache_hit_count: int
 
 
 class SearchResponse(BaseModel):

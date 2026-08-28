@@ -228,6 +228,122 @@ class ReportComparisonService:
     def compare(self, left_source: dict, right_source: dict, use_llm: bool = True) -> dict:
         left = self._resolve_source(left_source)
         right = self._resolve_source(right_source)
+        return self._compare_documents(left, right, use_llm=use_llm)
+
+    def compare_many(
+        self,
+        sources: list[dict],
+        *,
+        mode: str = "reference",
+        reference_index: int = 0,
+        use_llm: bool = True,
+    ) -> dict:
+        if len(sources) < 2:
+            raise ValueError("Karsilastirma icin en az iki dokuman sec.")
+        if mode not in {"reference", "all_pairs"}:
+            raise ValueError("Karsilastirma modu gecersiz.")
+        if reference_index < 0 or reference_index >= len(sources):
+            raise ValueError("Referans dokuman secimi gecersiz.")
+
+        source_keys = []
+        for source in sources:
+            document_id = source.get("document_id")
+            upload_token = str(source.get("upload_token") or "").strip()
+            selected_count = int(bool(document_id)) + int(bool(upload_token))
+            if selected_count != 1:
+                raise ValueError("Her dokuman icin tek bir kaynak sec.")
+            source_keys.append(
+                f"document:{int(document_id)}" if document_id else f"temp:{upload_token}"
+            )
+        if len(source_keys) != len(set(source_keys)):
+            raise ValueError("Ayni dokuman karsilastirmaya birden fazla kez eklenemez.")
+
+        documents = [self._resolve_source(source) for source in sources]
+        source_refs = [document.source_ref for document in documents]
+        if len(source_refs) != len(set(source_refs)):
+            raise ValueError("Ayni dokuman karsilastirmaya birden fazla kez eklenemez.")
+        empty_documents = [document.title for document in documents if not document.chunks]
+        if empty_documents:
+            raise ValueError(
+                "Karsilastirilabilir metin bulunamadi: " + ", ".join(empty_documents)
+            )
+
+        if mode == "reference":
+            pair_indexes = [
+                (reference_index, index)
+                for index in range(len(documents))
+                if index != reference_index
+            ]
+        else:
+            pair_indexes = [
+                (left_index, right_index)
+                for left_index in range(len(documents))
+                for right_index in range(left_index + 1, len(documents))
+            ]
+
+        comparisons = []
+        for left_index, right_index in pair_indexes:
+            left = documents[left_index]
+            right = documents[right_index]
+            result = self._compare_documents(left, right, use_llm=use_llm)
+            comparisons.append(
+                {
+                    "pair_key": f"{left_index}:{right_index}",
+                    "left_index": left_index,
+                    "right_index": right_index,
+                    "left_source_ref": left.source_ref,
+                    "right_source_ref": right.source_ref,
+                    "result": result,
+                }
+            )
+
+        coverages = [float(item["result"].get("coverage") or 0.0) for item in comparisons]
+        generation_providers = sorted(
+            {
+                str(item["result"].get("generation_provider") or "deterministic")
+                for item in comparisons
+            }
+        )
+        comparison_id = self._multi_comparison_id(
+            documents,
+            mode=mode,
+            reference_index=reference_index,
+            use_llm=use_llm,
+        )
+        return {
+            "comparison_id": comparison_id,
+            "mode": mode,
+            "reference_index": reference_index,
+            "documents": [self._document_payload(document) for document in documents],
+            "comparisons": comparisons,
+            "rows": self._aggregate_topic_rows(documents, comparisons),
+            "source_count": len(documents),
+            "comparison_count": len(comparisons),
+            "similarity_count": sum(
+                int(item["result"].get("similarity_count") or 0) for item in comparisons
+            ),
+            "difference_count": sum(
+                int(item["result"].get("difference_count") or 0) for item in comparisons
+            ),
+            "matched_pair_count": sum(
+                int(item["result"].get("matched_pair_count") or 0) for item in comparisons
+            ),
+            "coverage": round(sum(coverages) / max(len(coverages), 1), 3),
+            "embedding_provider": self.embedding_service.provider_name,
+            "generation_providers": generation_providers,
+            "llm_used": any(bool(item["result"].get("llm_used")) for item in comparisons),
+            "cache_hit_count": sum(
+                int(bool(item["result"].get("cache_hit"))) for item in comparisons
+            ),
+        }
+
+    def _compare_documents(
+        self,
+        left: ComparisonDocument,
+        right: ComparisonDocument,
+        *,
+        use_llm: bool,
+    ) -> dict:
         if left.source_ref == right.source_ref:
             raise ValueError("Karsilastirma icin iki farkli rapor sec.")
         if not left.chunks or not right.chunks:
@@ -280,6 +396,157 @@ class ReportComparisonService:
         self._attach_pdf_previews(result, left, right, cache_key)
         self._write_cache(cache_key, result)
         return result
+
+    def _aggregate_topic_rows(
+        self,
+        documents: list[ComparisonDocument],
+        comparisons: list[dict],
+    ) -> list[dict]:
+        document_index_by_ref = {
+            document.source_ref: index for index, document in enumerate(documents)
+        }
+        groups: dict[str, dict] = {}
+        kind_priority = {"common": 0, "unique": 1, "changed": 2, "conflict": 3}
+
+        for comparison in comparisons:
+            result = comparison["result"]
+            items = [
+                *((item, "common") for item in result.get("similarities") or []),
+                *((item, self._aggregate_difference_kind(item)) for item in result.get("differences") or []),
+            ]
+            for item, item_kind in items:
+                topic = " ".join(str(item.get("topic") or "Teknik bulgu").split())[:120]
+                if "\\" in topic or re.match(r"^[A-Za-z]:", topic):
+                    topic = "Yalniz bir dokumanda bulunan bulgu"
+                normalized_topic = self._normalize_text(topic)
+                normalized_topic = " ".join(re.findall(r"[a-z0-9]+", normalized_topic)[:8])
+                group_key = normalized_topic or str(item.get("id") or "teknik-bulgu")
+                if normalized_topic in {
+                    "yalniz bir dokumanda bulunan bulgu",
+                    "yalniz bir raporda bulunan bulgu",
+                    "teknik bulgu",
+                }:
+                    evidence_text = " ".join(
+                        str((item.get(side) or {}).get("excerpt") or "")
+                        for side in ("left", "right")
+                    )
+                    signature = " ".join(sorted(self._tokens(evidence_text))[:8])
+                    group_key = f"{normalized_topic}|{signature or item.get('id') or ''}"
+                group = groups.setdefault(
+                    group_key,
+                    {
+                        "kind": item_kind,
+                        "topic": topic,
+                        "summaries": [],
+                        "confidences": [],
+                        "evidence": {},
+                    },
+                )
+                if kind_priority[item_kind] > kind_priority[group["kind"]]:
+                    group["kind"] = item_kind
+                summary = " ".join(str(item.get("summary") or "").split())
+                if summary and summary not in group["summaries"]:
+                    group["summaries"].append(summary)
+                group["confidences"].append(float(item.get("confidence") or 0.0))
+
+                for side in ("left", "right"):
+                    evidence = item.get(side) or {}
+                    source_ref = str(evidence.get("source_ref") or "")
+                    document_index = document_index_by_ref.get(source_ref)
+                    if document_index is None:
+                        continue
+                    excerpt = " ".join(str(evidence.get("excerpt") or "").split())
+                    if not excerpt or excerpt.startswith("Bu raporda eslesen"):
+                        continue
+                    evidence_key = (
+                        document_index,
+                        int(evidence.get("page_start") or 0),
+                        excerpt[:160],
+                    )
+                    group["evidence"][evidence_key] = {
+                        "document_index": document_index,
+                        "source_ref": source_ref,
+                        "document_title": str(evidence.get("document_title") or documents[document_index].title),
+                        "file_name": str(evidence.get("file_name") or documents[document_index].file_name),
+                        "page_start": evidence.get("page_start"),
+                        "page_end": evidence.get("page_end"),
+                        "section_title": evidence.get("section_title"),
+                        "excerpt": excerpt,
+                    }
+
+        rows = []
+        all_indexes = set(range(len(documents)))
+        for group_key, group in groups.items():
+            evidence = list(group["evidence"].values())[:12]
+            present_in = sorted({int(item["document_index"]) for item in evidence})
+            present_titles = [documents[index].title for index in present_in]
+            if group["kind"] == "common":
+                summary = f"Bu konu {len(present_in)} dokumanda ortak olarak bulundu."
+            elif group["kind"] == "unique":
+                summary = (
+                    f"Bu konu yalnizca {present_titles[0]} dokumaninda bulundu."
+                    if len(present_titles) == 1
+                    else "Bu konu yalnizca bazi dokumanlarda bulundu."
+                )
+            elif group["kind"] == "conflict":
+                summary = "Bu konu icin dokumanlar arasinda sonuc veya ifade celiskisi bulundu."
+            else:
+                summary = "Bu konuya ait deger, kapsam veya teknik ifade dokumanlar arasinda degisiyor."
+            if len(group["summaries"]) > 1:
+                summary = f"{summary} {len(group['summaries'])} ilgili bulgu eslestirildi."
+            rows.append(
+                {
+                    "id": sha256(group_key.encode("utf-8")).hexdigest()[:16],
+                    "kind": group["kind"],
+                    "topic": group["topic"],
+                    "summary": summary,
+                    "present_in": present_in,
+                    "missing_from": sorted(all_indexes - set(present_in)),
+                    "confidence": round(
+                        sum(group["confidences"]) / max(len(group["confidences"]), 1),
+                        3,
+                    ),
+                    "evidence": evidence,
+                }
+            )
+        rows.sort(
+            key=lambda row: (
+                -kind_priority[str(row["kind"])],
+                -float(row["confidence"]),
+                str(row["topic"]).casefold(),
+            )
+        )
+        return rows[:80]
+
+    @staticmethod
+    def _aggregate_difference_kind(item: dict) -> str:
+        difference_type = str(item.get("difference_type") or "")
+        if difference_type in {"contradiction", "result_change"}:
+            return "conflict"
+        if difference_type.startswith("only_"):
+            return "unique"
+        return "changed"
+
+    def _multi_comparison_id(
+        self,
+        documents: list[ComparisonDocument],
+        *,
+        mode: str,
+        reference_index: int,
+        use_llm: bool,
+    ) -> str:
+        raw = "|".join(
+            [
+                self.ALGORITHM_VERSION,
+                "multi-v1",
+                mode,
+                str(reference_index),
+                "llm" if use_llm else "no-llm",
+                self.embedding_service.provider_name,
+                *(document.content_hash for document in documents),
+            ]
+        )
+        return sha256(raw.encode("utf-8")).hexdigest()
 
     def _resolve_source(self, source: dict) -> ComparisonDocument:
         document_id = source.get("document_id")

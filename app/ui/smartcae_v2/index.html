@@ -285,15 +285,31 @@
 
         <section class="workspace-view" data-view="compare" aria-labelledby="compareTitle">
           <div class="view-heading">
-            <div><span class="overline">TEKNİK KARŞILAŞTIRMA</span><h1 id="compareTitle">İki dokümanı yan yana incele</h1><p>Benzerlikleri, farkları ve ilgili pasajları kaynaklarıyla gör.</p></div>
+            <div><span class="overline">ÇOKLU TEKNİK KARŞILAŞTIRMA</span><h1 id="compareTitle">Dokümanları birlikte incele</h1><p>İki veya daha fazla dokümanı seç; ortak noktaları, değişen bulguları ve yalnız kalan bilgileri kaynaklarıyla gör.</p></div>
           </div>
           <form class="compare-form" id="compareForm">
-            <label><span>Doküman A</span><select id="compareLeft" required><option value="">Seçiniz</option></select></label>
-            <span class="compare-mark">↔</span>
-            <label><span>Doküman B</span><select id="compareRight" required><option value="">Seçiniz</option></select></label>
-            <button class="primary-button" type="submit">Karşılaştır</button>
+            <section class="compare-picker-panel" aria-labelledby="compareSourcesTitle">
+              <div class="compare-section-heading">
+                <div><span class="compare-step">1</span><div><strong id="compareSourcesTitle">Dokümanları seç</strong><small>Sayı sınırı yok; aynı doküman yalnızca bir kez eklenir.</small></div></div>
+                <button class="secondary-button compact-button" id="compareAddContextButton" type="button">Bağlamdakileri ekle</button>
+              </div>
+              <div class="compare-add-row">
+                <label><span>Doküman ara</span><input id="compareDocumentFilter" type="search" placeholder="Başlık veya dosya adı"></label>
+                <label><span>Eklenecek doküman</span><select id="compareDocumentPicker"><option value="">Doküman seç</option></select></label>
+                <button class="secondary-button" id="compareAddButton" type="button">Listeye ekle</button>
+              </div>
+              <div class="compare-selection-heading"><strong id="compareSelectedCount">0 doküman seçildi</strong><span>Referans dokümanı yıldızla belirle</span></div>
+              <div class="compare-selection" id="compareSelection" role="list"><p class="empty-state">Karşılaştırmak için en az iki doküman ekle.</p></div>
+            </section>
+            <aside class="compare-settings" aria-labelledby="compareModeTitle">
+              <div class="compare-section-heading"><div><span class="compare-step">2</span><div><strong id="compareModeTitle">Karşılaştırma biçimi</strong><small>İş yükünü ve sonuç kapsamını seç.</small></div></div></div>
+              <label><span>Mod</span><select id="compareMode"><option value="reference">Referansa göre</option><option value="all_pairs">Tüm doküman çiftleri</option></select></label>
+              <div class="compare-mode-note" id="compareModeNote">Referans doküman, seçilen diğer tüm dokümanlarla karşılaştırılır.</div>
+              <div class="compare-pair-estimate"><span>Çalıştırılacak karşılaştırma</span><strong id="comparePairEstimate">0</strong></div>
+              <button class="primary-button compare-run-button" id="compareRunButton" type="submit" disabled>Dokümanları karşılaştır</button>
+            </aside>
           </form>
-          <p class="inline-status" id="compareStatus" role="status">Karşılaştırılacak iki dokümanı seç.</p>
+          <p class="inline-status" id="compareStatus" role="status">Karşılaştırılacak dokümanları seç.</p>
           <div class="comparison-summary" id="comparisonSummary" hidden></div>
           <div class="comparison-results" id="comparisonResults"><p class="empty-state">Karşılaştırma sonuçları burada görüntülenecek.</p></div>
         </section>
