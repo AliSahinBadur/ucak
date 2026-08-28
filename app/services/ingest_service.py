@@ -8,7 +8,7 @@ import shutil
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..config import DOCUMENTS_DIR
+from ..config import get_settings
 from ..db.models import ChunkEmbedding, Document, DocumentChunk, DocumentPage
 from ..parsers.docx_parser import parse_docx
 from ..parsers.pdf_parser import parse_pdf
@@ -31,7 +31,7 @@ class IngestService:
         embedding_service: EmbeddingService | None = None,
     ) -> None:
         self.session = session
-        self.storage_dir = Path(storage_dir) if storage_dir else DOCUMENTS_DIR
+        self.storage_dir = Path(storage_dir) if storage_dir else get_settings().DOCUMENTS_DIR
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.embedding_service = embedding_service or build_embedding_service()
 

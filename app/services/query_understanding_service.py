@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import unicodedata
-
 from pydantic import BaseModel, Field
 
+from ..text.normalize import normalize_search_text
 from .llm_provider import LLMProvider, build_llm_provider
 
 
@@ -133,20 +132,7 @@ class QueryUnderstandingService:
 
     @staticmethod
     def _fold_text(text: str) -> str:
-        translated = text.casefold().translate(
-            str.maketrans(
-                {
-                    "\u0131": "i",
-                    "\u011f": "g",
-                    "\u00fc": "u",
-                    "\u015f": "s",
-                    "\u00f6": "o",
-                    "\u00e7": "c",
-                }
-            )
-        )
-        normalized = unicodedata.normalize("NFKD", translated)
-        return "".join(char for char in normalized if not unicodedata.combining(char))
+        return normalize_search_text(text)
 
     @staticmethod
     def _query_understanding_prompt(query: str) -> str:

@@ -5,12 +5,7 @@ from functools import lru_cache
 import logging
 from typing import Any
 
-from ..config import (
-    CHAT_LLM_BACKEND,
-    CHAT_LLM_ENABLED,
-    CHAT_LLM_MODEL_NAME,
-    CHAT_LLM_TIMEOUT_SECONDS,
-)
+from ..config import get_settings
 from .llm_provider import DisabledLLMProvider, LLMProvider, OllamaLLMProvider
 
 
@@ -74,17 +69,18 @@ Cevap:"""
 
 @lru_cache(maxsize=1)
 def _build_chat_provider() -> LLMProvider:
-    if not CHAT_LLM_ENABLED or CHAT_LLM_BACKEND in {"", "disabled", "none"}:
+    settings = get_settings()
+    if not settings.CHAT_LLM_ENABLED or settings.CHAT_LLM_BACKEND in {"", "disabled", "none"}:
         logger.info("General chat LLM disabled.")
         return DisabledLLMProvider()
-    if CHAT_LLM_BACKEND == "ollama":
+    if settings.CHAT_LLM_BACKEND == "ollama":
         try:
             return OllamaLLMProvider(
-                model_name=CHAT_LLM_MODEL_NAME,
-                timeout_seconds=CHAT_LLM_TIMEOUT_SECONDS,
+                model_name=settings.CHAT_LLM_MODEL_NAME,
+                timeout_seconds=settings.CHAT_LLM_TIMEOUT_SECONDS,
             )
         except Exception:
             logger.exception("General chat Ollama provider could not load.")
             return DisabledLLMProvider()
-    logger.warning("Unsupported CHAT_LLM_BACKEND=%s; general chat disabled.", CHAT_LLM_BACKEND)
+    logger.warning("Unsupported CHAT_LLM_BACKEND=%s; general chat disabled.", settings.CHAT_LLM_BACKEND)
     return DisabledLLMProvider()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from contextlib import asynccontextmanager
 import hashlib
 import hmac
 from html import escape
@@ -53,6 +54,7 @@ from .api_models import (
     SearchResponse,
     StorageCheckResponse,
 )
+from .text.normalize import normalize_search_text
 from .db.session import SessionLocal, get_session, init_db
 from .db.models import ChunkEmbedding, Document, DocumentChunk, DocumentPage
 from .services.embedding_reindex_service import EmbeddingReindexService
@@ -75,16 +77,25 @@ from .services.retrieval_orchestrator import RetrievalOrchestrator
 from .services.search_service import SearchService
 from .services.storage_service import StorageService
 from .version import APP_VERSION
-from .config import APP_AUTH_COOKIE_NAME, APP_AUTH_ENABLED, APP_SESSION_SECRET, APP_USERS_RAW
+from .config import get_settings
 
+
+settings = get_settings()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-#dfgasdgfasdfasdfasdfasdf
-app = FastAPI(title="Big Agent MVP", version=APP_VERSION)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="Big Agent MVP", version=APP_VERSION, lifespan=lifespan)
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-AUTH_COOKIE_NAME = APP_AUTH_COOKIE_NAME
+AUTH_COOKIE_NAME = settings.APP_AUTH_COOKIE_NAME
 AUTH_SESSION_SECONDS = 8 * 60 * 60
 
 
@@ -101,11 +112,11 @@ def _parse_app_users(raw_value: str) -> dict[str, str]:
     return users
 
 
-APP_USERS = _parse_app_users(APP_USERS_RAW)
+APP_USERS = _parse_app_users(settings.APP_USERS_RAW)
 
 
 def _auth_secret() -> str:
-    return APP_SESSION_SECRET or "change-this-local-test-secret"
+    return settings.APP_SESSION_SECRET or "change-this-local-test-secret"
 
 
 def _session_signature(username: str, expires_at: int) -> str:
@@ -141,7 +152,7 @@ def _read_session_user(request: Request) -> str | None:
 
 
 def _auth_enabled() -> bool:
-    return APP_AUTH_ENABLED and bool(APP_USERS)
+    return settings.APP_AUTH_ENABLED and bool(APP_USERS)
 
 
 def _login_html(error: str = "") -> str:
@@ -236,11 +247,6 @@ def _convert_content_media_type_to_binary(node: dict) -> None:
 
     if node.get("type") == "array" and isinstance(node.get("items"), dict):
         _convert_content_media_type_to_binary(node["items"])
-
-
-@app.on_event("startup")
-def on_startup() -> None:
-    init_db()
 
 
 def _display_model_name() -> str:
@@ -925,20 +931,7 @@ def _chat_general_answer(message: str, history: list[dict] | None = None) -> tup
 
 
 def _fold_chat_text(message: str) -> str:
-    translated = message.casefold().translate(
-        str.maketrans(
-            {
-                "\u0131": "i",
-                "\u011f": "g",
-                "\u00fc": "u",
-                "\u015f": "s",
-                "\u00f6": "o",
-                "\u00e7": "c",
-                "\u0130": "i",
-            }
-        )
-    )
-    return re.sub(r"[^a-z0-9\s]+", " ", translated).strip()
+    return re.sub(r"[^a-z0-9\s]+", " ", normalize_search_text(message)).strip()
 
 
 @app.post("/catalog/import", response_model=CatalogImportResponse)

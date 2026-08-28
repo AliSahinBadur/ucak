@@ -18,13 +18,7 @@ from reportlab.platypus import Image as ReportImage
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy.orm import Session
 
-from ..config import (
-    LLM_MAX_CONTEXT_TOKENS,
-    REPORT_LLM_BACKEND,
-    REPORT_LLM_ENABLED,
-    REPORT_LLM_MODEL_NAME,
-    REPORT_LLM_TIMEOUT_SECONDS,
-)
+from ..config import get_settings
 from .llm_provider import DisabledLLMProvider, LLMProvider, OllamaLLMProvider
 from .search_service import SearchService
 
@@ -830,7 +824,7 @@ Sadece rapor govdesini yaz. Ilk satir "1." ile baslasin."""
         if not sources:
             return "Kaynak pasaj yok."
         contexts = []
-        budget = max(2400, LLM_MAX_CONTEXT_TOKENS * 2)
+        budget = max(2400, get_settings().LLM_MAX_CONTEXT_TOKENS * 2)
         used = 0
         for index, source in enumerate(sources[:4], start=1):
             text = " ".join(str(source.get("chunk_text", "")).split())
@@ -984,17 +978,18 @@ Sadece rapor govdesini yaz. Ilk satir "1." ile baslasin."""
 
 @lru_cache(maxsize=1)
 def _build_report_provider() -> LLMProvider:
-    if not REPORT_LLM_ENABLED or REPORT_LLM_BACKEND in {"", "disabled", "none"}:
+    settings = get_settings()
+    if not settings.REPORT_LLM_ENABLED or settings.REPORT_LLM_BACKEND in {"", "disabled", "none"}:
         logger.info("Report writer LLM disabled.")
         return DisabledLLMProvider()
-    if REPORT_LLM_BACKEND == "ollama":
+    if settings.REPORT_LLM_BACKEND == "ollama":
         try:
             return OllamaLLMProvider(
-                model_name=REPORT_LLM_MODEL_NAME,
-                timeout_seconds=REPORT_LLM_TIMEOUT_SECONDS,
+                model_name=settings.REPORT_LLM_MODEL_NAME,
+                timeout_seconds=settings.REPORT_LLM_TIMEOUT_SECONDS,
             )
         except Exception:
             logger.exception("Report writer Ollama provider could not load.")
             return DisabledLLMProvider()
-    logger.warning("Unsupported REPORT_LLM_BACKEND=%s; report writer LLM disabled.", REPORT_LLM_BACKEND)
+    logger.warning("Unsupported REPORT_LLM_BACKEND=%s; report writer LLM disabled.", settings.REPORT_LLM_BACKEND)
     return DisabledLLMProvider()

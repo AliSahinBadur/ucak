@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db.models import Document
+from ..text.normalize import normalize_search_text
 from .catalog_service import CatalogService
 from .qa_service import QAService
 from .search_service import SearchService
@@ -184,8 +185,7 @@ class MultiDocumentQAService:
 
     @classmethod
     def _is_comparison_question(cls, question: str) -> bool:
-        lowered = question.casefold()
-        normalized = lowered.translate(str.maketrans({"ı": "i", "ğ": "g", "ü": "u", "ş": "s", "ö": "o", "ç": "c"}))
+        normalized = normalize_search_text(question)
         if any(term in normalized for term in cls.COMPARISON_TERMS):
             return True
         return len(re.findall(r"\bve\b", normalized)) >= 1 and "?" not in normalized

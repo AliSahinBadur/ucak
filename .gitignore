@@ -16,7 +16,6 @@ screenshots/
 tmp_*.js
 tmp_*.py
 
-uv.lock
 *.db
 *.sqlite3
 *.pyc
@@ -34,6 +33,7 @@ uv.lock
 
 .env
 .env.*
+!.env.example
 
 Thumbs.db
 .DS_Store

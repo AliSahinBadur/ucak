@@ -12,13 +12,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Protocol
 
-from ..config import (
-    EMBEDDING_DEVICE,
-    EMBEDDING_LOCAL_FILES_ONLY,
-    EMBEDDING_MODEL_NAME,
-    EMBEDDING_PROVIDER,
-    EMBEDDING_SHOW_PROGRESS,
-)
+from ..config import get_settings, resolve_embedding_device
 
 
 logger = logging.getLogger(__name__)
@@ -130,7 +124,8 @@ class TokenHashEmbeddingService(BaseEmbeddingService):
 
 class SentenceTransformerEmbeddingService(BaseEmbeddingService):
     def __init__(self, model_name: str, device: str = "cpu", local_files_only: bool = False) -> None:
-        if not EMBEDDING_SHOW_PROGRESS:
+        self.show_progress = get_settings().EMBEDDING_SHOW_PROGRESS
+        if not self.show_progress:
             os.environ.setdefault("TQDM_DISABLE", "1")
             os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
         try:
@@ -176,7 +171,7 @@ class SentenceTransformerEmbeddingService(BaseEmbeddingService):
             vector = encoder(
                 normalized,
                 normalize_embeddings=True,
-                show_progress_bar=EMBEDDING_SHOW_PROGRESS,
+                show_progress_bar=self.show_progress,
             )
         return [float(value) for value in vector.tolist()]
 
@@ -196,29 +191,31 @@ def build_embedding_service() -> EmbeddingService:
 
 @lru_cache(maxsize=1)
 def _build_embedding_service_cached() -> EmbeddingService:
-    provider = EMBEDDING_PROVIDER.strip().casefold()
+    settings = get_settings()
+    provider = settings.EMBEDDING_PROVIDER.strip().casefold()
     if provider in {"sentence-transformer", "sentence-transformers", "hf", "huggingface"}:
+        device = resolve_embedding_device(settings.EMBEDDING_DEVICE)
         attempted_devices: list[str] = []
         try:
-            attempted_devices.append(EMBEDDING_DEVICE)
+            attempted_devices.append(device)
             service = SentenceTransformerEmbeddingService(
-                model_name=EMBEDDING_MODEL_NAME,
-                device=EMBEDDING_DEVICE,
-                local_files_only=EMBEDDING_LOCAL_FILES_ONLY,
+                model_name=settings.EMBEDDING_MODEL_NAME,
+                device=device,
+                local_files_only=settings.EMBEDDING_LOCAL_FILES_ONLY,
             )
             logger.info("Loaded embedding provider %s", service.provider_name)
             return service
         except Exception as exc:
-            logger.exception("Sentence-transformers could not load on %s.", EMBEDDING_DEVICE)
-            if EMBEDDING_DEVICE != "cpu":
+            logger.exception("Sentence-transformers could not load on %s.", device)
+            if device != "cpu":
                 try:
                     attempted_devices.append("cpu")
                     service = SentenceTransformerEmbeddingService(
-                        model_name=EMBEDDING_MODEL_NAME,
+                        model_name=settings.EMBEDDING_MODEL_NAME,
                         device="cpu",
-                        local_files_only=EMBEDDING_LOCAL_FILES_ONLY,
+                        local_files_only=settings.EMBEDDING_LOCAL_FILES_ONLY,
                     )
-                    logger.info("Loaded embedding provider %s on CPU after %s failed.", service.provider_name, EMBEDDING_DEVICE)
+                    logger.info("Loaded embedding provider %s on CPU after %s failed.", service.provider_name, device)
                     return service
                 except Exception:
                     logger.exception("Sentence-transformers CPU fallback also failed.")

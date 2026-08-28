@@ -139,8 +139,8 @@ The current system is a working local RAG assistant. The next step is product ha
 Before presenting, run:
 
 ```powershell
-& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' scripts\run_smoke_checks.py
-& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' scripts\run_qa_checks.py
+& '.venv\Scripts\python.exe' scripts\run_smoke_checks.py
+& '.venv\Scripts\python.exe' scripts\run_qa_checks.py
 ```
 
 Expected:

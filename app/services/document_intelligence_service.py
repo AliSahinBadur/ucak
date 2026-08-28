@@ -3,20 +3,14 @@ from __future__ import annotations
 from functools import lru_cache
 import logging
 import re
-import unicodedata
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..config import (
-    CHAT_LLM_BACKEND,
-    CHAT_LLM_ENABLED,
-    CHAT_LLM_MODEL_NAME,
-    CHAT_LLM_TIMEOUT_SECONDS,
-    LLM_MAX_CONTEXT_TOKENS,
-)
+from ..config import get_settings
 from ..db.models import Document, DocumentChunk, DocumentPage
+from ..text.normalize import normalize_search_text
 from .llm_provider import DisabledLLMProvider, LLMProvider, OllamaLLMProvider
 from .qa_service import QAService
 from .search_service import SearchService
@@ -846,7 +840,7 @@ class DocumentIntelligenceService:
             "qa": "Soruyu dogrudan cevapla; gerekli degilse raporun tamamini ozetleme.",
         }
         instruction = intent_instructions.get(intent, intent_instructions["qa"])
-        budget = max(7000, LLM_MAX_CONTEXT_TOKENS * 3)
+        budget = max(7000, get_settings().LLM_MAX_CONTEXT_TOKENS * 3)
         used = 0
         context_blocks = []
         for index, source in enumerate(sources[:8], start=1):
@@ -1123,21 +1117,7 @@ Cevap:"""
 
     @staticmethod
     def _normalize_text(text: str) -> str:
-        translated = str(text or "").casefold().translate(
-            str.maketrans(
-                {
-                    "\u0131": "i",
-                    "\u011f": "g",
-                    "\u00fc": "u",
-                    "\u015f": "s",
-                    "\u00f6": "o",
-                    "\u00e7": "c",
-                    "\u0130": "i",
-                }
-            )
-        )
-        normalized = unicodedata.normalize("NFKD", translated)
-        return "".join(char for char in normalized if not unicodedata.combining(char))
+        return normalize_search_text(text)
 
     @classmethod
     def _compact_text(cls, text: str) -> str:
@@ -1146,16 +1126,19 @@ Cevap:"""
 
 @lru_cache(maxsize=1)
 def _build_document_chat_provider() -> LLMProvider:
-    if not CHAT_LLM_ENABLED or CHAT_LLM_BACKEND in {"", "disabled", "none"}:
+    settings = get_settings()
+    if not settings.CHAT_LLM_ENABLED or settings.CHAT_LLM_BACKEND in {"", "disabled", "none"}:
         return DisabledLLMProvider()
-    if CHAT_LLM_BACKEND == "ollama":
+    if settings.CHAT_LLM_BACKEND == "ollama":
         try:
             return OllamaLLMProvider(
-                model_name=CHAT_LLM_MODEL_NAME,
-                timeout_seconds=CHAT_LLM_TIMEOUT_SECONDS,
+                model_name=settings.CHAT_LLM_MODEL_NAME,
+                timeout_seconds=settings.CHAT_LLM_TIMEOUT_SECONDS,
             )
         except Exception:
             logger.exception("Document intelligence Ollama provider could not load.")
             return DisabledLLMProvider()
-    logger.warning("Unsupported CHAT_LLM_BACKEND=%s; document intelligence LLM disabled.", CHAT_LLM_BACKEND)
+    logger.warning(
+        "Unsupported CHAT_LLM_BACKEND=%s; document intelligence LLM disabled.", settings.CHAT_LLM_BACKEND
+    )
     return DisabledLLMProvider()

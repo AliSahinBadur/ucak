@@ -7,6 +7,7 @@ import re
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..db.models import CatalogDocumentLink, ChunkEmbedding, Document, DocumentChunk, ReportCatalogEntry
 from .catalog_service import CatalogService
 from .ingest_service import IngestService, SUPPORTED_EXTENSIONS
@@ -14,11 +15,7 @@ from .ingest_service import IngestService, SUPPORTED_EXTENSIONS
 
 class CatalogIngestService:
     IGNORED_DISCIPLINES = {"", "ANALYSIS TYPE"}
-    DEFAULT_SEARCH_ROOTS = (
-        Path(r"\\isufile02\argevalidasyon$\RAPORLAR"),
-        Path("V:/RAPORLAR"),
-        Path("V:/"),
-    )
+    DEFAULT_SEARCH_ROOTS = tuple(Path(root) for root in get_settings().CATALOG_SEARCH_ROOTS)
     MAX_DIRECTORY_FILES = 250
     MAX_DIRECTORY_DEPTH = 8
     MAX_DIRECTORY_VISITS = 600

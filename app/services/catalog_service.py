@@ -7,13 +7,13 @@ import hashlib
 from io import BytesIO, StringIO
 from pathlib import Path
 import re
-import unicodedata
 from urllib.parse import unquote, urlparse
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..db.models import CatalogDocumentLink, Document, ReportCatalogEntry
+from ..text.normalize import normalize_search_text
 
 
 @dataclass(frozen=True)
@@ -816,23 +816,4 @@ class CatalogService:
 
     @staticmethod
     def _normalize_text(text: str) -> str:
-        lowered = text.casefold().translate(
-            str.maketrans(
-                {
-                    "\u0131": "i",
-                    "\u011f": "g",
-                    "\u00fc": "u",
-                    "\u015f": "s",
-                    "\u00f6": "o",
-                    "\u00e7": "c",
-                    "ı": "i",
-                    "ğ": "g",
-                    "ü": "u",
-                    "ş": "s",
-                    "ö": "o",
-                    "ç": "c",
-                }
-            )
-        )
-        normalized = unicodedata.normalize("NFKD", lowered)
-        return "".join(char for char in normalized if not unicodedata.combining(char))
+        return normalize_search_text(text)

@@ -2,7 +2,7 @@
 
 Big_Agent is a local-first report assistant for vehicle test and analysis documents. It ingests PDF, DOCX, and PPTX files, stores searchable chunks, links catalog records to report files, and answers questions with source passages.
 
-Current version: `v0.50.96`
+Current version: see `app/version.py` (`APP_VERSION`)
 
 ## What Works
 
@@ -37,13 +37,13 @@ This keeps company documents, local databases, and model weights out of the repo
 Install Python dependencies:
 
 ```powershell
-& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' -m pip install -r requirements.txt
+& '.venv\Scripts\python.exe' -m pip install -r requirements.txt
 ```
 
 Optional embedding dependency:
 
 ```powershell
-& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' -m pip install -r requirements-embeddings.txt
+& '.venv\Scripts\python.exe' -m pip install -r requirements-embeddings.txt
 ```
 
 ## Run
@@ -51,8 +51,8 @@ Optional embedding dependency:
 From the project folder:
 
 ```powershell
-cd C:\Users\ISU34977\PyCharmMiscProject\Big_Agent
-& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+cd path\to\ucak
+& '.venv\Scripts\python.exe' -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 Open:
@@ -75,7 +75,7 @@ For sharing the app with two test teams on the same local network:
 $env:APP_AUTH_ENABLED = "true"
 $env:APP_USERS = "analiz:Sifre1;test:Sifre2"
 $env:APP_SESSION_SECRET = "change-this-to-a-long-random-local-secret"
-& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+& '.venv\Scripts\python.exe' -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 Share the IPv4 address from `ipconfig`:
@@ -88,22 +88,22 @@ For isolated team tests, run separate app instances with separate data folders:
 
 ```powershell
 # Analiz
-$env:BIG_AGENT_DATA_DIR = "C:\Users\ISU34977\PyCharmMiscProject\Big_Agent\data_analiz"
+$env:BIG_AGENT_DATA_DIR = ".\data_analiz"
 $env:APP_AUTH_ENABLED = "true"
 $env:APP_USERS = "analiz:Sifre1"
 $env:APP_SESSION_SECRET = "change-this-to-a-long-random-local-secret"
 $env:APP_AUTH_COOKIE_NAME = "big_agent_analiz"
-& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' -m uvicorn app.main:app --host 0.0.0.0 --port 8001
+& '.venv\Scripts\python.exe' -m uvicorn app.main:app --host 0.0.0.0 --port 8001
 ```
 
 ```powershell
 # Test
-$env:BIG_AGENT_DATA_DIR = "C:\Users\ISU34977\PyCharmMiscProject\Big_Agent\data_test"
+$env:BIG_AGENT_DATA_DIR = ".\data_test"
 $env:APP_AUTH_ENABLED = "true"
 $env:APP_USERS = "test:Sifre2"
 $env:APP_SESSION_SECRET = "change-this-to-another-long-random-local-secret"
 $env:APP_AUTH_COOKIE_NAME = "big_agent_test"
-& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' -m uvicorn app.main:app --host 0.0.0.0 --port 8002
+& '.venv\Scripts\python.exe' -m uvicorn app.main:app --host 0.0.0.0 --port 8002
 ```
 
 Share separate links:
@@ -128,7 +128,7 @@ Useful environment variables:
 
 ```powershell
 $env:EMBEDDING_BACKEND = "sentence-transformers"
-$env:EMBEDDING_MODEL_PATH = "C:\Users\ISU34977\PyCharmMiscProject\Big_Agent\models\Qwen3-Embedding-4B"
+$env:EMBEDDING_MODEL_PATH = ".\models\Qwen3-Embedding-4B"
 $env:EMBEDDING_LOCAL_FILES_ONLY = "true"
 $env:EMBEDDING_DEVICE = "cpu"
 ```
@@ -171,13 +171,13 @@ Report Q&A does not require the LLM. RAG and source-grounded answers continue to
 Smoke test the running app:
 
 ```powershell
-& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' scripts\run_smoke_checks.py
+& '.venv\Scripts\python.exe' scripts\run_smoke_checks.py
 ```
 
 Run the QA/search regression set:
 
 ```powershell
-& 'C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe' scripts\run_qa_checks.py
+& '.venv\Scripts\python.exe' scripts\run_qa_checks.py
 ```
 
 Expected current regression result:

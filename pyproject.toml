@@ -6,6 +6,7 @@ dependencies = [
     "fastapi>=0.116.0",
     "httpx>=0.28.0",
     "openpyxl>=3.1.0",
+    "pydantic-settings>=2.0.0",
     "pypdf>=5.0.0",
     "python-docx>=1.1.0",
     "python-multipart>=0.0.9",
@@ -17,3 +18,7 @@ dependencies = [
 [dependency-groups]
 embeddings = ["sentence-transformers>=4.1.0"]
 skill = ["pywin32>=306; sys_platform == 'win32'"]
+dev = ["pytest>=8.0.0", "pytest-cov>=5.0.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

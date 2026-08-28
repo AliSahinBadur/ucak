@@ -8,13 +8,7 @@ from typing import Protocol, TypeVar
 import httpx
 from pydantic import BaseModel, ValidationError
 
-from ..config import (
-    LLM_BACKEND,
-    LLM_ENABLED,
-    LLM_MODEL_NAME,
-    LLM_TIMEOUT_SECONDS,
-    OLLAMA_HOST,
-)
+from ..config import get_settings
 
 
 logger = logging.getLogger(__name__)
@@ -66,6 +60,7 @@ class OllamaLLMProvider:
         self.model_name = model_name
         self.timeout_seconds = timeout_seconds
         self.provider_name = f"ollama:{model_name}"
+        self.host = get_settings().OLLAMA_HOST
 
     def is_available(self) -> bool:
         return True
@@ -82,7 +77,7 @@ class OllamaLLMProvider:
             options["num_predict"] = max_tokens
         with httpx.Client(timeout=self.timeout_seconds) as client:
             response = client.post(
-                f"{OLLAMA_HOST}/api/chat",
+                f"{self.host}/api/chat",
                 json={
                     "model": self.model_name,
                     "messages": [{"role": "user", "content": prompt}],
@@ -116,15 +111,16 @@ def _extract_json_object(value: str) -> str:
 
 @lru_cache(maxsize=1)
 def build_llm_provider() -> LLMProvider:
-    if not LLM_ENABLED or LLM_BACKEND in {"", "disabled", "none"}:
+    settings = get_settings()
+    if not settings.LLM_ENABLED or settings.LLM_BACKEND in {"", "disabled", "none"}:
         logger.info("LLM provider disabled.")
         return DisabledLLMProvider()
 
-    if LLM_BACKEND == "ollama":
+    if settings.LLM_BACKEND == "ollama":
         try:
             provider = OllamaLLMProvider(
-                model_name=LLM_MODEL_NAME,
-                timeout_seconds=LLM_TIMEOUT_SECONDS,
+                model_name=settings.LLM_MODEL_NAME,
+                timeout_seconds=settings.LLM_TIMEOUT_SECONDS,
             )
             logger.info("Loaded LLM provider %s", provider.provider_name)
             return provider
@@ -132,5 +128,5 @@ def build_llm_provider() -> LLMProvider:
             logger.exception("LLM provider could not load; continuing with disabled LLM.")
             return DisabledLLMProvider()
 
-    logger.warning("Unsupported LLM_BACKEND=%s; continuing with disabled LLM.", LLM_BACKEND)
+    logger.warning("Unsupported LLM_BACKEND=%s; continuing with disabled LLM.", settings.LLM_BACKEND)
     return DisabledLLMProvider()

@@ -9,25 +9,19 @@ from pathlib import Path
 import re
 import secrets
 import time
-import unicodedata
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..config import (
-    CHAT_LLM_BACKEND,
-    CHAT_LLM_ENABLED,
-    CHAT_LLM_MODEL_NAME,
-    CHAT_LLM_TIMEOUT_SECONDS,
-    DATA_DIR,
-)
+from ..config import get_settings
 from ..db.models import ChunkEmbedding, Document, DocumentChunk
 from ..parsers.docx_parser import parse_docx
 from ..parsers.pdf_parser import parse_pdf
 from ..parsers.pptx_parser import parse_pptx
 from ..processing.chunker import chunk_sections
 from ..processing.text_cleaner import normalize_sections
+from ..text.normalize import normalize_search_text
 from .embedding_service import EmbeddingService, build_embedding_service
 from .llm_provider import DisabledLLMProvider, LLMProvider, OllamaLLMProvider
 from .pdf_highlight_service import PdfHighlightRequest, PdfHighlightService
@@ -180,8 +174,9 @@ class ReportComparisonService:
         self.session = session
         self.embedding_service = embedding_service or build_embedding_service()
         self.llm_provider = llm_provider or _build_report_comparison_provider()
-        self.temp_dir = Path(temp_dir) if temp_dir else DATA_DIR / "comparison_temp"
-        self.cache_dir = Path(cache_dir) if cache_dir else DATA_DIR / "comparison_cache"
+        data_dir = get_settings().DATA_DIR
+        self.temp_dir = Path(temp_dir) if temp_dir else data_dir / "comparison_temp"
+        self.cache_dir = Path(cache_dir) if cache_dir else data_dir / "comparison_cache"
         self.pdf_preview_dir = self.cache_dir / "pdf"
         self.temp_dir.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -1001,21 +996,7 @@ Yalnizca su JSON seklinde cevap ver:
 
     @classmethod
     def _normalize_text(cls, text: str) -> str:
-        translated = str(text or "").casefold().translate(
-            str.maketrans(
-                {
-                    "\u0131": "i",
-                    "\u011f": "g",
-                    "\u00fc": "u",
-                    "\u015f": "s",
-                    "\u00f6": "o",
-                    "\u00e7": "c",
-                    "\u0130": "i",
-                }
-            )
-        )
-        normalized = unicodedata.normalize("NFKD", translated)
-        return "".join(char for char in normalized if not unicodedata.combining(char))
+        return normalize_search_text(text)
 
     @classmethod
     def _clean_chunk_text(cls, text: str) -> str:
@@ -1231,7 +1212,7 @@ def resolve_comparison_pdf_path(comparison_id: str, side: str) -> Path:
         raise ValueError("Karsilastirma kimligi gecersiz.")
     if side not in {"left", "right"}:
         raise ValueError("PDF tarafi gecersiz.")
-    preview_dir = DATA_DIR / "comparison_cache" / "pdf"
+    preview_dir = get_settings().DATA_DIR / "comparison_cache" / "pdf"
     target = preview_dir / f"{comparison_id}-{side}.pdf"
     if not target.exists() or target.parent.resolve() != preview_dir.resolve():
         raise ValueError("Isaretli PDF bulunamadi.")
@@ -1240,16 +1221,19 @@ def resolve_comparison_pdf_path(comparison_id: str, side: str) -> Path:
 
 @lru_cache(maxsize=1)
 def _build_report_comparison_provider() -> LLMProvider:
-    if not CHAT_LLM_ENABLED or CHAT_LLM_BACKEND in {"", "disabled", "none"}:
+    settings = get_settings()
+    if not settings.CHAT_LLM_ENABLED or settings.CHAT_LLM_BACKEND in {"", "disabled", "none"}:
         return DisabledLLMProvider()
-    if CHAT_LLM_BACKEND == "ollama":
+    if settings.CHAT_LLM_BACKEND == "ollama":
         try:
             return OllamaLLMProvider(
-                model_name=CHAT_LLM_MODEL_NAME,
-                timeout_seconds=CHAT_LLM_TIMEOUT_SECONDS,
+                model_name=settings.CHAT_LLM_MODEL_NAME,
+                timeout_seconds=settings.CHAT_LLM_TIMEOUT_SECONDS,
             )
         except Exception:
             logger.exception("Report comparison Ollama provider could not load.")
             return DisabledLLMProvider()
-    logger.warning("Unsupported CHAT_LLM_BACKEND=%s; report comparison LLM disabled.", CHAT_LLM_BACKEND)
+    logger.warning(
+        "Unsupported CHAT_LLM_BACKEND=%s; report comparison LLM disabled.", settings.CHAT_LLM_BACKEND
+    )
     return DisabledLLMProvider()

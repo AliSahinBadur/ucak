@@ -5,7 +5,6 @@ import json
 import os
 import sys
 import time
-import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +22,7 @@ from sqlalchemy import select
 from app.db.models import Document
 from app.db.session import SessionLocal
 from app.services.document_intelligence_service import DocumentIntelligenceService
+from app.text.normalize import normalize_search_text
 
 
 DEFAULT_CASES_PATH = ROOT_DIR / "test_cases" / "document_intelligence_cases.json"
@@ -41,21 +41,7 @@ class ControlledProvider:
 
 
 def normalize(value: str) -> str:
-    translated = value.casefold().translate(
-        str.maketrans(
-            {
-                "\u0131": "i",
-                "\u011f": "g",
-                "\u00fc": "u",
-                "\u015f": "s",
-                "\u00f6": "o",
-                "\u00e7": "c",
-                "\u0130": "i",
-            }
-        )
-    )
-    normalized = unicodedata.normalize("NFKD", translated)
-    return "".join(char for char in normalized if not unicodedata.combining(char))
+    return normalize_search_text(value)
 
 
 def safe_print(value: str = "") -> None:

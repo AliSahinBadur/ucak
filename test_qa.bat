@@ -10,9 +10,9 @@ echo Big_Agent QA/Search Regresyon Testi
 echo ========================================
 echo.
 
-REM Python yolu
-set PYTHON_PATH=C:\Users\ISU34977\PyCharmMiscProject\.venv\Scripts\python.exe
-set PROJECT_PATH=C:\Users\ISU34977\PyCharmMiscProject\Big_Agent
+REM Python yolu (proje kokune gore, bu script'in bulundugu klasor)
+set PROJECT_PATH=%~dp0
+set PYTHON_PATH=%PROJECT_PATH%.venv\Scripts\python.exe
 
 REM Python'un var olup olmadığını kontrol et
 if not exist "!PYTHON_PATH!" (

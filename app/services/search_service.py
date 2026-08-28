@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import unicodedata
 import re
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from ..db.models import CatalogDocumentLink, ChunkEmbedding, Document, DocumentChunk, ReportCatalogEntry
+from ..text.normalize import compact_search_text, normalize_search_text, search_words, tokenize
 from .embedding_service import EmbeddingService, build_embedding_service
 
 
@@ -497,8 +497,7 @@ class SearchService:
 
     @staticmethod
     def _tokenize(text: str) -> list[str]:
-        normalized = unicodedata.normalize("NFC", text).casefold()
-        return re.findall(r"\w+", normalized, re.UNICODE)
+        return tokenize(text)
 
     def _catalog_text_by_document(self, document_ids) -> dict[int, str]:
         normalized_ids = [int(value) for value in document_ids if int(value or 0) > 0]
@@ -782,36 +781,15 @@ class SearchService:
 
     @staticmethod
     def _normalize_search_text(text: str) -> str:
-        translated = text.casefold().translate(
-            str.maketrans(
-                {
-                    "\u0131": "i",
-                    "\u011f": "g",
-                    "\u00fc": "u",
-                    "\u015f": "s",
-                    "\u00f6": "o",
-                    "\u00e7": "c",
-                    "\u0130": "i",
-                    "ı": "i",
-                    "ğ": "g",
-                    "ü": "u",
-                    "ş": "s",
-                    "ö": "o",
-                    "ç": "c",
-                    "İ": "i",
-                }
-            )
-        )
-        normalized = unicodedata.normalize("NFKD", translated)
-        return "".join(char for char in normalized if not unicodedata.combining(char))
+        return normalize_search_text(text)
 
     @classmethod
     def _search_words(cls, text: str) -> list[str]:
-        return re.findall(r"\w+", text)
+        return search_words(text)
 
     @staticmethod
     def _compact_search_text(text: str) -> str:
-        return re.sub(r"[^a-z0-9]+", "", text)
+        return compact_search_text(text)
 
     @classmethod
     def _query_report_key(cls, query: str) -> str:

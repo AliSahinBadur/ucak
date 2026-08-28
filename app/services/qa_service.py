@@ -6,6 +6,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from ..db.models import Document, DocumentChunk
+from ..text.normalize import normalize_search_text
 from .answer_generation_service import AnswerGenerationService
 from .search_service import SearchService
 
@@ -979,16 +980,7 @@ class QAService:
 
     @staticmethod
     def _normalize_text(text: str) -> str:
-        lowered = text.casefold()
-        translation = str.maketrans({
-            "ı": "i",
-            "ğ": "g",
-            "ü": "u",
-            "ş": "s",
-            "ö": "o",
-            "ç": "c",
-        })
-        return lowered.translate(translation)
+        return normalize_search_text(text)
 
     @staticmethod
     def _clean_list_item(item: str) -> str:

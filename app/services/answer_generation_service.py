@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-from ..config import LLM_ANSWER_ENABLED, LLM_MAX_CONTEXT_TOKENS
+from ..config import get_settings
 from .llm_provider import LLMProvider, build_llm_provider
 
 
 class AnswerGenerationService:
     def __init__(self, llm_provider: LLMProvider | None = None) -> None:
         self.llm_provider = llm_provider or build_llm_provider()
+        self.settings = get_settings()
 
     def is_available(self) -> bool:
-        return LLM_ANSWER_ENABLED and self.llm_provider.is_available()
+        return self.settings.LLM_ANSWER_ENABLED and self.llm_provider.is_available()
 
     def generate_answer(self, question: str, sources: list[dict]) -> str | None:
         if not self.is_available() or not sources:
@@ -21,10 +22,9 @@ class AnswerGenerationService:
             return None
         return answer
 
-    @staticmethod
-    def _prompt(question: str, sources: list[dict]) -> str:
+    def _prompt(self, question: str, sources: list[dict]) -> str:
         contexts = []
-        budget = max(1800, LLM_MAX_CONTEXT_TOKENS * 3)
+        budget = max(1800, self.settings.LLM_MAX_CONTEXT_TOKENS * 3)
         used = 0
         for index, source in enumerate(sources[:3], start=1):
             text = " ".join(str(source.get("chunk_text", "")).split())

@@ -3,13 +3,14 @@ from __future__ import annotations
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from ..config import DATA_DIR, DATABASE_URL
+from ..config import get_settings
 from .models import Base
 
 
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+settings = get_settings()
+settings.DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-engine = create_engine(DATABASE_URL, future=True)
+engine = create_engine(settings.DATABASE_URL, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 

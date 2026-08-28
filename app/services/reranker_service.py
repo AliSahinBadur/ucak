@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from ..config import RERANKER_BACKEND, RERANKER_ENABLED
+from ..config import get_settings
 
 
 class Reranker(Protocol):
@@ -36,8 +36,9 @@ class ScoreReranker:
 
 
 def build_reranker() -> Reranker:
-    if not RERANKER_ENABLED or RERANKER_BACKEND in {"", "disabled", "none"}:
+    settings = get_settings()
+    if not settings.RERANKER_ENABLED or settings.RERANKER_BACKEND in {"", "disabled", "none"}:
         return NoOpReranker()
-    if RERANKER_BACKEND == "score":
+    if settings.RERANKER_BACKEND == "score":
         return ScoreReranker()
     return NoOpReranker()

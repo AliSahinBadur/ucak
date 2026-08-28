@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 import re
-import unicodedata
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db.models import ChunkEmbedding, Document, DocumentChunk, DuplicateReportPair
+from ..text.normalize import normalize_search_text
 from .embedding_service import EmbeddingService, build_embedding_service
 
 
@@ -218,22 +218,7 @@ class DuplicateDetectionService:
 
     @staticmethod
     def _normalize_key(value: str) -> str:
-        translated = value.casefold().translate(
-            str.maketrans(
-                {
-                    "\u0131": "i",
-                    "\u011f": "g",
-                    "\u00fc": "u",
-                    "\u015f": "s",
-                    "\u00f6": "o",
-                    "\u00e7": "c",
-                    "\u0130": "i",
-                }
-            )
-        )
-        normalized = unicodedata.normalize("NFKD", translated)
-        stripped = "".join(char for char in normalized if not unicodedata.combining(char))
-        return " ".join(re.findall(r"[a-z0-9]+", stripped))
+        return " ".join(re.findall(r"[a-z0-9]+", normalize_search_text(value)))
 
     @staticmethod
     def _reason(title_score: float, embedding_score: float) -> str:

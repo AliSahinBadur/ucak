@@ -4,7 +4,6 @@ import argparse
 import json
 import sys
 import time
-import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -15,27 +14,14 @@ if str(ROOT_DIR) not in sys.path:
 from app.db.session import SessionLocal
 from app.services.qa_service import QAService
 from app.services.search_service import SearchService
+from app.text.normalize import normalize_search_text
 
 
 DEFAULT_CASES_PATH = ROOT_DIR / "test_cases" / "qa_cases.json"
 
 
 def normalize_text(value: str) -> str:
-    translated = value.casefold().translate(
-        str.maketrans(
-            {
-                "ı": "i",
-                "ğ": "g",
-                "ü": "u",
-                "ş": "s",
-                "ö": "o",
-                "ç": "c",
-                "İ": "i",
-            }
-        )
-    )
-    normalized = unicodedata.normalize("NFKD", translated)
-    return "".join(char for char in normalized if not unicodedata.combining(char))
+    return normalize_search_text(value)
 
 
 def contains_all(text: str, expected_values: list[str]) -> list[str]:
