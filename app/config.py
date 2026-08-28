@@ -6,6 +6,8 @@ from pathlib import Path
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .branding import AppBrand, get_app_brand, normalize_app_variant
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -51,6 +53,13 @@ class Settings(BaseSettings):
     @classmethod
     def _expand_data_dir(cls, value: Path) -> Path:
         return value.expanduser()
+
+    APP_VARIANT: str = "big_agent"
+
+    @field_validator("APP_VARIANT", mode="after")
+    @classmethod
+    def _normalize_app_variant(cls, value: str) -> str:
+        return normalize_app_variant(value)
 
     APP_AUTH_ENABLED: bool = False
     APP_USERS_RAW: str = Field(default="", validation_alias="APP_USERS")
@@ -166,6 +175,10 @@ class Settings(BaseSettings):
     @property
     def CATALOG_SEARCH_ROOTS(self) -> tuple[str, ...]:
         return tuple(root for root in (part.strip() for part in self.CATALOG_SEARCH_ROOTS_RAW.split(";")) if root)
+
+    @property
+    def APP_BRAND(self) -> AppBrand:
+        return get_app_brand(self.APP_VARIANT)
 
 
 @lru_cache

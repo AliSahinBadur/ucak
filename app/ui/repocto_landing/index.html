@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="RepOcto Mercan Lab, mühendislik dokümanlarını kaynaklı yapay zekâ ve kurumsal hafızayla tek çalışma alanında buluşturur.">
+  <title>RepOcto | Mercan Lab</title>
+  <base href="/repocto-landing/">
+  <link rel="icon" type="image/svg+xml" href="assets/repocto-favicon.svg?v=2">
+  <link rel="stylesheet" href="repocto.css?v=repocto-video-9">
+  <link rel="stylesheet" href="repocto-legacy-v7.css?v=17">
+  <link rel="stylesheet" href="repocto-legacy-memory.css?v=2">
+  <script src="repocto.js?v=octopus-arms-4" defer></script>
+  <script src="repocto-legacy-memory.js?v=4" defer></script>
+</head>
+<body class="theme-coral">
+  <a class="skip-link" href="#ana-icerik">İçeriğe geç</a>
+
+  <header class="site-nav">
+    <a class="brand-lockup" href="/" aria-label="RepOcto Mercan Lab ana sayfa">
+      <span class="brand-symbol" aria-hidden="true"></span>
+      <span class="brand-copy"><strong>RepOcto</strong><small>Document Intelligence</small></span>
+    </a>
+    <nav class="nav-links" aria-label="Ana navigasyon">
+      <a href="/#yetenekler">Yetenekler</a>
+      <a href="#workspace">Ürün</a>
+      <a href="#memory">Kurumsal Hafıza</a>
+      <a href="#security">Güvenlik</a>
+      <a href="#iletisim">İletişim</a>
+    </nav>
+    <div class="nav-actions">
+      <a class="theme-link" href="#workspace">Nasıl çalışır?</a>
+      <a class="button button-primary" href="/app">RepOcto'yu Aç</a>
+      <button class="menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-label="Menüyü aç">≡</button>
+    </div>
+  </header>
+
+  <main id="ana-icerik">
+    <section class="hero" data-tentacle-stage data-origin-x="0.72" data-origin-y="0.52">
+      <video class="hero-image hero-video" autoplay muted loop playsinline preload="auto" poster="assets/repocto-hero-coral-v3.png" aria-label="Aydınlık deniz altı mühendislik laboratuvarında teknik dokümanları inceleyen RepOcto animasyonu">
+        <source src="assets/repocto-hero-loop-v2.mp4?v=1" type="video/mp4">
+      </video>
+      <div class="hero-content">
+        <div class="hero-copy">
+          <p class="eyebrow">Yerel mühendislik zekâsı</p>
+          <h1>RepOcto</h1>
+          <p class="hero-lead">Mühendislik bilgisini kurumsal hafızaya dönüştürür.</p>
+          <p class="hero-description">Dokümanları bulur, karşılaştırır, kaynaklarıyla yanıtlar ve ekip bilgisini kaybolmadan yeniden kullanılabilir hale getirir.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#workspace">RepOcto'yu keşfet</a>
+            <a class="button button-secondary" href="#workspace">Nasıl çalışır?</a>
+          </div>
+          <div class="hero-stats" aria-label="RepOcto temel özellikleri">
+            <div><strong data-count="8">0</strong><span>Uzman kol</span></div>
+            <div><strong data-count="1">0</strong><span>Ortak hafıza</span></div>
+            <div><strong data-count="100" data-suffix="%">0</strong><span>Yerel çalışma</span></div>
+          </div>
+        </div>
+      </div>
+      <span class="scroll-cue">Derine in</span>
+      <div class="hero-skill-dock" aria-label="Öne çıkan yetenekler">
+        <button class="hero-skill active" type="button" data-skill="writing">Doküman hazırlama</button>
+        <button class="hero-skill" type="button" data-skill="summary">Teknik özet</button>
+        <button class="hero-skill" type="button" data-skill="compare">Karşılaştırma</button>
+        <button class="hero-skill" type="button" data-skill="citation">Kaynak izleme</button>
+      </div>
+    </section>
+
+    <section class="section capability-section" id="yetenekler">
+      <div class="section-inner">
+        <div class="section-heading reveal">
+          <h2>RepOcto'nun<br>çalışma masası.</h2>
+          <p>Sekiz kolun her biri farklı bir görevi üstlenir. Bir yeteneğe dokunarak görevini inceleyin.</p>
+        </div>
+        <div class="capability-stage" data-tentacle-stage data-active-skill="writing">
+          <canvas class="tentacle-canvas" aria-hidden="true"></canvas>
+          <div class="octo-core" aria-hidden="true"><span>Mercan Lab</span></div>
+          <button class="skill-node" type="button" data-skill="search"><span class="skill-node-icon">A</span><span><strong>Akıllı Arama</strong><small>Doğru dokümanı bulur</small></span></button>
+          <button class="skill-node active" type="button" data-skill="writing"><span class="skill-node-icon">Y</span><span><strong>Doküman Hazırlama</strong><small>Taslağı oluşturur</small></span></button>
+          <button class="skill-node" type="button" data-skill="summary"><span class="skill-node-icon">Ö</span><span><strong>Teknik Özet</strong><small>Bulguyu sadeleştirir</small></span></button>
+          <button class="skill-node" type="button" data-skill="memory"><span class="skill-node-icon">H</span><span><strong>Kurumsal Hafıza</strong><small>Deneyimi biriktirir</small></span></button>
+          <button class="skill-node" type="button" data-skill="citation"><span class="skill-node-icon">K</span><span><strong>Kaynak İzleme</strong><small>Kanıtı açık tutar</small></span></button>
+          <button class="skill-node" type="button" data-skill="compare"><span class="skill-node-icon">F</span><span><strong>Karşılaştırma</strong><small>Farkı işaretler</small></span></button>
+          <button class="skill-node" type="button" data-skill="category"><span class="skill-node-icon">S</span><span><strong>Sınıflandırma</strong><small>Bilgiyi düzenler</small></span></button>
+          <button class="skill-node" type="button" data-skill="qa"><span class="skill-node-icon">?</span><span><strong>Soru &amp; Cevap</strong><small>Kanıtla yanıtlar</small></span></button>
+          <aside class="skill-detail" data-skill-detail aria-live="polite"><strong>Doküman Hazırlama</strong><p>Kurumsal şablonları ve geçmiş içerikleri kullanarak izlenebilir ilk taslaklar üretir.</p></aside>
+        </div>
+      </div>
+    </section>
+
+    <div class="legacy-raporhub-bottom">
+      <section class="trust-strip" aria-label="RepOcto temel özellikleri">
+        <div>PDF · DOCX · PPTX</div>
+        <div>Kaynaklı RAG</div>
+        <div>Çoklu doküman karşılaştırma</div>
+        <div>Yerel model desteği</div>
+      </section>
+
+      <section class="proof-band dark-band tentacle-zone">
+        <svg class="edge-tentacle edge-tentacle-left edge-tentacle-a" viewBox="0 0 220 430" aria-hidden="true"><use href="#repocto-tentacle" width="220" height="430"></use></svg>
+        <div class="section-shell">
+          <div class="section-heading reveal">
+            <p class="eyebrow">DAĞINIK BİLGİDEN TEK HAFIZAYA</p>
+            <h2>Bir dokümanı bulmaktan, geçmiş kararı yeniden kullanmaya kadar tek çalışma alanı.</h2>
+          </div>
+          <div class="proof-layout">
+            <figure class="proof-visual reveal">
+              <video class="proof-video" autoplay muted loop playsinline preload="metadata" poster="assets/knowledge-system.webp" aria-label="Dokümanların yerel işleme ve kaynaklı cevap akışında birleşmesini gösteren hareketli teknik görsel">
+                <source src="assets/raporhub-knowledge-loop.mp4" type="video/mp4">
+                <img src="assets/knowledge-system.webp" alt="Dokümanların yerel işleme ve kaynaklı cevap akışında birleşmesini gösteren teknik illüstrasyon" width="1536" height="1024">
+              </video>
+              <figcaption>Belge → yerel işleme → retrieval → kaynaklı çıktı</figcaption>
+            </figure>
+            <div class="proof-copy reveal">
+              <p class="section-kicker">Kurumsal doküman zekâsı</p>
+              <h3>Dokümanlar yalnızca arşivlenmez; birbirine bağlanır.</h3>
+              <p>Dosya yolu, araç, çalışma, kişi, yıl ve teknik konu aynı bilgi katmanında birleşir. Bir ekibin ürettiği sonuç, yıllar sonra başka bir ekip için bulunabilir ve açıklanabilir kalır.</p>
+              <ul class="check-list">
+                <li>Belge kodu, başlık ve içerikten otomatik metadata</li>
+                <li>Keyword, embedding ve metadata birlikte değerlendirilir</li>
+                <li>Her yanıt ilgili doküman pasajlarıyla doğrulanır</li>
+              </ul>
+              <a class="text-link" href="#memory-explorer">Kurumsal hafıza görünümünü aç <span aria-hidden="true">→</span></a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="capabilities light-band" id="capabilities">
+        <div class="section-shell">
+          <div class="split-heading reveal">
+            <div>
+              <p class="eyebrow dark-eyebrow">YAPAY ZEKA</p>
+              <h2>Okur. Karşılaştırır. Hatırlar.</h2>
+            </div>
+            <p>RepOcto, teknik belgeler üzerinde en çok zaman alan okuma, arama, kıyaslama ve ilk taslak hazırlama işlerini tek bir kaynaklı akışta toplar.</p>
+          </div>
+
+          <div class="capability-grid">
+            <article class="capability-card reveal">
+              <span class="feature-index">01</span>
+              <h3>Doküman Asistanı</h3>
+              <p>Doğal dilde soruyu anlar; yanıtı ilgili doküman, sayfa ve pasajlarla birlikte üretir.</p>
+              <div class="mini-diagram chat-diagram" aria-label="Kaynaklı yanıt örneği">
+                <span class="query-line">Tutma kolunun en dayanıklı tasarımı hangisi?</span>
+                <span class="answer-line">Tasarım B, üç yük senaryosunda en düşük deformasyonu gösteriyor.</span>
+                <span class="source-line">2024-CITIBUS-DUR-04 · Sayfa 7</span>
+              </div>
+            </article>
+
+            <article class="capability-card reveal">
+              <span class="feature-index">02</span>
+              <h3>Karşılaştırma</h3>
+              <p>İki dokümandaki benzerlikleri ve farklılıkları anlamsal pasaj eşleştirmesiyle görünür kılar.</p>
+              <div class="mini-diagram compare-diagram" aria-label="İki doküman karşılaştırma örneği">
+                <div><strong>Doküman A</strong><span>Yük: 2.4 kN</span><span class="match">FOS: 2.1</span></div>
+                <div class="compare-link" aria-hidden="true">↔</div>
+                <div><strong>Doküman B</strong><span>Yük: 2.4 kN</span><span class="difference">FOS: 1.7</span></div>
+              </div>
+            </article>
+
+            <article class="capability-card reveal">
+              <span class="feature-index">03</span>
+              <h3>Kurumsal Hafıza</h3>
+              <p>Bir kök klasörü tarar; belgeleri çalışma, kişi, konu ve yıla göre otomatik dallandırır.</p>
+              <div class="mini-diagram tree-diagram" aria-label="Otomatik kategori ağacı örneği">
+                <div class="tree-root">DOKÜMANLAR</div>
+                <div class="tree-row"><span>BIG-E</span><span>CITIBUS</span><span>CITIPORT</span></div>
+                <div class="tree-row tree-leaves"><span>Dayanım</span><span>Konfor</span><span>NVH</span></div>
+              </div>
+            </article>
+
+            <article class="capability-card reveal">
+              <span class="feature-index">04</span>
+              <h3>Doküman Hazırlama</h3>
+              <p>Dağınık teknik notları anlamlı başlıklara ayırır ve şirket şablonunda düzenli bir doküman taslağına dönüştürür.</p>
+              <div class="mini-diagram report-flow-diagram" aria-label="Dağınık teknik notların düzenli A4 dokümana dönüştürülmesi">
+                <div class="raw-note-stack" aria-label="Dağınık teknik notlar">
+                  <span>Braket revizyon B</span>
+                  <span>Yük: 2,4 kN</span>
+                  <span>Maks. gerilme 168 MPa</span>
+                  <span>FOS 2,1 · uygun</span>
+                  <span>Görselleri ekle</span>
+                </div>
+                <div class="report-flow-arrow" aria-hidden="true"><span>→</span><small>DÜZENLE</small></div>
+                <div class="report-page-preview" aria-label="Düzenlenmiş A4 doküman önizlemesi">
+                  <div class="report-page-header"><span>TEKNİK RAPOR</span><b>A4</b></div>
+                  <strong>Bağlantı Braketi<br>Dayanım Analizi</strong>
+                  <div class="report-page-rule"></div>
+                  <div class="report-page-meta"><span>KAPSAM</span><span>BULGULAR</span></div>
+                  <div class="report-page-lines"><i></i><i></i><i></i></div>
+                  <small>Sonuç: Revizyon B uygun</small>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="workspace-section tentacle-zone" id="workspace">
+        <svg class="edge-tentacle edge-tentacle-right edge-tentacle-b" viewBox="0 0 220 430" aria-hidden="true"><use href="#repocto-tentacle" width="220" height="430"></use></svg>
+        <div class="section-shell wide-shell">
+          <div class="section-heading reveal">
+            <p class="eyebrow dark-eyebrow">ÜRÜN</p>
+            <h2>Mühendislik dokümanlarının tamamı, aynı çalışma yüzeyinde.</h2>
+          </div>
+
+          <div class="product-tabs" role="tablist" aria-label="RepOcto ürün modülleri">
+            <button type="button" role="tab" aria-selected="false" aria-controls="panel-chatbot" id="tab-chatbot" data-product-tab="chatbot" data-repocto-tab="chatbot">Chatbot</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="panel-compare" id="tab-compare" data-product-tab="compare" data-repocto-tab="compare">Karşılaştırma</button>
+            <button type="button" role="tab" aria-selected="true" aria-controls="panel-memory" id="tab-memory" data-product-tab="memory" data-repocto-tab="memory">Kurumsal Hafıza</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="panel-writing" id="tab-writing" data-product-tab="writing" data-repocto-tab="writing">Doküman Hazırlama</button>
+          </div>
+
+          <div class="product-stage reveal">
+            <section class="product-panel" id="panel-chatbot" role="tabpanel" aria-labelledby="tab-chatbot" data-product-panel="chatbot" data-repocto-panel="chatbot" hidden>
+              <div class="panel-copy">
+                <p class="section-kicker">Chatbot</p>
+                <h3>Yanıtı değil, dayanağını da görün.</h3>
+                <p>RAG v1, v2 veya v3 akışı seçilebilir; cevap her zaman bulunan kaynaklarla birlikte sunulur.</p>
+              </div>
+              <div class="app-window chat-window">
+                <div class="window-bar"><span>Doküman Asistanı</span><span>RAG v2 · Hybrid</span></div>
+                <div class="conversation">
+                  <div class="user-message">BIG-E konfor dokümanında hangi parkurlar var?</div>
+                  <div class="assistant-message"><strong>RepOcto</strong><p>Dokümanda Arnavut kaldırımı, kasis ve bozuk yol parkurları yer alıyor.</p><span>[K1] Sayfa 4 · Test koşulları</span></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="product-panel" id="panel-compare" role="tabpanel" aria-labelledby="tab-compare" data-product-panel="compare" data-repocto-panel="compare" hidden>
+              <div class="panel-copy">
+                <p class="section-kicker">Karşılaştırma</p>
+                <h3>İki doküman arasındaki teknik farklar, pasaj seviyesinde.</h3>
+                <p>Benzer yöntemler, değişen sınır koşulları ve çelişen sonuçlar ayrı görünümlerde incelenir.</p>
+              </div>
+              <div class="app-window compare-window">
+                <div class="window-bar"><span>Doküman Karşılaştırma</span><span>%84 eşleşme</span></div>
+                <div class="dual-docs">
+                  <article><strong>2024-CITIBUS-DUR-04</strong><p>Bağlantı bölgesinde maksimum gerilme 168 MPa ölçüldü.</p><mark>Emniyet katsayısı 2.1</mark></article>
+                  <article><strong>2025-BIG-E-DUR-02</strong><p>Bağlantı bölgesinde maksimum gerilme 194 MPa ölçüldü.</p><mark>Emniyet katsayısı 1.7</mark></article>
+                </div>
+              </div>
+            </section>
+
+            <section class="product-panel active-panel" id="panel-memory" role="tabpanel" aria-labelledby="tab-memory" data-product-panel="memory" data-repocto-panel="memory">
+              <div class="panel-copy">
+                <p class="section-kicker">Kurumsal Hafıza</p>
+                <h3>Klasör yapısı, kendi kendini düzenleyen bilgi ağacına dönüşür.</h3>
+                <p>Çalışma, kişi ve yıl filtreleri birlikte çalışır. Düşük güvenli sınıflandırmalar saklanmaz; görünür biçimde işaretlenir.</p>
+                <a class="text-link" href="#memory-explorer">Canlı ağacı incele <span aria-hidden="true">→</span></a>
+              </div>
+              <div class="app-window memory-window">
+                <div class="window-bar"><span>V:\DOKÜMANLAR</span><span>Otomatik tarama tamamlandı</span></div>
+                <div class="memory-filters"><span>Çalışma: Tümü</span><span>Kişi: Tümü</span><span>Yıl: 2025</span></div>
+                <div class="memory-layout">
+                  <div class="memory-tree">
+                    <strong>Otomatik kategoriler</strong>
+                    <div>▾ BIG-E <small>12</small></div>
+                    <div class="indent">▾ Dayanım <small>5</small></div>
+                    <div class="indent-2 selected-doc">2025-BIG-E-DUR-01</div>
+                    <div class="indent">▸ Konfor <small>4</small></div>
+                    <div>▸ CITIBUS <small>8</small></div>
+                    <div>▸ CITIPORT <small>6</small></div>
+                  </div>
+                  <div class="memory-detail">
+                    <span>2025-BIG-E-DUR-01</span>
+                    <strong>Detay stok regalleri statik analiz dokümanı</strong>
+                    <dl><div><dt>Çalışma</dt><dd>BIG-E</dd></div><div><dt>Kişi</dt><dd>Ali Şahin</dd></div><div><dt>Yıl</dt><dd>2025</dd></div><div><dt>Güven</dt><dd>%96</dd></div></dl>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="product-panel" id="panel-writing" role="tabpanel" aria-labelledby="tab-writing" data-product-panel="writing" data-repocto-panel="writing" hidden>
+              <div class="panel-copy">
+                <p class="section-kicker">Doküman Hazırlama</p>
+                <h3>Şirket şablonunda, kaynakları belli bir ilk taslak.</h3>
+                <p>Kapak, kapsam, sonuçlar ve devam bölümleri tek akışta hazırlanır; PDF ve DOCX çıktısı alınabilir.</p>
+              </div>
+              <div class="app-window writing-window">
+                <div class="window-bar"><span>Yeni Rapor</span><span>Taslak</span></div>
+                <div class="report-sheet"><small>GENEL / PUBLIC</small><strong>DEVELOPMENT STATEMENT</strong><div class="sheet-meta"><span>TARİH<br><b>06.08.2026</b></span><span>RAPOR NO.<br><b>2026-BIG-E-DUR-07</b></span></div><h4>BAĞLANTI BRAKETİ DAYANIM ANALİZİ</h4><p>KAPSAM</p><p>SONUÇLAR</p></div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section class="memory-story light-band" id="memory">
+        <div class="section-shell">
+          <div class="memory-story-grid">
+            <div class="memory-story-copy reveal">
+              <p class="eyebrow dark-eyebrow">KURUMSAL HAFIZA</p>
+              <h2>Dosya yolunu verin. RepOcto gerisini yapılandırsın.</h2>
+              <p>Alt klasörler özyinelemeli taranır; metin, OCR ve belge özellikleri birlikte değerlendirilir. Sistem kullanıcıdan onay beklemeden taksonomiyi üretir.</p>
+              <ol class="process-list">
+                <li><span>01</span><div><strong>İçeriği çıkarır</strong><p>PDF, DOCX ve PPTX içeriğini; gerekiyorsa OCR ile okur.</p></div></li>
+                <li><span>02</span><div><strong>Varlıkları tanır</strong><p>Kişi, çalışma, yıl, araç, konu ve belge türünü çıkarır.</p></div></li>
+                <li><span>03</span><div><strong>Ağacı kurar</strong><p>Belgeleri filtrelenebilir dallara ve ilişkilere yerleştirir.</p></div></li>
+              </ol>
+            </div>
+            <figure class="memory-story-visual reveal">
+              <video class="memory-story-video" autoplay muted loop playsinline preload="metadata" poster="assets/report-analysis.webp" aria-label="RepOcto'nun dosya yolundan teknik dokümanları yapılandırmasını gösteren animasyon">
+                <source src="assets/repocto-memory-loop.mp4" type="video/mp4">
+                <img src="assets/report-analysis.webp" alt="Teknik dokümanların kanıt işaretleri ve bağlantılarla incelenmesini gösteren illüstrasyon" width="1536" height="1024" loading="lazy">
+              </video>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="memory-explorer-section tentacle-zone" id="memory-explorer">
+        <svg class="edge-tentacle edge-tentacle-left edge-tentacle-c" viewBox="0 0 220 430" aria-hidden="true"><use href="#repocto-tentacle" width="220" height="430"></use></svg>
+        <div class="section-shell wide-shell">
+          <div class="memory-explorer-heading reveal">
+            <div>
+              <p class="eyebrow dark-eyebrow">CANLI KURUMSAL HAFIZA</p>
+              <h2>Dosyalar, filtrelenebilir bir bilgi ağacına dönüşür.</h2>
+            </div>
+          </div>
+          <div class="rh-memory-explorer reveal" data-memory-explorer></div>
+        </div>
+      </section>
+
+      <section class="security-band dark-band tentacle-zone" id="security">
+        <svg class="edge-tentacle edge-tentacle-right edge-tentacle-d" viewBox="0 0 220 430" aria-hidden="true"><use href="#repocto-tentacle" width="220" height="430"></use></svg>
+        <div class="section-shell">
+          <div class="security-grid">
+            <div class="security-copy reveal">
+              <p class="eyebrow">YEREL VE KONTROLLÜ</p>
+              <h2>Dokümanlarınız başka bir sisteme taşınmadan yapay zekâ ile çalışır.</h2>
+              <p>Yerel embedding, yerel LLM ve ekip bazlı veri alanları sayesinde dokümanlar kurum içinde kalır. Kaynağı olmayan cümle, doğrulanmış bulgu gibi sunulmaz.</p>
+              <div class="security-points">
+                <div><strong>Yerel</strong><span>Model ve belgeler aynı ortamda</span></div>
+                <div><strong>İzlenebilir</strong><span>Belge, sayfa ve pasaj kaynağı</span></div>
+                <div><strong>İzole</strong><span>Ekip bazlı bağımsız veri alanları</span></div>
+              </div>
+            </div>
+            <figure class="security-visual reveal">
+              <img src="assets/local-ai-system.webp" alt="Belgelerin güvenli yerel yapay zekâ altyapısında işlendiğini gösteren teknik illüstrasyon" width="1536" height="1024" loading="lazy">
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="faq-section light-band">
+        <div class="section-shell faq-shell">
+          <div class="faq-heading reveal">
+            <p class="eyebrow dark-eyebrow">SIK SORULANLAR</p>
+            <h2>RepOcto hakkında.</h2>
+          </div>
+          <div class="faq-list reveal">
+            <details>
+              <summary>RepOcto nedir?</summary>
+              <p>Teknik dokümanları arama, soru-cevap, karşılaştırma, içerik oluşturma ve kurumsal hafıza akışlarında birleştiren yerel mühendislik zekâsı platformudur.</p>
+            </details>
+            <details>
+              <summary>Cevapların kaynağı görülebilir mi?</summary>
+              <p>Evet. RepOcto yanıtla birlikte ilgili belgeyi, sayfayı ve kullanılan pasajı gösterir.</p>
+            </details>
+            <details>
+              <summary>Klasörler otomatik sınıflandırılabilir mi?</summary>
+              <p>Kurumsal Hafıza görünümü; alt klasörleri tarayıp çalışma, kişi, yıl ve teknik konu gibi alanları otomatik çıkaracak şekilde tasarlanmıştır.</p>
+            </details>
+            <details>
+              <summary>İnternet bağlantısı gerekli mi?</summary>
+              <p>Yerel model ve yerel dosya altyapısı kullanıldığında temel doküman işleme ve soru-cevap akışları kurum ağı içinde çalışabilir.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section class="final-cta">
+        <img src="assets/repocto-memory-network.png" alt="Birbirine bağlanan teknik doküman ve kaynaklardan oluşan kurumsal hafıza ağı" width="2752" height="1536" loading="lazy">
+        <div class="final-cta-shade" aria-hidden="true"></div>
+        <div class="final-cta-content reveal">
+          <p class="eyebrow">DOKÜMANLARINIZI HAFIZAYA DÖNÜŞTÜRÜN</p>
+          <h2>Geçmiş çalışma, bir sonraki kararın başlangıcı olsun.</h2>
+          <div class="hero-actions">
+            <a class="button button-light" href="/app">RepOcto'yu Aç</a>
+            <a class="button button-outline-light" href="#memory-explorer">Kurumsal Hafızayı Gör</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="contact-section light-band" id="iletisim" aria-labelledby="iletisim-baslik">
+        <div class="section-shell">
+          <div class="contact-panel reveal">
+            <div class="contact-copy">
+              <p class="eyebrow dark-eyebrow">İLETİŞİM</p>
+              <h2 id="iletisim-baslik">RepOcto'yu ekibinizin doküman akışında değerlendirelim.</h2>
+              <p>Demo, pilot kullanım ve geri bildirim için kurumsal iletişim kanalından bize ulaşın. İhtiyacınızı ve doküman yapınızı birlikte ele alalım.</p>
+            </div>
+            <div class="contact-options">
+              <article><span>01</span><div><strong>Demo ve pilot</strong><p>Kendi dokümanlarınızla kullanım senaryosunu planlayın.</p></div></article>
+              <article><span>02</span><div><strong>Geri bildirim</strong><p>İhtiyaçlarınızı ve geliştirme önerilerinizi paylaşın.</p></div></article>
+              <div class="contact-actions">
+                <a class="button button-primary" href="/app">RepOcto'yu Aç</a>
+                <a class="button button-secondary" href="https://anadoluisuzu.com.tr/iletisim/iletisim-formu" target="_blank" rel="noopener noreferrer">İletişim Formu</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div class="legacy-raporhub-bottom">
+    <footer class="site-footer">
+      <div class="footer-main">
+        <div class="footer-brand"><img class="footer-logo" src="assets/repocto-wordmark.png" alt="RepOcto"></div>
+        <p class="footer-description">Mühendislik bilgisini kaynaklı, yerel ve yeniden kullanılabilir hale getirir.</p>
+      </div>
+      <div class="footer-meta">
+        <div class="footer-links"><a href="#capabilities">Yetenekler</a><a href="#workspace">Ürün</a><a href="#security">Güvenlik</a><a href="#memory-explorer">Canlı Hafıza Ağacı</a><a href="#iletisim">İletişim</a></div>
+        <span class="footer-year">RepOcto · 2026</span>
+      </div>
+    </footer>
+  </div>
+
+  <svg class="tentacle-definitions" aria-hidden="true">
+    <defs>
+      <symbol id="repocto-tentacle" viewBox="0 0 220 430">
+        <path class="tentacle-shadow" d="M-18 430C75 368 7 303 92 249C184 190 102 92 228-16"></path>
+        <path class="tentacle-body" d="M-18 430C75 368 7 303 92 249C184 190 102 92 228-16"></path>
+        <path class="tentacle-light" d="M-9 423C72 362 15 305 99 252C180 199 112 96 223-10"></path>
+        <g class="tentacle-suckers"><circle cx="39" cy="367" r="6"></circle><circle cx="57" cy="340" r="5"></circle><circle cx="48" cy="306" r="5"></circle><circle cx="78" cy="262" r="4"></circle><circle cx="126" cy="219" r="4"></circle><circle cx="148" cy="176" r="3.5"></circle><circle cx="147" cy="126" r="3"></circle></g>
+      </symbol>
+    </defs>
+  </svg>
+</body>
+</html>

@@ -15,6 +15,7 @@ import time
 import unicodedata
 from typing import Annotated, Literal
 
+import httpx
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -81,6 +82,9 @@ from .config import get_settings
 
 
 settings = get_settings()
+APP_VARIANT = settings.APP_VARIANT
+APP_BRAND = settings.APP_BRAND
+REPORT_WORKSPACE_VARIANTS = frozenset({"raporhub", "repocto"})
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -92,9 +96,23 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Big Agent MVP", version=APP_VERSION, lifespan=lifespan)
+app = FastAPI(title=APP_BRAND.api_title, version=APP_VERSION, lifespan=lifespan)
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+RAPORHUB_LANDING_DIR = Path(__file__).resolve().parent / "ui" / "raporhub_landing"
+REPOCTO_LANDING_DIR = Path(__file__).resolve().parent / "ui" / "repocto_landing"
+SMARTCAE_V2_DIR = Path(__file__).resolve().parent / "ui" / "smartcae_v2"
+app.mount("/raporhub-landing", StaticFiles(directory=str(RAPORHUB_LANDING_DIR)), name="raporhub-landing")
+app.mount("/repocto-landing", StaticFiles(directory=str(REPOCTO_LANDING_DIR)), name="repocto-landing")
+if APP_VARIANT == "big_agent":
+    app.mount(
+        "/smartcae-v2/assets",
+        StaticFiles(directory=str(SMARTCAE_V2_DIR / "assets")),
+        name="smartcae-v2-assets",
+    )
+FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<text x="50" y="52" dy="0.35em" text-anchor="middle" font-size="86" font-family="Segoe UI Emoji, Apple Color Emoji, sans-serif">🤖</text>
+</svg>"""
 AUTH_COOKIE_NAME = settings.APP_AUTH_COOKIE_NAME
 AUTH_SESSION_SECONDS = 8 * 60 * 60
 
@@ -155,6 +173,10 @@ def _auth_enabled() -> bool:
     return settings.APP_AUTH_ENABLED and bool(APP_USERS)
 
 
+def _application_home_path() -> str:
+    return "/app" if APP_VARIANT in REPORT_WORKSPACE_VARIANTS else "/"
+
+
 def _login_html(error: str = "") -> str:
     error_html = f'<div class="error">{escape(error)}</div>' if error else ""
     return f"""<!doctype html>
@@ -162,22 +184,23 @@ def _login_html(error: str = "") -> str:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Big Agent Login</title>
+  <link rel="icon" href="/favicon.ico" />
+  <title>{APP_BRAND.display_name} Login</title>
   <style>
-    body {{ margin:0; min-height:100vh; display:grid; place-items:center; font-family:Arial,sans-serif; background:#f7f3f4; color:#24191b; }}
-    form {{ width:min(380px, calc(100vw - 32px)); background:#fff; border:1px solid #eadadd; border-radius:14px; padding:24px; box-shadow:0 18px 50px rgba(65,28,34,.12); }}
+    body {{ margin:0; min-height:100vh; display:grid; place-items:center; font-family:Arial,sans-serif; background:{APP_BRAND.background}; color:{APP_BRAND.text}; }}
+    form {{ width:min(380px, calc(100vw - 32px)); background:{APP_BRAND.panel}; border:1px solid {APP_BRAND.line}; border-radius:{APP_BRAND.card_radius}; padding:24px; box-shadow:0 18px 50px {APP_BRAND.card_shadow}; }}
     h1 {{ margin:0 0 6px; font-size:24px; }}
-    p {{ margin:0 0 18px; color:#735b60; font-size:14px; }}
+    p {{ margin:0 0 18px; color:{APP_BRAND.muted}; font-size:14px; }}
     label {{ display:block; font-size:13px; font-weight:700; margin:14px 0 6px; }}
-    input {{ width:100%; box-sizing:border-box; border:1px solid #dcc8cc; border-radius:10px; padding:12px; font-size:15px; }}
-    button {{ width:100%; margin-top:18px; border:0; border-radius:10px; padding:12px; background:#8f1d2c; color:#fff; font-weight:700; cursor:pointer; }}
+    input {{ width:100%; box-sizing:border-box; border:1px solid {APP_BRAND.line}; border-radius:10px; padding:12px; font-size:15px; }}
+    button {{ width:100%; margin-top:18px; border:0; border-radius:10px; padding:12px; background:{APP_BRAND.accent_strong}; color:#fff; font-weight:700; cursor:pointer; }}
     .error {{ margin:12px 0 0; color:#9b1024; background:#fff1f3; border:1px solid #f1c9cf; border-radius:10px; padding:10px; font-size:13px; }}
-    .version {{ margin-top:14px; color:#8a7478; font-size:12px; text-align:center; }}
+    .version {{ margin-top:14px; color:{APP_BRAND.muted}; font-size:12px; text-align:center; }}
   </style>
 </head>
 <body>
   <form method="post" action="/login">
-    <h1>Big Agent</h1>
+    <h1>{APP_BRAND.display_name}</h1>
     <p>Test kullanicisi ile giris yap.</p>
     <label for="username">Kullanici</label>
     <input id="username" name="username" autocomplete="username" autofocus />
@@ -199,6 +222,10 @@ async def auth_middleware(request: Request, call_next):
     path = request.url.path
     if path in {"/health", "/login", "/logout", "/favicon.ico"}:
         return await call_next(request)
+    if APP_VARIANT in REPORT_WORKSPACE_VARIANTS:
+        landing_prefix = "/raporhub-landing/" if APP_VARIANT == "raporhub" else "/repocto-landing/"
+        if path == "/" or path.startswith(landing_prefix):
+            return await call_next(request)
 
     username = _read_session_user(request)
     if username:
@@ -261,6 +288,118 @@ def _display_model_name() -> str:
     return candidate
 
 
+def _display_embedding_device() -> tuple[str, str]:
+    service = build_embedding_service()
+    raw_device = str(getattr(service, "device", "cpu")).strip().casefold()
+    is_gpu = raw_device.startswith(("cuda", "mps", "xpu"))
+    return ("GPU", "gpu") if is_gpu else ("CPU", "cpu")
+
+
+def _short_runtime_model_name(value: str) -> str:
+    candidate = Path(value).name or value
+    return candidate.split("/")[-1]
+
+
+def _embedding_runtime_status() -> dict[str, object]:
+    service = build_embedding_service()
+    active_provider = str(getattr(service, "provider_name", "unknown"))
+    configured_provider = settings.EMBEDDING_PROVIDER.strip().casefold()
+    real_model_loaded = active_provider.startswith("sentence-transformers:") and hasattr(service, "model")
+    configured_for_sentence_transformers = configured_provider in {
+        "sentence-transformer",
+        "sentence-transformers",
+        "hf",
+        "huggingface",
+    }
+    configured_path = Path(settings.EMBEDDING_MODEL_NAME).expanduser()
+    active_model = (
+        _short_runtime_model_name(active_provider.split(":", 1)[1])
+        if ":" in active_provider
+        else active_provider
+    )
+    device = str(getattr(service, "device", settings.EMBEDDING_DEVICE)).strip() or "cpu"
+    fallback_active = configured_for_sentence_transformers and not real_model_loaded
+
+    if real_model_loaded:
+        state = "ready"
+        message = "Sentence Transformers modeli yuklendi ve kullanima hazir."
+    elif fallback_active:
+        state = "warning"
+        message = "Yapilandirilan embedding modeli yuklenemedi; token-hash yedek modu aktif."
+    else:
+        state = "warning"
+        message = "Token-hash embedding saglayicisi aktif; Qwen modeli kullanilmiyor."
+
+    return {
+        "state": state,
+        "ready": real_model_loaded,
+        "message": message,
+        "configured_provider": settings.EMBEDDING_PROVIDER,
+        "active_provider": active_provider,
+        "configured_model": _short_runtime_model_name(settings.EMBEDDING_MODEL_NAME),
+        "active_model": active_model,
+        "device": device,
+        "local_files_only": settings.EMBEDDING_LOCAL_FILES_ONLY,
+        "model_path_exists": configured_path.exists(),
+        "fallback_active": fallback_active,
+    }
+
+
+def _ollama_runtime_status() -> dict[str, object]:
+    configured = settings.CHAT_LLM_ENABLED and settings.CHAT_LLM_BACKEND == "ollama"
+    base_status: dict[str, object] = {
+        "configured": configured,
+        "connected": False,
+        "host": settings.OLLAMA_HOST,
+        "configured_model": settings.CHAT_LLM_MODEL_NAME,
+        "model_available": False,
+        "models": [],
+        "state": "disabled" if not configured else "checking",
+        "message": "Ollama sohbet saglayicisi devre disi." if not configured else "",
+    }
+    if not configured:
+        return base_status
+
+    try:
+        with httpx.Client(timeout=2.0) as client:
+            response = client.get(f"{settings.OLLAMA_HOST}/api/tags")
+            response.raise_for_status()
+            payload = response.json()
+        models = sorted(
+            {
+                str(item.get("name") or item.get("model") or "").strip()
+                for item in payload.get("models", [])
+                if isinstance(item, dict) and (item.get("name") or item.get("model"))
+            }
+        )
+        expected_model = settings.CHAT_LLM_MODEL_NAME.strip().casefold()
+        model_available = bool(expected_model) and any(
+            model.casefold() == expected_model for model in models
+        )
+        base_status.update(
+            {
+                "connected": True,
+                "model_available": model_available,
+                "models": models,
+                "state": "ready" if model_available else "warning",
+                "message": (
+                    "Ollama baglantisi ve yapilandirilan sohbet modeli hazir."
+                    if model_available
+                    else "Ollama bagli, ancak yapilandirilan sohbet modeli bulunamadi."
+                ),
+            }
+        )
+    except Exception as exc:
+        error_text = re.sub(r"\s+", " ", str(exc)).strip()[:240]
+        base_status.update(
+            {
+                "state": "error",
+                "message": f"Ollama baglantisi kurulamadi: {error_text or type(exc).__name__}",
+            }
+        )
+    return base_status
+
+
 def _safe_download_name(value: str, fallback: str = "rapor") -> str:
     normalized = unicodedata.normalize("NFKD", value)
     ascii_only = normalized.encode("ascii", "ignore").decode("ascii")
@@ -270,20 +409,55 @@ def _safe_download_name(value: str, fallback: str = "rapor") -> str:
 
 @app.get("/health", response_model=HealthResponse)
 def healthcheck() -> HealthResponse:
-    return HealthResponse(status="ok", version=APP_VERSION)
+    return HealthResponse(
+        status="ok",
+        version=APP_VERSION,
+        application=APP_BRAND.display_name,
+        variant=APP_VARIANT,
+    )
+
+
+@app.get("/system/model-status")
+def system_model_status() -> dict[str, object]:
+    return {
+        "embedding": _embedding_runtime_status(),
+        "ollama": _ollama_runtime_status(),
+        "version": APP_VERSION,
+    }
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> Response:
+    if APP_VARIANT == "raporhub":
+        return FileResponse(
+            RAPORHUB_LANDING_DIR / "assets" / "raporhub-favicon.ico",
+            media_type="image/x-icon",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+    if APP_VARIANT == "repocto":
+        return FileResponse(
+            REPOCTO_LANDING_DIR / "assets" / "repocto-favicon.svg",
+            media_type="image/svg+xml",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+    return Response(
+        content=FAVICON_SVG,
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     if _auth_enabled() and _read_session_user(request):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse(_application_home_path(), status_code=303)
     return HTMLResponse(_login_html())
 
 
 @app.post("/login")
 async def login(request: Request):
     if not _auth_enabled():
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse(_application_home_path(), status_code=303)
 
     form = await request.form()
     username = str(form.get("username", "")).strip()
@@ -292,7 +466,7 @@ async def login(request: Request):
     if not expected or not secrets.compare_digest(password, expected):
         return HTMLResponse(_login_html("Kullanici adi veya sifre hatali."), status_code=401)
 
-    response = RedirectResponse("/", status_code=303)
+    response = RedirectResponse(_application_home_path(), status_code=303)
     response.set_cookie(
         AUTH_COOKIE_NAME,
         _create_session_cookie(username),
@@ -310,8 +484,36 @@ def logout():
     return response
 
 
-@app.get("/", response_class=FileResponse)
-def upload_page() -> FileResponse:
+@app.get("/smartcae-v2/", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/smartcae-v2", response_class=HTMLResponse, include_in_schema=False)
+def smartcae_v2_page() -> HTMLResponse:
+    if APP_VARIANT != "big_agent":
+        raise HTTPException(status_code=404, detail="Not found")
+    html = SMARTCAE_V2_DIR.joinpath("index.html").read_text(encoding="utf-8")
+    return HTMLResponse(
+        html.replace("__APP_VERSION__", APP_VERSION),
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/app/", include_in_schema=False)
+@app.get("/app", include_in_schema=False)
+@app.get("/legacy/", include_in_schema=False)
+@app.get("/legacy", include_in_schema=False)
+@app.get("/")
+def upload_page(request: Request) -> Response:
+    if APP_VARIANT == "big_agent" and request.url.path == "/":
+        return smartcae_v2_page()
+    if APP_VARIANT == "raporhub" and request.url.path == "/":
+        return HTMLResponse(
+            RAPORHUB_LANDING_DIR.joinpath("index.html").read_text(encoding="utf-8"),
+            headers={"Cache-Control": "no-cache"},
+        )
+    if APP_VARIANT == "repocto" and request.url.path == "/":
+        return HTMLResponse(
+            REPOCTO_LANDING_DIR.joinpath("index.html").read_text(encoding="utf-8"),
+            headers={"Cache-Control": "no-cache"},
+        )
     return FileResponse(STATIC_DIR / "index.html", media_type="text/html")
 
 

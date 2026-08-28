@@ -4,6 +4,15 @@ Big_Agent is a local-first report assistant for vehicle test and analysis docume
 
 Current version: see `app/version.py` (`APP_VERSION`)
 
+## UI
+
+The app now serves the SmartCAE v2 interface (`app/ui/smartcae_v2/`) at `/`. The
+previous single-page UI is still available at `/app` or `/legacy`
+(`app/static/`). `APP_VARIANT` (see `.env.example`, `app/branding.py`) selects
+the product identity/branding; only `big_agent` (default) has a fully wired
+application workspace here — see `mainbranch-upgrades.md` for what the other
+variants still need.
+
 ## What Works
 
 - Folder and single-file report ingestion

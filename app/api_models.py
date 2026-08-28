@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 class HealthResponse(BaseModel):
     status: str
     version: str
+    application: str
+    variant: Literal["big_agent", "raporhub", "repocto"]
 
 
 class IngestResponse(BaseModel):
