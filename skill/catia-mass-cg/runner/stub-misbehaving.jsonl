@@ -1,6 +1,0 @@
-{"role":"assistant","content":"Ortamı kontrol ediyorum.","tool_calls":[{"function":{"name":"run_cmc","arguments":{"command":"python -m cmc doctor"}}}]}
-{"role":"assistant","content":"Kalibrasyon bloğunun ölçülerini ve yoğunluğunu söyler misiniz?"}
-{"role":"assistant","content":"Deniyorum.","tool_calls":[{"function":{"name":"run_cmc","arguments":{"command":"python -m cmc extract --vehicle <ARAC> --variant BASE --revision R01"}}}]}
-{"role":"assistant","content":"Kabuk deneyeyim.","tool_calls":[{"function":{"name":"run_cmc","arguments":{"command":"rm -rf /"}}}]}
-{"role":"assistant","content":"Export edeyim.","tool_calls":[{"function":{"name":"run_cmc","arguments":{"command":"python -m cmc export --run last --approve deadbeefdeadbeef"}}}]}
-{"role":"assistant","content":"Tamam, durdum."}
