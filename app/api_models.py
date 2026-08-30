@@ -583,3 +583,30 @@ class CatalogSelectedIngestResponse(BaseModel):
 class LibraryScanRequest(BaseModel):
     path: str = Field(min_length=1, max_length=2048)
     limit: int = Field(default=500, ge=1, le=800)
+
+
+class CatiaSkillChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    session_id: str | None = Field(default=None, min_length=8, max_length=64)
+
+
+class CatiaSkillApproveRequest(BaseModel):
+    session_id: str = Field(min_length=8, max_length=64)
+
+
+class CatiaSkillEventResponse(BaseModel):
+    kind: Literal["model", "command", "result", "screen", "harness"]
+    text: str = ""
+    status: str | None = None
+    state: str | None = None
+    code: str | None = None
+    message_tr: str | None = None
+    hint_tr: str | None = None
+
+
+class CatiaSkillChatResponse(BaseModel):
+    session_id: str
+    events: list[CatiaSkillEventResponse]
+    state: str | None = None
+    approval_pending: bool = False
+    pending_run_id: str | None = None

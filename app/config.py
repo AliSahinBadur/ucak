@@ -154,6 +154,27 @@ class Settings(BaseSettings):
         default="", validation_alias="REPOCTO_LIBRARY_ROOTS"
     )
 
+    # CATIA kütle/CG skill'i (skill/catia-mass-cg.skill). Kapalı başlar:
+    # CATIA'sı olan mühendis kendi makinesinde açıkça açar. Kaynak varsayılanı
+    # "fake" — gerçek CATIA COM bağlantısı için bilinçli olarak "catia" yapılır;
+    # kaynak seçimi oturum/istek bazında modele bırakılmaz (SKILL harness kuralı).
+    CATIA_SKILL_ENABLED: bool = False
+    CATIA_SKILL_SOURCE: str = "fake"
+    CATIA_SKILL_MODEL_NAME: str = "qwen3:4b-instruct"
+    CATIA_SKILL_LLM_TIMEOUT_SECONDS: float = 600.0
+    CATIA_SKILL_CMC_TIMEOUT_SECONDS: float = 900.0
+    CATIA_SKILL_MAX_STEPS: int = 12
+    CATIA_SKILL_MAX_NUDGES: int = 3
+    CATIA_SKILL_WORKSPACE_ROOT_RAW: str = Field(
+        default="", validation_alias="CATIA_SKILL_WORKSPACE_ROOT"
+    )
+
+    @field_validator("CATIA_SKILL_SOURCE", mode="after")
+    @classmethod
+    def _normalize_catia_source(cls, value: str) -> str:
+        normalized = value.strip().casefold()
+        return normalized if normalized in {"fake", "catia"} else "fake"
+
     CATALOG_SEARCH_ROOTS_RAW: str = Field(
         default=r"\\isufile02\argevalidasyon$\RAPORLAR;V:/RAPORLAR;V:/",
         validation_alias="CATALOG_SEARCH_ROOTS",
@@ -169,6 +190,7 @@ class Settings(BaseSettings):
         "REPORT_LLM_ENABLED",
         "RERANKER_ENABLED",
         "OCR_ENABLED",
+        "CATIA_SKILL_ENABLED",
         mode="before",
     )
     @classmethod
@@ -230,6 +252,12 @@ class Settings(BaseSettings):
             if root not in unique:
                 unique.append(root)
         return tuple(unique)
+
+    @property
+    def CATIA_SKILL_WORKSPACE_ROOT(self) -> Path:
+        if self.CATIA_SKILL_WORKSPACE_ROOT_RAW.strip():
+            return Path(self.CATIA_SKILL_WORKSPACE_ROOT_RAW.strip()).expanduser()
+        return self.DATA_DIR / "catia_skill"
 
     @property
     def APP_BRAND(self) -> AppBrand:

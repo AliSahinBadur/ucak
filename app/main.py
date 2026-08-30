@@ -38,6 +38,9 @@ from .api_models import (
     CatalogSelectedIngestRequest,
     CatalogSelectedIngestResponse,
     CatalogTableResponse,
+    CatiaSkillApproveRequest,
+    CatiaSkillChatRequest,
+    CatiaSkillChatResponse,
     ChatRequest,
     ChatResponse,
     DraftReportRequest,
@@ -69,6 +72,12 @@ from .services.embedding_reindex_service import EmbeddingReindexService
 from .services.embedding_service import build_embedding_service
 from .services.catalog_ingest_service import CatalogIngestService
 from .services.catalog_service import CatalogService
+from .services.catia_skill_service import (
+    CatiaSkillBusyError,
+    CatiaSkillLLMError,
+    CatiaSkillUnavailableError,
+    get_catia_skill_service,
+)
 from .services.duplicate_detection_service import DuplicateDetectionService
 from .services.document_intelligence_service import DocumentIntelligenceService
 from .services.document_path_service import resolve_document_file_path
@@ -1462,6 +1471,86 @@ def graph_overview(
 ) -> dict:
     service = GraphService(session)
     return service.overview(limit=limit)
+
+
+def _catia_skill_username(request: Request) -> str:
+    return str(getattr(request.state, "username", "") or "local")
+
+
+def _require_catia_skill_client(request: Request) -> None:
+    """CATIA skill uçları: bayrak açık olmalı ve istemci yerel olmalı.
+
+    cmc, CATIA'ya COM üzerinden aynı makinede bağlanır; LAN'daki bir istemcinin
+    isteği sunucunun CATIA'sında ölçüm başlatır ve sunucunun diskine .cmd yazar.
+    O yüzden uçlar yalnızca localhost'tan çalışır (AGENT_INTEGRATION_PLAN §2).
+    """
+    if not settings.CATIA_SKILL_ENABLED:
+        raise HTTPException(
+            status_code=404,
+            detail="CATIA skill'i devre dışı. Açmak için CATIA_SKILL_ENABLED=true ayarlayın.",
+        )
+    host = request.client.host if request.client else None
+    # "testclient": Starlette TestClient süreç içinden gelir, ağdan gelmez.
+    if host not in {"127.0.0.1", "::1", "testclient"}:
+        raise HTTPException(
+            status_code=403,
+            detail="CATIA skill'i yalnızca CATIA'nın çalıştığı makineden (localhost) kullanılabilir.",
+        )
+
+
+@app.get("/skills/catia-mass-cg/status")
+def catia_skill_status(request: Request) -> dict:
+    if not settings.CATIA_SKILL_ENABLED:
+        return {"enabled": False}
+    try:
+        return get_catia_skill_service().status()
+    except CatiaSkillUnavailableError as exc:
+        return {"enabled": True, "available": False, "error": str(exc)}
+
+
+@app.post("/skills/catia-mass-cg/chat", response_model=CatiaSkillChatResponse)
+def catia_skill_chat(
+    payload: CatiaSkillChatRequest,
+    request: Request,
+) -> CatiaSkillChatResponse:
+    _require_catia_skill_client(request)
+    try:
+        service = get_catia_skill_service()
+        result = service.chat(
+            payload.message,
+            session_id=payload.session_id,
+            username=_catia_skill_username(request),
+        )
+        return CatiaSkillChatResponse(**result)
+    except CatiaSkillUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except CatiaSkillLLMError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except CatiaSkillBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/skills/catia-mass-cg/approve", response_model=CatiaSkillChatResponse)
+def catia_skill_approve(
+    payload: CatiaSkillApproveRequest,
+    request: Request,
+) -> CatiaSkillChatResponse:
+    _require_catia_skill_client(request)
+    try:
+        service = get_catia_skill_service()
+        result = service.approve_and_export(
+            payload.session_id,
+            username=_catia_skill_username(request),
+        )
+        return CatiaSkillChatResponse(**result)
+    except CatiaSkillUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except CatiaSkillBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.post("/library/scan")
