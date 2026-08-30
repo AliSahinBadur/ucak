@@ -46,6 +46,8 @@ from .api_models import (
     DuplicateReportScanResponse,
     HealthResponse,
     IngestResponse,
+    JobListResponse,
+    JobStatusResponse,
     MultiDocumentAskRequest,
     MultiDocumentAskResponse,
     ReindexEmbeddingsResponse,
@@ -67,6 +69,7 @@ from .services.document_intelligence_service import DocumentIntelligenceService
 from .services.general_chat_service import GeneralChatService
 from .services.graph_service import GraphService
 from .services.ingest_service import IngestService
+from .services.job_manager import JobContext, get_job_manager
 from .services.multi_document_qa_service import MultiDocumentQAService
 from .services.qa_service import QAService
 from .services.report_comparison_service import (
@@ -547,66 +550,65 @@ def ingest_file(
         temp_path.unlink(missing_ok=True)
 
 
-@app.post("/ingest/batch", response_model=BatchIngestResponse, include_in_schema=False)
+@app.post("/ingest/batch", response_model=JobStatusResponse, status_code=202, include_in_schema=False)
 def ingest_files_batch(
     files: Annotated[list[UploadFile], File(...)],
-) -> BatchIngestResponse:
-    items: list[BatchIngestItemResponse] = []
-
+) -> JobStatusResponse:
+    # Upload temp files disappear when the request ends, so stage the payloads
+    # to our own temp files before handing the work to the background job.
+    staged_files: list[tuple[Path, str]] = []
     for file in files:
-        suffix = Path(file.filename or "").suffix.lower()
-        if suffix not in {".pdf", ".docx", ".pptx"}:
-            items.append(
-                BatchIngestItemResponse(
-                    file_name=file.filename or "",
-                    status="error",
-                    error="Only PDF, DOCX and PPTX files are supported.",
-                )
-            )
-            continue
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+        file_name = file.filename or ""
+        suffix = Path(file_name).suffix.lower()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix or ".bin") as temp_file:
             temp_path = Path(temp_file.name)
             temp_file.write(file.file.read())
+        staged_files.append((temp_path, file_name))
 
-        batch_session = SessionLocal()
+    def run_batch_ingest(context: JobContext) -> dict:
+        items: list[BatchIngestItemResponse] = []
         try:
-            service = IngestService(batch_session)
-            result = service.ingest(temp_path, original_file_name=file.filename)
-            items.append(BatchIngestItemResponse(**result))
-        except ValueError as exc:
-            batch_session.rollback()
-            items.append(
-                BatchIngestItemResponse(
-                    file_name=file.filename or "",
-                    status="error",
-                    error=str(exc),
-                )
-            )
-        except Exception as exc:
-            batch_session.rollback()
-            items.append(
-                BatchIngestItemResponse(
-                    file_name=file.filename or "",
-                    status="error",
-                    error=str(exc),
-                )
-            )
+            for position, (temp_path, file_name) in enumerate(staged_files, start=1):
+                context.set_progress(position - 1, len(staged_files), file_name)
+                if Path(file_name).suffix.lower() not in {".pdf", ".docx", ".pptx"}:
+                    items.append(
+                        BatchIngestItemResponse(
+                            file_name=file_name,
+                            status="error",
+                            error="Only PDF, DOCX and PPTX files are supported.",
+                        )
+                    )
+                    continue
+
+                batch_session = SessionLocal()
+                try:
+                    service = IngestService(batch_session)
+                    result = service.ingest(temp_path, original_file_name=file_name)
+                    items.append(BatchIngestItemResponse(**result))
+                except Exception as exc:
+                    batch_session.rollback()
+                    items.append(
+                        BatchIngestItemResponse(
+                            file_name=file_name,
+                            status="error",
+                            error=str(exc),
+                        )
+                    )
+                finally:
+                    batch_session.close()
         finally:
-            batch_session.close()
-            temp_path.unlink(missing_ok=True)
+            for temp_path, _ in staged_files:
+                temp_path.unlink(missing_ok=True)
 
-    ingested_count = sum(1 for item in items if item.status == "ingested")
-    duplicate_count = sum(1 for item in items if item.status == "duplicate")
-    error_count = sum(1 for item in items if item.status == "error")
+        return BatchIngestResponse(
+            total_files=len(staged_files),
+            ingested_count=sum(1 for item in items if item.status == "ingested"),
+            duplicate_count=sum(1 for item in items if item.status == "duplicate"),
+            error_count=sum(1 for item in items if item.status == "error"),
+            items=items,
+        ).model_dump()
 
-    return BatchIngestResponse(
-        total_files=len(files),
-        ingested_count=ingested_count,
-        duplicate_count=duplicate_count,
-        error_count=error_count,
-        items=items,
-    )
+    return JobStatusResponse(**get_job_manager().submit("ingest_batch", run_batch_ingest))
 
 
 @app.get("/search", response_model=SearchResponse)
@@ -664,14 +666,25 @@ def duplicate_report_pairs(
     return DuplicateReportListResponse(**service.list_pairs(limit=limit))
 
 
-@app.post("/duplicates/scan", response_model=DuplicateReportScanResponse)
+@app.post("/duplicates/scan", response_model=JobStatusResponse, status_code=202)
 def scan_duplicate_report_pairs(
     threshold: float = Query(0.90, ge=0.1, le=1.0),
     dry_run: bool = Query(False),
-    session: Session = Depends(get_session),
-) -> DuplicateReportScanResponse:
-    service = DuplicateDetectionService(session)
-    return DuplicateReportScanResponse(**service.scan(threshold=threshold, dry_run=dry_run))
+) -> JobStatusResponse:
+    def run_duplicate_scan(context: JobContext) -> dict:
+        scan_session = SessionLocal()
+        try:
+            service = DuplicateDetectionService(scan_session)
+            result = service.scan(
+                threshold=threshold,
+                dry_run=dry_run,
+                progress_callback=lambda done, total: context.set_progress(done, total, "dokuman"),
+            )
+            return DuplicateReportScanResponse(**result).model_dump()
+        finally:
+            scan_session.close()
+
+    return JobStatusResponse(**get_job_manager().submit("duplicates_scan", run_duplicate_scan))
 
 
 @app.post("/report-comparison/upload", response_model=ReportComparisonUploadResponse)
@@ -1194,21 +1207,27 @@ def ask_multi_document(
     )
 
 
-@app.post("/catalog/ingest-sample", response_model=CatalogSampleIngestResponse)
+@app.post("/catalog/ingest-sample", response_model=JobStatusResponse, status_code=202)
 def ingest_catalog_sample(
     per_discipline: int = Query(2, ge=1, le=10),
     dry_run: bool = Query(True),
     scan_limit_per_discipline: int = Query(25, ge=1, le=500),
-    session: Session = Depends(get_session),
-) -> CatalogSampleIngestResponse:
-    service = CatalogIngestService(session)
-    return CatalogSampleIngestResponse(
-        **service.ingest_sample_per_discipline(
-            per_discipline=per_discipline,
-            dry_run=dry_run,
-            scan_limit_per_discipline=scan_limit_per_discipline,
-        )
-    )
+) -> JobStatusResponse:
+    def run_sample_ingest(context: JobContext) -> dict:
+        job_session = SessionLocal()
+        try:
+            service = CatalogIngestService(job_session)
+            result = service.ingest_sample_per_discipline(
+                per_discipline=per_discipline,
+                dry_run=dry_run,
+                scan_limit_per_discipline=scan_limit_per_discipline,
+                progress_callback=context.set_progress,
+            )
+            return CatalogSampleIngestResponse(**result).model_dump()
+        finally:
+            job_session.close()
+
+    return JobStatusResponse(**get_job_manager().submit("catalog_ingest_sample", run_sample_ingest))
 
 
 @app.get("/catalog/table", response_model=CatalogTableResponse)
@@ -1354,13 +1373,25 @@ def graph_overview(
     return service.overview(limit=limit)
 
 
-@app.post("/catalog/ingest-selected", response_model=CatalogSelectedIngestResponse)
+@app.post("/catalog/ingest-selected", response_model=JobStatusResponse, status_code=202)
 def ingest_selected_catalog_entries(
     payload: CatalogSelectedIngestRequest,
-    session: Session = Depends(get_session),
-) -> CatalogSelectedIngestResponse:
-    service = CatalogIngestService(session)
-    return CatalogSelectedIngestResponse(**service.ingest_catalog_entries(payload.catalog_entry_ids))
+) -> JobStatusResponse:
+    catalog_entry_ids = list(payload.catalog_entry_ids)
+
+    def run_selected_ingest(context: JobContext) -> dict:
+        job_session = SessionLocal()
+        try:
+            service = CatalogIngestService(job_session)
+            result = service.ingest_catalog_entries(
+                catalog_entry_ids,
+                progress_callback=context.set_progress,
+            )
+            return CatalogSelectedIngestResponse(**result).model_dump()
+        finally:
+            job_session.close()
+
+    return JobStatusResponse(**get_job_manager().submit("catalog_ingest_selected", run_selected_ingest))
 
 
 @app.post("/draft-report", response_model=DraftReportResponse)
@@ -1627,7 +1658,30 @@ def storage_check(session: Session = Depends(get_session)) -> StorageCheckRespon
     return StorageCheckResponse(**service.check_storage())
 
 
-@app.post("/embeddings/rebuild", response_model=ReindexEmbeddingsResponse)
-def rebuild_embeddings(session: Session = Depends(get_session)) -> ReindexEmbeddingsResponse:
-    service = EmbeddingReindexService(session)
-    return ReindexEmbeddingsResponse(**service.rebuild())
+@app.post("/embeddings/rebuild", response_model=JobStatusResponse, status_code=202)
+def rebuild_embeddings() -> JobStatusResponse:
+    def run_rebuild(context: JobContext) -> dict:
+        job_session = SessionLocal()
+        try:
+            service = EmbeddingReindexService(job_session)
+            result = service.rebuild(
+                progress_callback=lambda done, total: context.set_progress(done, total, "chunk"),
+            )
+            return ReindexEmbeddingsResponse(**result).model_dump()
+        finally:
+            job_session.close()
+
+    return JobStatusResponse(**get_job_manager().submit("embeddings_rebuild", run_rebuild))
+
+
+@app.get("/jobs", response_model=JobListResponse)
+def list_background_jobs(limit: int = Query(20, ge=1, le=100)) -> JobListResponse:
+    return JobListResponse(items=get_job_manager().list(limit=limit))
+
+
+@app.get("/jobs/{job_id}", response_model=JobStatusResponse)
+def background_job_status(job_id: str) -> JobStatusResponse:
+    payload = get_job_manager().get(job_id)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    return JobStatusResponse(**payload)

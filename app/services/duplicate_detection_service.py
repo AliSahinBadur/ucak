@@ -3,7 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 import re
+from typing import Callable
 
+import numpy as np
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -77,10 +79,17 @@ class DuplicateDetectionService:
             )
         return {"total": len(items), "items": items}
 
-    def scan(self, threshold: float = DEFAULT_THRESHOLD, dry_run: bool = False) -> dict:
+    def scan(
+        self,
+        threshold: float = DEFAULT_THRESHOLD,
+        dry_run: bool = False,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> dict:
         signatures = self._document_signatures()
         candidates: list[dict] = []
         for index, left in enumerate(signatures):
+            if progress_callback:
+                progress_callback(index, len(signatures))
             for right in signatures[index + 1 :]:
                 title_score = self._title_similarity(left.key_text, right.key_text)
                 embedding_score = self._embedding_similarity(left.vector, right.vector)
@@ -201,10 +210,7 @@ class DuplicateDetectionService:
         compatible = [vector for vector in vectors if len(vector) == dimensions]
         if not compatible:
             return []
-        return [
-            sum(vector[index] for vector in compatible) / len(compatible)
-            for index in range(dimensions)
-        ]
+        return np.asarray(compatible, dtype=np.float32).mean(axis=0).astype(np.float64).tolist()
 
     @staticmethod
     def _title_similarity(left: str, right: str) -> float:

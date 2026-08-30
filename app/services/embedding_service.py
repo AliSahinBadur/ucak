@@ -12,6 +12,8 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Protocol
 
+import numpy as np
+
 from ..config import get_settings, resolve_embedding_device
 
 
@@ -32,11 +34,11 @@ class EmbeddingService(Protocol):
         ...
 
     @staticmethod
-    def serialize(vector: list[float]) -> str:
+    def serialize(vector: list[float]) -> bytes:
         ...
 
     @staticmethod
-    def deserialize(payload: str) -> list[float]:
+    def deserialize(payload: bytes | str | None) -> list[float]:
         ...
 
     @staticmethod
@@ -60,23 +62,36 @@ class BaseEmbeddingService:
         return self.embed_text(text)
 
     @staticmethod
-    def serialize(vector: list[float]) -> str:
-        return json.dumps(vector)
+    def serialize(vector: list[float]) -> bytes:
+        return np.asarray(vector, dtype=np.float32).tobytes()
 
     @staticmethod
-    def deserialize(payload: str) -> list[float]:
+    def deserialize(payload: bytes | str | None) -> list[float]:
+        if not payload:
+            return []
+        if isinstance(payload, (bytes, bytearray, memoryview)):
+            raw = bytes(payload)
+            # Databases written before the BLOB migration hold JSON text, which
+            # some access paths hand back as bytes.
+            if raw[:1] == b"[" and raw[-1:] == b"]":
+                try:
+                    return [float(value) for value in json.loads(raw.decode("utf-8"))]
+                except (UnicodeDecodeError, ValueError):
+                    pass
+            return np.frombuffer(raw, dtype=np.float32).astype(np.float64).tolist()
         return [float(value) for value in json.loads(payload)]
 
     @staticmethod
     def cosine_similarity(left: list[float], right: list[float]) -> float:
         if not left or not right or len(left) != len(right):
             return 0.0
-        left_norm = math.sqrt(sum(value * value for value in left))
-        right_norm = math.sqrt(sum(value * value for value in right))
+        left_array = np.asarray(left, dtype=np.float32)
+        right_array = np.asarray(right, dtype=np.float32)
+        left_norm = float(np.linalg.norm(left_array))
+        right_norm = float(np.linalg.norm(right_array))
         if left_norm == 0.0 or right_norm == 0.0:
             return 0.0
-        dot_product = sum(l_value * r_value for l_value, r_value in zip(left, right, strict=True))
-        return dot_product / (left_norm * right_norm)
+        return float(left_array @ right_array) / (left_norm * right_norm)
 
     @staticmethod
     def has_signal(vector: list[float]) -> bool:

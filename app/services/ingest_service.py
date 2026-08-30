@@ -17,6 +17,7 @@ from ..processing.chunker import chunk_sections
 from ..processing.text_cleaner import normalize_sections
 from ..schemas import ParsedSection
 from .embedding_service import EmbeddingService, build_embedding_service
+from .vector_index import invalidate_vector_index
 
 
 logger = logging.getLogger(__name__)
@@ -114,6 +115,7 @@ class IngestService:
             embeddings_created += 1
 
         self.session.commit()
+        invalidate_vector_index()
         return {
             "document_id": document.id,
             "status": "ingested",

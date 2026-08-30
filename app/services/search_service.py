@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import re
 
-from sqlalchemy import or_, select
+import numpy as np
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..db.models import CatalogDocumentLink, ChunkEmbedding, Document, DocumentChunk, ReportCatalogEntry
 from ..text.normalize import compact_search_text, normalize_search_text, search_words, tokenize
 from .embedding_service import EmbeddingService, build_embedding_service
+from .vector_index import get_vector_index
 
 
 class SearchService:
@@ -18,6 +20,7 @@ class SearchService:
     MIN_SIMILAR_DOCUMENT_SCORE = 0.24
     MAX_RESULTS_PER_DOCUMENT = 1
     MAX_FUZZY_SCAN_ROWS = 1500
+    MAX_SEMANTIC_CANDIDATES = 500
     GENERIC_QUERY_TOKENS = {
         "analiz",
         "analizi",
@@ -165,7 +168,27 @@ class SearchService:
         if document_ids is not None and not scoped_document_ids:
             return []
 
-        statement = (
+        index = get_vector_index(self.session)
+        if index is None:
+            return []
+        scores = index.cosine_scores(query_vector)
+        if scores is None:
+            return []
+
+        candidate_mask = scores >= self.MIN_SEMANTIC_SCORE
+        if scoped_document_ids:
+            candidate_mask &= np.isin(index.document_ids, scoped_document_ids)
+        candidate_positions = np.flatnonzero(candidate_mask)
+        if candidate_positions.size == 0:
+            return []
+        ranked_order = np.argsort(scores[candidate_positions])[::-1]
+        candidate_positions = candidate_positions[ranked_order][: self.MAX_SEMANTIC_CANDIDATES]
+        score_by_chunk_id = {
+            int(index.chunk_ids[position]): float(scores[position])
+            for position in candidate_positions
+        }
+
+        rows = self.session.execute(
             select(
                 DocumentChunk.id,
                 DocumentChunk.document_id,
@@ -175,17 +198,12 @@ class SearchService:
                 DocumentChunk.page_end,
                 DocumentChunk.section_title,
                 DocumentChunk.chunk_text,
-                ChunkEmbedding.embedding,
             )
             .join(Document, Document.id == DocumentChunk.document_id)
-            .outerjoin(ChunkEmbedding, ChunkEmbedding.chunk_id == DocumentChunk.id)
-        )
-        if scoped_document_ids:
-            statement = statement.where(DocumentChunk.document_id.in_(scoped_document_ids))
-        rows = self.session.execute(statement).all()
+            .where(DocumentChunk.id.in_(score_by_chunk_id))
+        ).all()
 
         results: list[dict] = []
-        expected_dimensions = len(query_vector)
         for row in rows:
             searchable_text = " ".join(
                 value
@@ -198,10 +216,7 @@ class SearchService:
             )
             if requires_token_gate and not self._passes_required_token_gate(query_tokens, searchable_text):
                 continue
-            chunk_vector = self._resolve_chunk_vector(row.embedding, expected_dimensions=expected_dimensions)
-            if not self.embedding_service.has_signal(chunk_vector):
-                continue
-            score = self.embedding_service.cosine_similarity(query_vector, chunk_vector)
+            score = score_by_chunk_id[int(row.id)]
             token_overlap = self._token_overlap_ratio(query_tokens, row.chunk_text)
             minimum_score = (
                 self.MIN_SEMANTIC_SCORE
@@ -485,7 +500,7 @@ class SearchService:
     def semantic_available(self) -> bool:
         embedding_chunk_id = self.session.scalar(
             select(ChunkEmbedding.chunk_id)
-            .where(ChunkEmbedding.embedding.is_not(None), ChunkEmbedding.embedding != "")
+            .where(ChunkEmbedding.embedding.is_not(None), func.length(ChunkEmbedding.embedding) > 0)
             .limit(1)
         )
         return embedding_chunk_id is not None
@@ -838,7 +853,7 @@ class SearchService:
 
     def _resolve_chunk_vector(
         self,
-        serialized_embedding: str | None,
+        serialized_embedding: bytes | str | None,
         expected_dimensions: int | None = None,
     ) -> list[float]:
         if serialized_embedding:
@@ -865,8 +880,36 @@ class SearchService:
         excluded_document_ids: set[int],
         limit: int,
     ) -> list[dict]:
+        index = get_vector_index(self.session)
+        if index is None:
+            return []
+        compatible = [
+            (vector, weight)
+            for vector, weight in source_vectors_with_weights
+            if len(vector) == index.dimensions
+        ]
+        if not compatible:
+            return []
+        source_scores = index.cosine_scores_many([vector for vector, _ in compatible])
+        if source_scores is None:
+            return []
+        weights = np.asarray([weight for _, weight in compatible], dtype=np.float32)
+        best_scores = (source_scores * weights).max(axis=1)
+
+        candidate_mask = best_scores >= self.MIN_SIMILAR_DOCUMENT_SCORE
+        if excluded_document_ids:
+            candidate_mask &= ~np.isin(index.document_ids, list(excluded_document_ids))
+        candidate_positions = np.flatnonzero(candidate_mask)
+        if candidate_positions.size == 0:
+            return []
+        score_by_chunk_id = {
+            int(index.chunk_ids[position]): float(best_scores[position])
+            for position in candidate_positions
+        }
+
         candidate_rows = self.session.execute(
             select(
+                DocumentChunk.id,
                 DocumentChunk.document_id,
                 Document.title.label("document_title"),
                 Document.file_name,
@@ -874,26 +917,14 @@ class SearchService:
                 DocumentChunk.page_end,
                 DocumentChunk.section_title,
                 DocumentChunk.chunk_text,
-                ChunkEmbedding.embedding,
             )
             .join(Document, Document.id == DocumentChunk.document_id)
-            .outerjoin(ChunkEmbedding, ChunkEmbedding.chunk_id == DocumentChunk.id)
-            .where(DocumentChunk.document_id.not_in(excluded_document_ids))
+            .where(DocumentChunk.id.in_(score_by_chunk_id))
         ).all()
 
         by_document: dict[int, dict] = {}
         for row in candidate_rows:
-            candidate_vector = self._resolve_chunk_vector(row.embedding)
-            if not self.embedding_service.has_signal(candidate_vector):
-                continue
-
-            best_similarity = max(
-                self.embedding_service.cosine_similarity(source_vector, candidate_vector) * weight
-                for source_vector, weight in source_vectors_with_weights
-            )
-            if best_similarity < self.MIN_SIMILAR_DOCUMENT_SCORE:
-                continue
-
+            best_similarity = score_by_chunk_id[int(row.id)]
             current = by_document.get(row.document_id)
             excerpt = self._shorten_text(row.chunk_text)
             if current is None:

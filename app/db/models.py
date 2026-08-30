@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -70,7 +70,10 @@ class ChunkEmbedding(Base):
     __tablename__ = "chunk_embeddings"
 
     chunk_id: Mapped[int] = mapped_column(ForeignKey("document_chunks.id"), primary_key=True)
-    embedding: Mapped[str] = mapped_column(Text, nullable=False)
+    # Packed little-endian float32 bytes. Databases created before this change hold
+    # JSON text in the same column (SQLite stores either in a TEXT-affinity column);
+    # EmbeddingService.deserialize accepts both until the next /embeddings/rebuild.
+    embedding: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
 
     chunk: Mapped["DocumentChunk"] = relationship(back_populates="embedding")
 

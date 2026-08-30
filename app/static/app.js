@@ -209,6 +209,34 @@ function stopTimer(startedAt, setMessage, finalMessage) {
   setMessage(`${finalMessage} | Sure: ${formatElapsed(performance.now() - startedAt)}`);
 }
 
+// Uzun suren islemler artik arka plan isi olarak calisir: endpoint bir job_id
+// dondurur, sonuc /jobs/{id} uzerinden beklenir. Hata durumunda Error firlatir.
+async function runBackgroundJob(response) {
+  const data = await response.json();
+  if (!response.ok) {
+    const error = new Error(data.detail || "Islem baslatilamadi.");
+    error.payload = data;
+    throw error;
+  }
+  if (!data.job_id) {
+    return data;
+  }
+  for (;;) {
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    const jobResponse = await fetch(`/jobs/${data.job_id}`);
+    const job = await jobResponse.json();
+    if (!jobResponse.ok) {
+      throw new Error(job.detail || "Arka plan isi durumu alinamadi.");
+    }
+    if (job.status === "succeeded") {
+      return job.result || {};
+    }
+    if (job.status === "failed") {
+      throw new Error(job.error || "Arka plan isi basarisiz oldu.");
+    }
+  }
+}
+
 function formatTodayForDraft() {
   const today = new Date();
   const day = String(today.getDate()).padStart(2, "0");
@@ -593,11 +621,7 @@ async function runDuplicateScan() {
     const response = await fetch("/duplicates/scan?threshold=0.90&dry_run=false", {
       method: "POST",
     });
-    const data = await response.json();
-    if (!response.ok) {
-      stopTimer(startedAt, message => { duplicateStatus.textContent = message; }, data.detail || "Mukerrer taramasi basarisiz oldu.");
-      return;
-    }
+    const data = await runBackgroundJob(response);
     stopTimer(
       startedAt,
       message => { duplicateStatus.textContent = message; },
@@ -605,7 +629,7 @@ async function runDuplicateScan() {
     );
     await refreshDuplicates();
   } catch (error) {
-    stopTimer(startedAt, message => { duplicateStatus.textContent = message; }, `Mukerrer taramasi basarisiz oldu: ${error}`);
+    stopTimer(startedAt, message => { duplicateStatus.textContent = message; }, `Mukerrer taramasi basarisiz oldu: ${error.message || error}`);
   } finally {
     duplicateScanButton.disabled = false;
     duplicateRefreshButton.disabled = false;
@@ -1936,12 +1960,8 @@ async function ingestSelectedCatalogRows() {
       signal: controller.signal,
     });
     window.clearTimeout(timeoutId);
-    const data = await response.json();
+    const data = await runBackgroundJob(response);
     setCatalogLog(data);
-    if (!response.ok) {
-      stopTimer(startedAt, message => setCatalogStatus("error", message), data.detail || "Secilen raporlar ice alinamadi.");
-      return;
-    }
     stopTimer(
       startedAt,
       message => setCatalogStatus(data.error_count ? "error" : "ok", message),
@@ -1951,9 +1971,12 @@ async function ingestSelectedCatalogRows() {
     await refreshUploadedDocuments();
   } catch (error) {
     window.clearTimeout(timeoutId);
+    if (error && error.payload) {
+      setCatalogLog(error.payload);
+    }
     const message = error && error.name === "AbortError"
-      ? "Secilen raporlar ice alinamadi: dosya arama 60 saniyeyi asti."
-      : `Secilen raporlar ice alinamadi: ${error}`;
+      ? "Secilen raporlar ice alinamadi: istek baslatilamadi (60 saniye)."
+      : `Secilen raporlar ice alinamadi: ${error.message || error}`;
     stopTimer(startedAt, messageText => setCatalogStatus("error", messageText), message);
   } finally {
     catalogTableRefreshButton.disabled = false;
@@ -2006,12 +2029,8 @@ async function rebuildCatalogEmbeddings() {
     const response = await fetch("/embeddings/rebuild", {
       method: "POST",
     });
-    const data = await response.json();
+    const data = await runBackgroundJob(response);
     setCatalogLog(data);
-    if (!response.ok) {
-      stopTimer(startedAt, message => setCatalogStatus("error", message), data.detail || "Embedding yenileme basarisiz oldu.");
-      return;
-    }
     stopTimer(
       startedAt,
       message => setCatalogStatus("ok", message),
@@ -2019,7 +2038,7 @@ async function rebuildCatalogEmbeddings() {
     );
     await refreshCatalogTable();
   } catch (error) {
-    stopTimer(startedAt, message => setCatalogStatus("error", message), `Embedding yenileme basarisiz oldu: ${error}`);
+    stopTimer(startedAt, message => setCatalogStatus("error", message), `Embedding yenileme basarisiz oldu: ${error.message || error}`);
   } finally {
     catalogEmbeddingRebuildButton.disabled = false;
     catalogTableRefreshButton.disabled = false;
@@ -2344,22 +2363,18 @@ uploadButton.addEventListener("click", async () => {
       method: "POST",
       body: formData,
     });
-    const data = await response.json();
+    const data = await runBackgroundJob(response);
     renderUploadResults(data.items || []);
-    if (response.ok) {
-      stopTimer(
-        startedAt,
-        message => setStatus("ok", message),
-        `Yukleme tamamlandi. Yeni: ${data.ingested_count}, zaten mevcut: ${data.duplicate_count}, hata: ${data.error_count}.`
-      );
-      if (activeModule && activeModule.dataset.moduleKey === "upload") {
-        await refreshUploadedDocuments();
-      }
-    } else {
-      stopTimer(startedAt, message => setStatus("error", message), data.detail || "Yukleme basarisiz oldu.");
+    stopTimer(
+      startedAt,
+      message => setStatus("ok", message),
+      `Yukleme tamamlandi. Yeni: ${data.ingested_count}, zaten mevcut: ${data.duplicate_count}, hata: ${data.error_count}.`
+    );
+    if (activeModule && activeModule.dataset.moduleKey === "upload") {
+      await refreshUploadedDocuments();
     }
   } catch (error) {
-    stopTimer(startedAt, message => setStatus("error", message), `Istek basarisiz oldu: ${error}`);
+    stopTimer(startedAt, message => setStatus("error", message), `Istek basarisiz oldu: ${error.message || error}`);
   } finally {
     uploadButton.disabled = false;
   }

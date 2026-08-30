@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import os
 import re
+import time
+from typing import Callable
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -20,6 +22,9 @@ class CatalogIngestService:
     MAX_DIRECTORY_DEPTH = 8
     MAX_DIRECTORY_VISITS = 600
     MAX_REPORT_DIRECTORY_VISITS = 220
+    # A slow or disconnected network share must not pin a worker indefinitely:
+    # each per-entry file search gets this much wall time, then returns what it has.
+    SHARE_SCAN_TIMEOUT_SECONDS = 30.0
     COMMON_REPORT_GROUPS = (
         "",
         "RAPOR",
@@ -45,12 +50,20 @@ class CatalogIngestService:
     def __init__(self, session: Session) -> None:
         self.session = session
         self.catalog_service = CatalogService(session)
+        self._scan_deadline: float | None = None
+
+    def _begin_share_scan(self) -> None:
+        self._scan_deadline = time.monotonic() + self.SHARE_SCAN_TIMEOUT_SECONDS
+
+    def _share_scan_expired(self) -> bool:
+        return self._scan_deadline is not None and time.monotonic() > self._scan_deadline
 
     def ingest_sample_per_discipline(
         self,
         per_discipline: int = 2,
         dry_run: bool = True,
         scan_limit_per_discipline: int = 25,
+        progress_callback: Callable[[int, int, str], None] | None = None,
     ) -> dict:
         per_discipline = max(1, min(per_discipline, 10))
         scan_limit_per_discipline = max(per_discipline, min(scan_limit_per_discipline, 500))
@@ -58,7 +71,9 @@ class CatalogIngestService:
 
         items: list[dict] = []
         summary: dict[str, dict] = {}
-        for discipline in disciplines:
+        for discipline_index, discipline in enumerate(disciplines):
+            if progress_callback:
+                progress_callback(discipline_index, len(disciplines), discipline)
             picked = 0
             scanned = 0
             missing = 0
@@ -203,7 +218,11 @@ class CatalogIngestService:
             "items": items[:50],
         }
 
-    def ingest_catalog_entries(self, catalog_entry_ids: list[int]) -> dict:
+    def ingest_catalog_entries(
+        self,
+        catalog_entry_ids: list[int],
+        progress_callback: Callable[[int, int, str], None] | None = None,
+    ) -> dict:
         normalized_ids = self._normalize_entry_ids(catalog_entry_ids)
         if not normalized_ids:
             return {
@@ -219,8 +238,14 @@ class CatalogIngestService:
         ).scalars().all()
         entries_by_id = {entry.id: entry for entry in entries}
         items: list[dict] = []
-        for entry_id in normalized_ids:
+        for entry_index, entry_id in enumerate(normalized_ids):
             entry = entries_by_id.get(entry_id)
+            if progress_callback:
+                progress_callback(
+                    entry_index,
+                    len(normalized_ids),
+                    entry.report_code if entry is not None else str(entry_id),
+                )
             if entry is None:
                 items.append(
                     {
@@ -489,6 +514,7 @@ class CatalogIngestService:
         }
 
     def _entry_file_candidates(self, entry: ReportCatalogEntry) -> list[dict]:
+        self._begin_share_scan()
         raw_candidates = [
             entry.source_path or "",
             self._vehicle_report_folder(entry),
@@ -547,6 +573,8 @@ class CatalogIngestService:
             children = []
 
         for child in children[:600]:
+            if self._share_scan_expired():
+                break
             score = self._directory_name_score(child.name, keys)
             if score > 0:
                 candidates.append((score, child))
@@ -569,7 +597,7 @@ class CatalogIngestService:
         visited = 0
         try:
             for parent in self._report_group_directories(vehicle_dir, entry):
-                if visited >= self.MAX_REPORT_DIRECTORY_VISITS:
+                if visited >= self.MAX_REPORT_DIRECTORY_VISITS or self._share_scan_expired():
                     break
                 try:
                     children = [child for child in parent.iterdir() if child.is_dir()]
@@ -619,6 +647,8 @@ class CatalogIngestService:
 
         matches: list[Path] = []
         for child in children[:250]:
+            if self._share_scan_expired():
+                break
             child_key = self._normalize_stem(child.name)
             if any(key == child_key or key in child_key or child_key in key for key in group_keys):
                 matches.append(child)
@@ -826,7 +856,7 @@ class CatalogIngestService:
         queue: list[tuple[Path, int]] = [(directory, 0)]
         visited = 0
         try:
-            while queue and visited < self.MAX_DIRECTORY_VISITS:
+            while queue and visited < self.MAX_DIRECTORY_VISITS and not self._share_scan_expired():
                 current, depth = queue.pop(0)
                 visited += 1
                 child_dirs: list[Path] = []

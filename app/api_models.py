@@ -12,6 +12,34 @@ class HealthResponse(BaseModel):
     variant: Literal["big_agent", "raporhub", "repocto"]
 
 
+class JobProgressResponse(BaseModel):
+    done: int = 0
+    total: int = 0
+    message: str = ""
+
+
+class JobStatusResponse(BaseModel):
+    """Envelope returned by background-job endpoints and by GET /jobs/{job_id}.
+
+    `result` carries the operation's original response payload once the job
+    reaches `succeeded` (e.g. a BatchIngestResponse for /ingest/batch).
+    """
+
+    job_id: str
+    kind: str
+    status: Literal["queued", "running", "succeeded", "failed"]
+    created_at: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    progress: JobProgressResponse = Field(default_factory=JobProgressResponse)
+    result: dict | None = None
+    error: str | None = None
+
+
+class JobListResponse(BaseModel):
+    items: list[JobStatusResponse]
+
+
 class IngestResponse(BaseModel):
     document_id: int
     status: Literal["ingested", "duplicate"]

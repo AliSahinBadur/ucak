@@ -147,8 +147,16 @@ If CUDA-enabled PyTorch is installed, the app can auto-select `cuda`; otherwise 
 After changing embedding model/provider:
 
 ```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8000/embeddings/rebuild
+$job = Invoke-RestMethod -Method Post http://127.0.0.1:8000/embeddings/rebuild
+Invoke-RestMethod "http://127.0.0.1:8000/jobs/$($job.job_id)"
 ```
+
+The rebuild (like batch ingest, catalog ingest and the duplicate scan) now runs as a
+background job: the POST returns `202` with a `job_id` immediately, and
+`GET /jobs/{job_id}` reports `queued/running/succeeded/failed` plus progress and the
+final result. Embeddings are stored as packed `float32` BLOBs; databases written by
+older versions (JSON text vectors) keep working, and one `/embeddings/rebuild` run
+converts them to the new format.
 
 ## Ollama Chat LLM
 

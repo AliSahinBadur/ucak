@@ -749,6 +749,18 @@
     }
   }
 
+  async function waitForJob(jobId, onProgress) {
+    for (;;) {
+      await new Promise(resolve => setTimeout(resolve, 1200));
+      const response = await fetch(`/jobs/${jobId}`);
+      const job = await readJson(response);
+      if (!response.ok) throw new Error(requestError(job, "Arka plan işi izlenemedi."));
+      if (job.status === "succeeded") return job.result || {};
+      if (job.status === "failed") throw new Error(job.error || "Arka plan işi başarısız oldu.");
+      if (onProgress && job.progress) onProgress(job.progress);
+    }
+  }
+
   async function uploadDocuments(files) {
     const supported = [...files].filter(file => /\.(pdf|docx|pptx)$/i.test(file.name));
     if (!supported.length) {
@@ -761,8 +773,15 @@
     globalFilePicker.disabled = true;
     try {
       const response = await fetch("/ingest/batch", { method: "POST", body: formData });
-      const data = await readJson(response);
+      let data = await readJson(response);
       if (!response.ok) throw new Error(requestError(data, "Dokümanlar yüklenemedi."));
+      if (data && data.job_id) {
+        data = await waitForJob(data.job_id, progress => {
+          sidebarStatus.textContent = progress.total
+            ? `Doküman işleniyor… (${progress.done}/${progress.total})`
+            : `${supported.length} doküman işleniyor…`;
+        });
+      }
       const message = `${Number(data.ingested_count || 0)} yeni, ${Number(data.duplicate_count || 0)} mevcut, ${Number(data.error_count || 0)} hatalı.`;
       showToast(message);
       sidebarStatus.textContent = message;
