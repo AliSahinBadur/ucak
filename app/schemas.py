@@ -8,6 +8,8 @@ class ParsedSection:
     page_number: int
     raw_text: str
     section_title: str | None = None
+    extraction_method: str = "native"
+    ocr_attempted: bool = False
 
 
 @dataclass(slots=True)
@@ -16,6 +18,8 @@ class CleanSection:
     raw_text: str
     clean_text: str
     section_title: str | None = None
+    extraction_method: str = "native"
+    ocr_attempted: bool = False
 
 
 @dataclass(slots=True)

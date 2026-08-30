@@ -120,3 +120,25 @@ class DuplicateReportPair(Base):
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="candidate")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+
+class ReportReviewDecision(Base):
+    __tablename__ = "report_review_decisions"
+    __table_args__ = (
+        UniqueConstraint("document_id", "finding_key", name="uq_report_review_decision_finding"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), nullable=False, index=True)
+    finding_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    rule_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    decision: Mapped[str] = mapped_column(String(24), nullable=False, default="open")
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewer: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+        nullable=False,
+    )

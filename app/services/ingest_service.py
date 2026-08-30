@@ -59,6 +59,7 @@ class IngestService:
 
         try:
             parsed_sections = self._parse(stored_path, extension)
+            ocr_pages = sum(1 for section in parsed_sections if section.extraction_method == "ocr")
             cleaned_sections = normalize_sections(parsed_sections)
             chunks = chunk_sections(cleaned_sections)
         except Exception:
@@ -121,6 +122,7 @@ class IngestService:
             "status": "ingested",
             "file_name": file_name,
             "pages": len(cleaned_sections),
+            "ocr_pages": ocr_pages,
             "chunks": len(chunks),
             "embeddings_created": embeddings_created,
             "embedding_provider": self.embedding_service.provider_name,

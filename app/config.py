@@ -119,6 +119,41 @@ class Settings(BaseSettings):
     RERANKER_BACKEND: str = "disabled"
     RERANKER_MODEL_PATH: str = ""
 
+    OCR_ENABLED: bool = True
+    OCR_LANGUAGES: str = "tur+eng"
+    OCR_DPI: int = 250
+    OCR_MIN_TEXT_CHARACTERS: int = 100
+    OCR_TESSDATA_DIR: str = Field(
+        default="", validation_alias=AliasChoices("OCR_TESSDATA_DIR", "TESSDATA_PREFIX")
+    )
+    OCR_TESSERACT_CMD: str = Field(
+        default="", validation_alias=AliasChoices("OCR_TESSERACT_CMD", "TESSERACT_CMD")
+    )
+
+    @field_validator("OCR_LANGUAGES", mode="after")
+    @classmethod
+    def _default_ocr_languages(cls, value: str) -> str:
+        return value.strip() or "tur+eng"
+
+    @field_validator("OCR_DPI", mode="after")
+    @classmethod
+    def _clamp_ocr_dpi(cls, value: int) -> int:
+        return max(150, min(value, 400))
+
+    @field_validator("OCR_MIN_TEXT_CHARACTERS", mode="after")
+    @classmethod
+    def _clamp_ocr_min_text_characters(cls, value: int) -> int:
+        return max(20, value)
+
+    @field_validator("OCR_TESSDATA_DIR", "OCR_TESSERACT_CMD", mode="after")
+    @classmethod
+    def _strip_ocr_paths(cls, value: str) -> str:
+        return value.strip()
+
+    REPOCTO_LIBRARY_ROOTS_RAW: str = Field(
+        default="", validation_alias="REPOCTO_LIBRARY_ROOTS"
+    )
+
     CATALOG_SEARCH_ROOTS_RAW: str = Field(
         default=r"\\isufile02\argevalidasyon$\RAPORLAR;V:/RAPORLAR;V:/",
         validation_alias="CATALOG_SEARCH_ROOTS",
@@ -133,6 +168,7 @@ class Settings(BaseSettings):
         "CHAT_LLM_ENABLED",
         "REPORT_LLM_ENABLED",
         "RERANKER_ENABLED",
+        "OCR_ENABLED",
         mode="before",
     )
     @classmethod
@@ -175,6 +211,25 @@ class Settings(BaseSettings):
     @property
     def CATALOG_SEARCH_ROOTS(self) -> tuple[str, ...]:
         return tuple(root for root in (part.strip() for part in self.CATALOG_SEARCH_ROOTS_RAW.split(";")) if root)
+
+    @property
+    def REPOCTO_LIBRARY_ROOTS(self) -> tuple[Path, ...]:
+        configured = [
+            Path(item.strip()).expanduser()
+            for item in self.REPOCTO_LIBRARY_ROOTS_RAW.split(";")
+            if item.strip()
+        ]
+        defaults = [
+            self.DOCUMENTS_DIR,
+            BASE_DIR / "data" / "documents",
+            Path("V:/RAPORLAR"),
+            Path("V:/CAE/Dijital Dönüşüm Çalışmaları"),
+        ]
+        unique: list[Path] = []
+        for root in [*defaults, *configured]:
+            if root not in unique:
+                unique.append(root)
+        return tuple(unique)
 
     @property
     def APP_BRAND(self) -> AppBrand:

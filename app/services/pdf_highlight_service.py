@@ -8,6 +8,8 @@ import re
 import shutil
 import unicodedata
 
+from ..config import get_settings
+
 
 @dataclass(frozen=True)
 class PdfHighlightRequest:
@@ -113,10 +115,10 @@ class PdfHighlightService:
                 quad_points=quad_points,
                 highlight_color=self._normalize_color(request.color),
                 printing=True,
-                title_bar="Big Agent",
+                title_bar=get_settings().APP_BRAND.display_name,
             )
             annotation[NameObject("/Contents")] = TextStringObject(request.label[:240])
-            annotation[NameObject("/CA")] = FloatObject(0.38)
+            annotation[NameObject("/CA")] = FloatObject(0.58)
             writer.add_annotation(page_number=page_index, annotation=annotation)
 
             highlighted_passages += 1

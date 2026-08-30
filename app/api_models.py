@@ -45,6 +45,7 @@ class IngestResponse(BaseModel):
     status: Literal["ingested", "duplicate"]
     file_name: str | None = None
     pages: int | None = None
+    ocr_pages: int = 0
     chunks: int | None = None
     embeddings_created: int = 0
     embedding_provider: str
@@ -55,6 +56,7 @@ class BatchIngestItemResponse(BaseModel):
     status: Literal["ingested", "duplicate", "error"]
     document_id: int | None = None
     pages: int | None = None
+    ocr_pages: int = 0
     chunks: int | None = None
     embeddings_created: int = 0
     embedding_provider: str | None = None
@@ -138,6 +140,13 @@ class ReportComparisonRequest(BaseModel):
     use_llm: bool = True
 
 
+class ReportComparisonMultiRequest(BaseModel):
+    sources: list[ReportComparisonSourceRequest] = Field(min_length=2)
+    mode: Literal["reference", "all_pairs"] = "reference"
+    reference_index: int = Field(default=0, ge=0)
+    use_llm: bool = True
+
+
 class ReportComparisonUploadResponse(BaseModel):
     upload_token: str
     source_ref: str
@@ -211,6 +220,56 @@ class ReportComparisonResponse(BaseModel):
     cache_hit: bool
 
 
+class ReportComparisonPairResponse(BaseModel):
+    pair_key: str
+    left_index: int
+    right_index: int
+    left_source_ref: str
+    right_source_ref: str
+    result: ReportComparisonResponse
+
+
+class ReportComparisonTopicEvidenceResponse(BaseModel):
+    document_index: int
+    source_ref: str
+    document_title: str
+    file_name: str
+    page_start: int | None = None
+    page_end: int | None = None
+    section_title: str | None = None
+    excerpt: str
+
+
+class ReportComparisonTopicRowResponse(BaseModel):
+    id: str
+    kind: Literal["common", "changed", "conflict", "unique"]
+    topic: str
+    summary: str
+    present_in: list[int]
+    missing_from: list[int]
+    confidence: float
+    evidence: list[ReportComparisonTopicEvidenceResponse]
+
+
+class ReportComparisonMultiResponse(BaseModel):
+    comparison_id: str
+    mode: Literal["reference", "all_pairs"]
+    reference_index: int
+    documents: list[ReportComparisonDocumentResponse]
+    comparisons: list[ReportComparisonPairResponse]
+    rows: list[ReportComparisonTopicRowResponse]
+    source_count: int
+    comparison_count: int
+    similarity_count: int
+    difference_count: int
+    matched_pair_count: int
+    coverage: float
+    embedding_provider: str
+    generation_providers: list[str]
+    llm_used: bool
+    cache_hit_count: int
+
+
 class SearchResponse(BaseModel):
     mode: Literal["keyword", "semantic", "hybrid"]
     semantic_available: bool
@@ -238,11 +297,30 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage] = Field(default_factory=list)
     mode: Literal["keyword", "semantic", "hybrid"] = "hybrid"
     assistant_mode: Literal["auto", "report", "general"] = "auto"
-    retrieval_version: Literal["v1", "v2"] = "v2"
+    retrieval_version: Literal["v1", "v2", "v3"] = "v2"
     limit: int = Field(default=5, ge=1, le=10)
     document_id: int | None = Field(default=None, ge=1)
     document_ids: list[int] = Field(default_factory=list, max_length=8)
     use_llm_answer: bool = False
+
+
+class ReportReviewDecisionRequest(BaseModel):
+    document_id: int = Field(ge=1)
+    finding_key: str = Field(min_length=16, max_length=64, pattern=r"^[a-f0-9]+$")
+    rule_id: str = Field(min_length=3, max_length=120, pattern=r"^[a-z0-9_.-]+$")
+    decision: Literal["open", "confirmed", "dismissed"]
+    note: str = Field(default="", max_length=1000)
+    reviewer: str = Field(default="", max_length=120)
+
+
+class ReportReviewDecisionResponse(BaseModel):
+    document_id: int
+    finding_key: str
+    rule_id: str
+    decision: Literal["open", "confirmed", "dismissed"]
+    note: str = ""
+    reviewer: str = ""
+    decided_at: str | None = None
 
 
 class AnswerSourceResponse(BaseModel):
@@ -257,6 +335,21 @@ class AnswerSourceResponse(BaseModel):
     keyword_score: float = Field(default=0.0)
     semantic_score: float = Field(default=0.0)
     combined_score: float = Field(default=0.0)
+    source_kind: Literal["retrieval", "report_review"] = "retrieval"
+    review_rule_id: str | None = None
+    review_category: str | None = None
+    review_severity: Literal["critical", "warning", "info"] | None = None
+    review_status: Literal["fail", "needs_review"] | None = None
+    review_message: str | None = None
+    suggested_fix: str | None = None
+    review_engine: str | None = None
+    review_highlight_available: bool = False
+    review_finding_key: str | None = None
+    human_decision: Literal["open", "confirmed", "dismissed"] = "open"
+    human_decision_note: str = ""
+    human_reviewer: str = ""
+    human_decided_at: str | None = None
+    review_revision_change: Literal["new", "resolved", "continuing"] | None = None
 
 
 class AskResponse(BaseModel):
@@ -276,7 +369,7 @@ class ChatResponse(BaseModel):
     confidence: float = Field(default=0.0)
     embedding_provider: str
     retrieval_provider: str | None = None
-    retrieval_version: Literal["v1", "v2"] = "v2"
+    retrieval_version: Literal["v1", "v2", "v3"] = "v2"
     retrieval_used: bool = False
     sources: list[AnswerSourceResponse]
     history: list[ChatMessage]
@@ -485,3 +578,8 @@ class CatalogSelectedIngestResponse(BaseModel):
     duplicate_count: int
     error_count: int
     items: list[CatalogSampleIngestItemResponse]
+
+
+class LibraryScanRequest(BaseModel):
+    path: str = Field(min_length=1, max_length=2048)
+    limit: int = Field(default=500, ge=1, le=800)

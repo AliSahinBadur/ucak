@@ -64,6 +64,8 @@ def normalize_sections(sections: list[ParsedSection]) -> list[CleanSection]:
                 raw_text=section.raw_text,
                 clean_text=normalized,
                 section_title=section.section_title,
+                extraction_method=section.extraction_method,
+                ocr_attempted=section.ocr_attempted,
             )
         )
     return cleaned_sections

@@ -48,12 +48,17 @@ from .api_models import (
     IngestResponse,
     JobListResponse,
     JobStatusResponse,
+    LibraryScanRequest,
     MultiDocumentAskRequest,
     MultiDocumentAskResponse,
     ReindexEmbeddingsResponse,
+    ReportComparisonMultiRequest,
+    ReportComparisonMultiResponse,
     ReportComparisonRequest,
     ReportComparisonResponse,
     ReportComparisonUploadResponse,
+    ReportReviewDecisionRequest,
+    ReportReviewDecisionResponse,
     SearchResponse,
     StorageCheckResponse,
 )
@@ -66,16 +71,25 @@ from .services.catalog_ingest_service import CatalogIngestService
 from .services.catalog_service import CatalogService
 from .services.duplicate_detection_service import DuplicateDetectionService
 from .services.document_intelligence_service import DocumentIntelligenceService
+from .services.document_path_service import resolve_document_file_path
 from .services.general_chat_service import GeneralChatService
 from .services.graph_service import GraphService
+from .services.haystack_retrieval_service import (
+    HaystackRetrievalError,
+    HaystackRetrievalService,
+    HaystackUnavailableError,
+)
 from .services.ingest_service import IngestService
 from .services.job_manager import JobContext, get_job_manager
+from .services.library_service import LibraryService
 from .services.multi_document_qa_service import MultiDocumentQAService
 from .services.qa_service import QAService
 from .services.report_comparison_service import (
     ReportComparisonService,
     resolve_comparison_pdf_path,
 )
+from .services.report_review_service import ReportReviewService
+from .services.report_review_export_service import ReportReviewExportService
 from .services.report_writer_service import ReportWriterService
 from .services.retrieval_orchestrator import RetrievalOrchestrator
 from .services.search_service import SearchService
@@ -726,6 +740,35 @@ def compare_reports(
         raise HTTPException(status_code=500, detail="Rapor karsilastirmasi tamamlanamadi.") from exc
 
 
+@app.post("/report-comparison/multi", response_model=ReportComparisonMultiResponse)
+def compare_multiple_reports(
+    payload: ReportComparisonMultiRequest,
+    session: Session = Depends(get_session),
+) -> ReportComparisonMultiResponse:
+    sources = [source.model_dump() for source in payload.sources]
+    for source in sources:
+        selected_count = int(bool(source.get("document_id"))) + int(bool(source.get("upload_token")))
+        if selected_count != 1:
+            raise HTTPException(status_code=400, detail="Her dokuman icin tek bir kaynak sec.")
+    if payload.reference_index >= len(sources):
+        raise HTTPException(status_code=400, detail="Referans dokuman secimi gecersiz.")
+    try:
+        service = ReportComparisonService(session)
+        return ReportComparisonMultiResponse(
+            **service.compare_many(
+                sources,
+                mode=payload.mode,
+                reference_index=payload.reference_index,
+                use_llm=payload.use_llm,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Multi-report comparison failed.")
+        raise HTTPException(status_code=500, detail="Dokuman karsilastirmasi tamamlanamadi.") from exc
+
+
 @app.get("/report-comparison/{comparison_id}/pdf/{side}")
 def comparison_highlighted_pdf(
     comparison_id: str,
@@ -950,9 +993,7 @@ def chat(
     ):
         history.pop()
 
-    if payload.assistant_mode == "general" or (
-        payload.assistant_mode == "auto" and _is_general_chat_message(payload.message)
-    ):
+    if _should_use_general_chat(payload.assistant_mode, payload.message):
         answer_text, provider_name, confidence = _chat_general_answer(payload.message, history)
         history.append({"role": "user", "content": payload.message})
         history.append({"role": "assistant", "content": answer_text})
@@ -970,15 +1011,18 @@ def chat(
         )
 
     service = DocumentIntelligenceService(session)
-    answer = service.answer_question(
-        payload.message,
-        history=history,
-        mode=payload.mode,
-        limit=payload.limit,
-        document_id=payload.document_id,
-        context_document_ids=payload.document_ids,
-        retrieval_version=payload.retrieval_version,
-    )
+    try:
+        answer = service.answer_question(
+            payload.message,
+            history=history,
+            mode=payload.mode,
+            limit=payload.limit,
+            document_id=payload.document_id,
+            context_document_ids=payload.document_ids,
+            retrieval_version=payload.retrieval_version,
+        )
+    except (HaystackUnavailableError, HaystackRetrievalError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     history.append({"role": "user", "content": payload.message})
     history.append({"role": "assistant", "content": answer["answer"]})
     return ChatResponse(
@@ -987,7 +1031,7 @@ def chat(
         answer_found=answer["answer_found"],
         confidence=answer["confidence"],
         embedding_provider=answer["embedding_provider"],
-        retrieval_provider=service.search_service.embedding_provider_name(),
+        retrieval_provider=service.retrieval_provider_name(payload.retrieval_version),
         retrieval_version=payload.retrieval_version,
         retrieval_used=True,
         sources=answer["sources"],
@@ -999,6 +1043,8 @@ def _is_general_chat_message(message: str) -> bool:
     normalized = _fold_chat_text(message)
     if not normalized:
         return False
+    if _is_application_meta_message(normalized):
+        return True
     if _is_report_focused_message(normalized):
         return False
     if _is_simple_math_message(message):
@@ -1027,6 +1073,39 @@ def _is_general_chat_message(message: str) -> bool:
         return True
 
     return True
+
+
+def _should_use_general_chat(assistant_mode: str, message: str) -> bool:
+    return (
+        assistant_mode == "general"
+        or _is_chat_small_talk(message)
+        or (assistant_mode == "auto" and _is_general_chat_message(message))
+    )
+
+
+def _is_application_meta_message(normalized: str) -> bool:
+    identity_phrases = {
+        "kendinden bahset",
+        "kendini tanit",
+        "sen kimsin",
+        "bu uygulama ne yapar",
+        "uygulama nedir",
+        "bu sistem nedir",
+    }
+    if any(phrase in normalized for phrase in identity_phrases):
+        return True
+
+    brand_names = {
+        _fold_chat_text(APP_BRAND.display_name),
+        "raporhub",
+        "repocto",
+        "smartcae ai",
+        "big agent",
+    }
+    capability_phrases = {"ne yapar", "ne ise yarar", "ne yapabilir"}
+    return any(name and name in normalized for name in brand_names) and any(
+        phrase in normalized for phrase in capability_phrases
+    )
 
 
 def _is_simple_math_message(message: str) -> bool:
@@ -1058,6 +1137,11 @@ def _is_chat_small_talk(message: str) -> bool:
         "ne haber",
         "gunaydin",
         "iyi aksamlar",
+        "sagol",
+        "sag ol",
+        "tesekkur",
+        "tesekkurler",
+        "eyvallah",
     }
     return normalized in small_talk_phrases or (
         len(normalized.split()) <= 3
@@ -1107,16 +1191,20 @@ def _is_report_focused_message(normalized: str) -> bool:
 
 def _chat_general_answer(message: str, history: list[dict] | None = None) -> tuple[str, str, float]:
     normalized = _fold_chat_text(message)
+    if len(normalized.split()) <= 5 and any(
+        phrase in normalized for phrase in ("sagol", "sag ol", "tesekkur", "eyvallah")
+    ):
+        return "Rica ederim.", "chat-direct", 1.0
     if any(phrase in normalized for phrase in ("adam misin", "insan misin", "robot musun", "gercek misin")):
         return (
-            "Ben insan degilim; Big Agent icinde calisan yapay zeka destekli bir rapor asistaniyim. "
+            f"Ben insan degilim; {APP_BRAND.display_name} icinde calisan yapay zeka destekli bir rapor asistaniyim. "
             "Genel sohbet edebilirim, ama asil isim raporlar ve teknik dokumanlar uzerinden yardim etmek.",
             "chat-direct",
             1.0,
         )
     if any(phrase in normalized for phrase in ("kendinden bahset", "sen kimsin", "kimsin", "kendini tanit", "kendini tanıt")):
         return (
-            "Ben Big Agent icindeki rapor asistaniyim. PDF, DOCX ve PPTX raporlarindan kaynakli cevap bulmak, "
+            f"Ben {APP_BRAND.display_name} icindeki rapor asistaniyim. PDF, DOCX ve PPTX raporlarindan kaynakli cevap bulmak, "
             "benzer raporlari gostermek, katalog kayitlariyla icerdeki dokumanlari eslestirmek ve mukerrer rapor "
             "adaylarini incelemek icin tasarlandim. Genel sohbet edebilirim ama asil gucum raporlar uzerinden kaynakli cevap vermek.",
             "chat-direct",
@@ -1127,13 +1215,16 @@ def _chat_general_answer(message: str, history: list[dict] | None = None) -> tup
         or "ne ise yararsin" in normalized
         or "amacin ne" in normalized
         or "big agent ne yapar" in normalized
+        or "smartcae ai ne yapar" in normalized
+        or "raporhub ne yapar" in normalized
+        or "repocto ne yapar" in normalized
         or "bu uygulama ne yapar" in normalized
         or "sistem ne yapar" in normalized
     ):
         return (
-            "Rapor iceriginde arama yapabilir, teknik sorulara kaynak pasajlarla cevap verebilir, ilgili raporlari ve "
-            "benzer dokumanlari gosterebilir, katalog kayitlarini icerdeki raporlarla eslestirebilir ve mukerrer rapor "
-            "adaylarini listeleyebilirim.",
+            f"{APP_BRAND.display_name}; muhendislik raporlarini yukleme, katalogdan ice aktarma, icerik ve anlamsal "
+            "arama, kaynakli soru-cevap, rapor karsilastirma, mukerrer tespiti, tablo/sekil numaralandirma kontrolu "
+            "ve rapor taslagi olusturma islemlerini tek yerde yapar.",
             "chat-direct",
             1.0,
         )
@@ -1371,6 +1462,18 @@ def graph_overview(
 ) -> dict:
     service = GraphService(session)
     return service.overview(limit=limit)
+
+
+@app.post("/library/scan")
+def scan_library(payload: LibraryScanRequest) -> dict:
+    if APP_VARIANT != "repocto":
+        raise HTTPException(status_code=404, detail="Kütüphane yalnızca RepOcto'da kullanılabilir.")
+    try:
+        return LibraryService(settings.REPOCTO_LIBRARY_ROOTS).scan(payload.path, limit=payload.limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail="Kök klasör okunamadı.") from exc
 
 
 @app.post("/catalog/ingest-selected", response_model=JobStatusResponse, status_code=202)
@@ -1635,8 +1738,8 @@ def document_file(document_id: int, session: Session = Depends(get_session)):
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found.")
 
-    file_path = Path(document.file_path)
-    if not file_path.exists():
+    file_path = resolve_document_file_path(document.file_path)
+    if file_path is None:
         raise HTTPException(status_code=404, detail="Original file not found.")
 
     media_type = {
@@ -1649,6 +1752,158 @@ def document_file(document_id: int, session: Session = Depends(get_session)):
         filename=document.file_name,
         media_type=media_type,
         content_disposition_type="inline",
+    )
+
+
+@app.post("/documents/{document_id}/open-folder")
+def open_document_folder(document_id: int, session: Session = Depends(get_session)) -> dict:
+    document = session.get(Document, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    file_path = resolve_document_file_path(document.file_path)
+    if file_path is None:
+        raise HTTPException(status_code=404, detail="Original file not found.")
+
+    try:
+        os.startfile(str(file_path.parent))  # type: ignore[attr-defined]
+    except AttributeError as exc:
+        raise HTTPException(status_code=501, detail="Folder opening is only supported on Windows.") from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Document folder could not be opened: {exc}") from exc
+
+    return {
+        "opened": True,
+        "document_id": document.id,
+        "file_name": document.file_name,
+        "folder_path": str(file_path.parent),
+    }
+
+
+@app.get("/documents/{document_id}/preview")
+def document_preview(
+    document_id: int,
+    page: Annotated[int, Query(ge=1)] = 1,
+    session: Session = Depends(get_session),
+) -> Response:
+    document = session.get(Document, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    file_path = resolve_document_file_path(document.file_path)
+    if file_path is not None and file_path.suffix.lower() == ".pdf":
+        return FileResponse(
+            path=file_path,
+            filename=document.file_name,
+            media_type="application/pdf",
+            content_disposition_type="inline",
+        )
+
+    page_row = session.scalar(
+        select(DocumentPage).where(
+            DocumentPage.document_id == document_id,
+            DocumentPage.page_number == page,
+        )
+    )
+
+    if page_row is None:
+        page_row = session.scalar(
+            select(DocumentPage)
+            .where(DocumentPage.document_id == document_id)
+            .order_by(DocumentPage.page_number.asc())
+        )
+
+    page_label = f"Sayfa {page_row.page_number}" if page_row is not None else "Metin önizlemesi"
+    section_label = page_row.section_title if page_row is not None and page_row.section_title else "Doküman içeriği"
+    preview_text = page_row.clean_text if page_row is not None and page_row.clean_text else "Bu doküman için önizlenebilir metin bulunamadı."
+    return HTMLResponse(
+        f"""
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{escape(document.title)} · Önizleme</title>
+  <style>
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; padding: 16px; background: #fff; color: #302326; font-family: "Segoe UI", Tahoma, sans-serif; }}
+    header {{ position: sticky; top: 0; margin: -16px -16px 14px; padding: 12px 16px; border-bottom: 1px solid #eadde0; background: rgba(255,255,255,.96); }}
+    strong, span {{ display: block; }}
+    strong {{ font-size: 13px; line-height: 1.35; }}
+    span {{ margin-top: 4px; color: #9b2e43; font-size: 10px; font-weight: 700; }}
+    pre {{ margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.62 "Segoe UI", Tahoma, sans-serif; }}
+  </style>
+</head>
+<body>
+  <header><strong>{escape(document.title)}</strong><span>{escape(page_label)} · {escape(section_label)}</span></header>
+  <pre>{escape(preview_text)}</pre>
+</body>
+</html>
+        """
+    )
+
+
+@app.get("/documents/{document_id}/review-preview")
+def document_review_preview(
+    document_id: int,
+    rule_id: Annotated[str, Query(min_length=3, max_length=100, pattern=r"^[a-z0-9_.-]+$")],
+    page: Annotated[int, Query(ge=1)] = 1,
+    session: Session = Depends(get_session),
+) -> FileResponse:
+    try:
+        preview_path, highlighted_passages = ReportReviewService(session).build_highlighted_preview(
+            document_id,
+            rule_id,
+            page,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FileResponse(
+        path=preview_path,
+        filename=f"rapor-kontrol-{document_id}.pdf",
+        media_type="application/pdf",
+        content_disposition_type="inline",
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "X-Review-Highlights": str(highlighted_passages),
+        },
+    )
+
+
+@app.post(
+    "/report-review/decisions",
+    response_model=ReportReviewDecisionResponse,
+)
+def save_report_review_decision(
+    payload: ReportReviewDecisionRequest,
+    session: Session = Depends(get_session),
+) -> ReportReviewDecisionResponse:
+    try:
+        result = ReportReviewService(session).record_decision(**payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return ReportReviewDecisionResponse(**result)
+
+
+@app.get("/report-review/export")
+def export_report_review(
+    document_ids: Annotated[list[int], Query()],
+    session: Session = Depends(get_session),
+) -> Response:
+    normalized_ids = list(dict.fromkeys(int(item) for item in document_ids if int(item) > 0))
+    if not normalized_ids or len(normalized_ids) > 8:
+        raise HTTPException(status_code=422, detail="Select between 1 and 8 documents.")
+    review = ReportReviewService(session).analyze_documents(normalized_ids)
+    if not review["summary"]["documents_analyzed"]:
+        raise HTTPException(status_code=404, detail="No report could be reviewed.")
+    pdf_content = ReportReviewExportService.build_pdf(review)
+    return Response(
+        content=pdf_content,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'attachment; filename="smartcae-rapor-kontrol.pdf"',
+            "Cache-Control": "no-store",
+        },
     )
 
 
@@ -1667,6 +1922,7 @@ def rebuild_embeddings() -> JobStatusResponse:
             result = service.rebuild(
                 progress_callback=lambda done, total: context.set_progress(done, total, "chunk"),
             )
+            HaystackRetrievalService.clear_cache()
             return ReindexEmbeddingsResponse(**result).model_dump()
         finally:
             job_session.close()
