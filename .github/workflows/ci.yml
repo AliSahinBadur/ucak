@@ -24,3 +24,27 @@ jobs:
 
       - name: Run tests
         run: uv run pytest -q
+
+  requirements:
+    name: requirements.txt install + import
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install from requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      # Guards against requirements.txt drifting from pyproject.toml: app.main
+      # transitively imports every runtime dependency the app needs to boot, so
+      # a package present in one manifest but missing from the other fails here.
+      - name: Import app.main
+        run: python -c "import app.main; print('imported app.main OK')"
