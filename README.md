@@ -10,8 +10,7 @@ The app now serves the SmartCAE v2 interface (`app/ui/smartcae_v2/`) at `/`. The
 previous single-page UI is still available at `/app` or `/legacy`
 (`app/static/`). `APP_VARIANT` (see `.env.example`, `app/branding.py`) selects
 the product identity/branding; only `big_agent` (default) has a fully wired
-application workspace here — see `mainbranch-upgrades.md` for what the other
-variants still need.
+application workspace here.
 
 ## What Works
 
