@@ -184,6 +184,23 @@ Report Q&A does not require the LLM. RAG and source-grounded answers continue to
 
 ## Test
 
+Run the unit and API test suite (no model, no Ollama, no network needed):
+
+```powershell
+& '.venv\Scripts\python.exe' -m pytest -q
+```
+
+`tests/conftest.py` pins the environment before `app` is imported: the database
+goes to a throwaway temp directory, `EMBEDDING_BACKEND=token-hash`, and every LLM
+is disabled. The `client` fixture is a `TestClient` over the real app; `db_session`
+gives a clean database per test and `seed_corpus` a three-report corpus.
+
+For a coverage report:
+
+```powershell
+& '.venv\Scripts\python.exe' -m pytest -q --cov=app --cov-report=term
+```
+
 Smoke test the running app:
 
 ```powershell

@@ -15,7 +15,7 @@ backups/
 screenshots/
 tmp_*.js
 tmp_*.py
-
+*.coverage
 *.db
 *.sqlite3
 *.pyc

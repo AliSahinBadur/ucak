@@ -238,6 +238,21 @@ Add tests for:
 - chunk creation with overlap
 - duplicate detection by file hash
 
+Run them with `python -m pytest -q`. The suite must stay offline and model-free.
+
+`tests/conftest.py` sets the environment (temp `BIG_AGENT_DATA_DIR`,
+`EMBEDDING_BACKEND=token-hash`, every LLM disabled) **at import time**, before
+anything under `app` is imported. This is load-bearing: `app/db/session.py` builds
+the engine from `Settings` when it is imported and `get_settings()` is cached, so
+a fixture body cannot redirect the database after the fact. Never import `app`
+above that env block, and never add a test that reaches the network or loads a
+sentence-transformers model.
+
+Shared fixtures: `db_session` (clean database per test), `client` (`TestClient`
+over the real app), `seed_corpus` (three Turkish reports with embeddings), plus
+the `add_document` / `add_page` / `add_chunk` helpers for building a corpus with
+known vectors.
+
 ---
 
 ## Success Criteria for the First Demo
