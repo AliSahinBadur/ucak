@@ -1594,8 +1594,11 @@ body[data-active-view="chat"] .chat-stage {
 .chat-suggestions .revision-review-skill { border-color: #a9d2c3; background: #f0f9f5; color: #176548; }
 .chat-suggestions .revision-review-skill:hover { border-color: #52a988; color: #104f39; }
 .chat-suggestions .quality-example { border-color: #e3bdc5; background: #fff7f9; color: var(--red-strong); }
+.chat-suggestions .catia-skill-link { border-color: #ddb86a; background: #fff8e9; color: #77520a; }
+.chat-suggestions .catia-skill-link:hover { border-color: #c8901a; color: #5c3f06; }
 .chat-suggestions button span { font-size: 13px; }
-.chat-suggestions[hidden] { display: none; }
+.chat-suggestions[hidden],
+.chat-suggestions button[hidden] { display: none; }
 
 .chat-composer {
   width: min(920px, calc(100% - 36px));

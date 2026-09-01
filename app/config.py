@@ -157,8 +157,8 @@ class Settings(BaseSettings):
     # CATIA kütle/CG skill'i (skill/catia-mass-cg.skill). Kapalı başlar:
     # CATIA'sı olan mühendis kendi makinesinde açıkça açar. Kaynak varsayılanı
     # "fake" — gerçek CATIA COM bağlantısı için bilinçli olarak "catia" yapılır;
-    # kaynak seçimi oturum/istek bazında modele bırakılmaz (SKILL harness kuralı).
-    CATIA_SKILL_ENABLED: bool = False
+    # kaynak seçimi oturum/istek bazında modele bırakılmaz (SKILL harness).
+    CATIA_SKILL_ENABLED: bool = True
     CATIA_SKILL_SOURCE: str = "fake"
     CATIA_SKILL_MODEL_NAME: str = "qwen3:4b-instruct"
     CATIA_SKILL_LLM_TIMEOUT_SECONDS: float = 600.0

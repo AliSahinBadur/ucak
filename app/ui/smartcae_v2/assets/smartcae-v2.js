@@ -134,6 +134,7 @@
   const downloadDraftButton = document.getElementById("downloadDraftButton");
 
   const catiaRailButton = document.querySelector('.rail-button[data-view-target="catia"]');
+  const chatCatiaSkill = document.getElementById("chatCatiaSkill");
   const catiaActionCard = document.querySelector(".catia-action-card");
   const quickActions = document.querySelector(".quick-actions");
   const catiaStage = document.getElementById("catiaStage");
@@ -1950,6 +1951,9 @@
 
     catiaRailButton.hidden = !enabled;
     catiaActionCard.hidden = !enabled;
+    // Sohbetteki skill listesi de skill kapalıyken boş yere CATIA vaat etmesin;
+    // düğme rail ile aynı kuralı izler ve tıklanınca kendi görünümüne götürür.
+    chatCatiaSkill.hidden = !enabled;
     quickActions.classList.toggle("has-catia", enabled);
     catiaStage.hidden = !usable;
 

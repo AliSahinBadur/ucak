@@ -42,6 +42,42 @@ class SkillBundleTests(unittest.TestCase):
             self.assertEqual("export", sub)
             self.assertNotIn("--approve", argv)
 
+    def test_source_flag_is_normalised_not_blocked(self) -> None:
+        """Model `--source` yazdiginda tur olmemeli: kaynagi ortam secer.
+
+        `doctor`/`history` bu argumani hic tanimiyor, `run` ise ortamin
+        sectigi kaynakla calismali; ikisinde de model komutu bloklanmiyor,
+        duzeltiliyor."""
+        with TemporaryDirectory() as temp_dir:
+            runner = load_runner(ensure_skill_unpacked(target_root=Path(temp_dir)))
+
+            sub, argv = runner.validate("python -m cmc doctor --source fake", force_source="fake")
+            self.assertEqual("doctor", sub)
+            self.assertNotIn("--source", argv)
+
+            sub, argv = runner.validate("python -m cmc history --source fake", force_source="fake")
+            self.assertEqual("history", sub)
+            self.assertNotIn("--source", argv)
+
+            # Model kaynagi degistiremez: fake kurulumda --source catia da fake olur.
+            _, argv = runner.validate(
+                "python -m cmc run --vehicle ARAC-X --variant BASE --revision R04 --source catia",
+                force_source="fake")
+            self.assertEqual(["--source", "fake"], argv[-2:])
+            self.assertEqual(1, argv.count("--source"))
+
+            # `--flag=deger` yazimi da ayni komut sayilir.
+            _, argv = runner.validate(
+                "python -m cmc run --vehicle=ARAC-X --variant=BASE --revision=R04",
+                force_source="fake")
+            self.assertIn("ARAC-X", argv)
+            self.assertNotIn("--vehicle=ARAC-X", argv)
+
+            # Uydurulan argumanlar hala bloklu ve hata izinlileri sayiyor.
+            with self.assertRaises(runner.Blocked) as blocked:
+                runner.validate("python -m cmc calibrate --block 100x50x25 --density 7850")
+            self.assertIn("--length", str(blocked.exception))
+
     def test_approval_word_gate(self) -> None:
         with TemporaryDirectory() as temp_dir:
             runner = load_runner(ensure_skill_unpacked(target_root=Path(temp_dir)))
