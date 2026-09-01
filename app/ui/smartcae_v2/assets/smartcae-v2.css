@@ -2532,6 +2532,13 @@ body.evidence-open .evidence-panel.preview-active {
 .catia-approval-actions { display: flex; flex: 0 0 auto; gap: 8px; }
 .catia-approval-actions .primary-button { min-height: 38px; }
 
+/* Skill CAE sohbetinde de calisir: orada onay sabit bir serit degil, konusma
+   akisinin sonunda duran bir karttir. */
+.catia-approval-inline { width: min(880px, 100%); margin: 6px auto 10px; }
+.chat-skill-chip { align-self: center; }
+.chat-skill-chip[hidden] { display: none; }
+.chat-controls select:disabled { opacity: 0.55; cursor: not-allowed; }
+
 /* Tek bolum var: sohbetteki iki kolonluk izgara yerine tam genislik. */
 .catia-suggestions { grid-template-columns: minmax(0, 1fr); }
 

@@ -192,18 +192,19 @@
           <div class="chat-stage">
             <div class="chat-workspace-bar">
               <div class="chat-agent-identity">
-                <span class="chat-agent-robot" aria-hidden="true">🤖</span>
+                <span class="chat-agent-robot" id="chatAgentEmoji" aria-hidden="true">🤖</span>
                 <div>
-                  <strong>SmartCAE AI</strong>
-                  <span>Seçili dokümanlarla kaynaklı yanıt üretir</span>
+                  <strong id="chatAgentName">SmartCAE AI</strong>
+                  <span id="chatAgentTagline">Seçili dokümanlarla kaynaklı yanıt üretir</span>
                 </div>
               </div>
               <div class="chat-workspace-actions">
                 <div class="chat-controls">
-                  <label>Asistan<select id="chatAssistantMode"><option value="auto">Otomatik</option><option value="report">Doküman</option><option value="general">Genel</option></select></label>
+                  <label>Asistan<select id="chatAssistantMode"><option value="auto">Otomatik</option><option value="report">Doküman</option><option value="general">Genel</option><option value="catia" id="chatCatiaModeOption" hidden>CATIA kütle / CG</option></select></label>
                   <label class="rag-version-control">RAG<select id="chatRetrievalVersion" aria-label="RAG sürümü"><option value="v2">v2 · Beta</option><option value="v3">v3 · Haystack</option><option value="v1">v1 · Klasik</option></select></label>
                   <label>Arama<select id="chatSearchMode"><option value="hybrid">Hibrit</option><option value="semantic">Semantik</option><option value="keyword">Anahtar kelime</option></select></label>
                 </div>
+                <span class="catia-source-chip chat-skill-chip" id="chatCatiaChip" data-source="fake" title="Ölçümün hangi kaynaktan alındığı" hidden>fake montaj</span>
                 <button class="chat-evidence-button" id="chatEvidenceButton" type="button" aria-controls="evidencePanel" aria-expanded="false">
                   <svg><use href="#icon-panel"/></svg><span id="chatEvidenceCount">0 kaynak</span>
                 </button>
@@ -242,7 +243,7 @@
                   <button class="skill-example report-review-skill" type="button" data-prompt="RAPOR-KODU raporu kontrol et; hata, eksik ve tutarsızlıkları sayfa kanıtlarıyla göster." data-context-prompt="Bu raporu kontrol et; hata, eksik ve tutarsızlıkları sayfa kanıtlarıyla göster." data-context-multi-prompt="Bu raporları kontrol et; hata, eksik ve tutarsızlıkları ayrı ayrı sayfa kanıtlarıyla göster." data-assistant-mode="report" data-select-token="RAPOR-KODU" title="Soldan seçilen raporu; rapor no, tarih, zorunlu bölümler, tablo/şekil referansları, ondalık biçimi ve metin çıkarımı açısından kontrol eder"><span aria-hidden="true">✅</span>Rapor kontrolü</button>
                   <button class="skill-example revision-review-skill" type="button" data-prompt="Bu iki raporun rapor kontrolü bulgularını revizyon bazında karşılaştır; yeni, giderilen ve devam eden bulguları göster." data-context-multi-prompt="Bu iki raporun rapor kontrolü bulgularını revizyon bazında karşılaştır; yeni, giderilen ve devam eden bulguları göster." data-assistant-mode="report" title="Soldan iki rapor seç; yeni revizyonda oluşan, giderilen ve devam eden kontrol bulgularını karşılaştırır"><span aria-hidden="true">🔄</span>Revizyon kontrolü</button>
                   <button class="skill-example quality-example" type="button" data-prompt="RAPOR-KODU raporundaki tablo ve şekil numaralandırması doğru mu yapılmış?" data-assistant-mode="report" data-select-token="RAPOR-KODU" title="Rapor kodunu değiştirerek tablo ve şekil sırasını kontrol et"><span aria-hidden="true">🔢</span>Tablo / şekil kontrolü</button>
-                  <button class="skill-example catia-skill-link" id="chatCatiaSkill" type="button" data-view-target="catia" title="Açık CATIA montajından alt yapı bazında kütle, ağırlık merkezi ve atalet çıkarır; onayından sonra Adams/Car .cmd dosyasını üretir. Kendi çalışma alanında açılır." hidden><span aria-hidden="true">⚙️</span>CATIA kütle / CG</button>
+                  <button class="skill-example catia-skill-link" id="chatCatiaSkill" type="button" data-prompt="ARAC-X / BASE / R04 montajından kütle ve CG çıkar." data-assistant-mode="catia" data-select-token="ARAC-X / BASE / R04" title="Açık CATIA montajından alt yapı bazında kütle, ağırlık merkezi ve atalet çıkarır; onayından sonra Adams/Car .cmd dosyasını üretir. Sohbetten çıkmadan burada çalışır." hidden><span aria-hidden="true">⚙️</span>CATIA kütle / CG</button>
                 </div>
               </div>
               <div class="chat-suggestion-section example-suggestions" data-suggestion-section="examples">

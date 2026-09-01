@@ -23,11 +23,16 @@
     previewDocumentId: null,
     lastDraftPayload: null,
     systemStatusLoaded: false,
-    catiaSessionId: null,
-    catiaPendingRunId: null,
-    catiaRejectedRunId: null,
-    catiaApprovalPending: false,
-    catiaBusy: false,
+    catiaStatus: {
+      enabled: false,
+      available: false,
+      localClient: true,
+      usable: false,
+      source: "fake",
+      model: "",
+      workspaceRoot: "",
+      error: "",
+    },
   };
 
   const body = document.body;
@@ -156,6 +161,11 @@
   const catiaSendButton = document.getElementById("catiaSendButton");
   const catiaSessionHint = document.getElementById("catiaSessionHint");
   const catiaResetButton = document.getElementById("catiaResetButton");
+  const chatCatiaModeOption = document.getElementById("chatCatiaModeOption");
+  const chatCatiaChip = document.getElementById("chatCatiaChip");
+  const chatAgentEmoji = document.getElementById("chatAgentEmoji");
+  const chatAgentName = document.getElementById("chatAgentName");
+  const chatAgentTagline = document.getElementById("chatAgentTagline");
 
   const systemStatusButton = document.getElementById("systemStatusButton");
   const systemStatusPopover = document.getElementById("systemStatusPopover");
@@ -178,6 +188,7 @@
   let catiaTimerId = null;
   let catiaStartedAt = 0;
   let chatProcessExpectsRetrieval = true;
+  let chatProcessSkill = "";
   const defaultEvidenceWidth = 340;
   const minimumEvidenceWidth = 280;
   const defaultSourceWidth = 304;
@@ -533,7 +544,9 @@
     sourceSelectionBar.classList.toggle("has-selection", selected.length > 0);
     clearContextButton.disabled = selected.length === 0;
     homeContextHint.textContent = selected.length ? `${selected.length} doküman bağlama eklendi` : "Tüm dokümanlar kullanılacak";
-    chatContextHint.textContent = contextLabel();
+    chatContextHint.textContent = chatAssistantMode.value === "catia"
+      ? "CATIA skill oturumu"
+      : contextLabel();
     draftStatus.textContent = selected.length
       ? `${selected.length} seçili doküman kaynak olarak kullanılacak.`
       : "Kaynak seçilmedi; SmartCAE ilgili dokümanları arayacak.";
@@ -832,7 +845,17 @@
   function resetChat() {
     resetChatProcess();
     state.chatHistory = [];
-    chatMessages.innerHTML = `
+    // Skill oturumu da yeni sohbetle birlikte kapanır: bekleyen onay ve
+    // sunucudaki oturum kimliği önceki konuşmayla kalmasın.
+    resetChatCatiaSession();
+    chatMessages.innerHTML = chatAssistantMode.value === "catia"
+      ? `
+      <article class="message assistant-message">
+        <div class="message-avatar" aria-hidden="true">⚙️</div>
+        <div class="message-bubble"><span class="message-author">${escapeHtml(catiaChatSurface.authorLabel)}</span><p>${escapeHtml(catiaWelcomeMessage)}</p></div>
+      </article>
+    `
+      : `
       <article class="message assistant-message">
         <div class="message-avatar" aria-hidden="true">🤖</div>
         <div class="message-bubble"><span class="message-author">SmartCAE AI</span><p>Yeni çalışma hazır. Bir mühendislik sorusu sorabilir veya soldan doküman seçebilirsin.</p></div>
@@ -884,6 +907,24 @@
 
   function updateChatProcessStage(milliseconds) {
     if (chatProcess.dataset.state !== "running") return;
+    if (chatProcessSkill === "catia") {
+      if (milliseconds < 2500) {
+        setChatProcessStep(chatProcessRetrievalStep, "active", "Komut planı", "Model araç çağrısı seçiyor");
+        setChatProcessProgress(28, "Komut planı aşaması");
+        return;
+      }
+      if (milliseconds < 9000) {
+        setChatProcessStep(chatProcessRetrievalStep, "done", "Komut planı", "Araç çağrısı alındı");
+        setChatProcessStep(chatProcessEvidenceStep, "active", "Komut yürütme", "Harness komutları çalıştırıyor");
+        setChatProcessProgress(56, "Komut yürütme aşaması");
+        return;
+      }
+      setChatProcessStep(chatProcessRetrievalStep, "done", "Komut planı", "Araç çağrısı alındı");
+      setChatProcessStep(chatProcessEvidenceStep, "done", "Komut yürütme", "Komutlar tamamlandı");
+      setChatProcessStep(chatProcessGenerationStep, "active", "Sonuç okuma", "Skill sonucu yazıyor");
+      setChatProcessProgress(78, "Sonuç okuma aşaması");
+      return;
+    }
     if (!chatProcessExpectsRetrieval) {
       setChatProcessStep(chatProcessRetrievalStep, "skipped", "Kaynak tarama", "Genel modda gerekmiyor");
       setChatProcessStep(chatProcessEvidenceStep, "skipped", "Kanıt seçimi", "Kaynak kullanılmayacak");
@@ -1008,22 +1049,38 @@
     stopChatProcessCollapseTimer();
     chatProcessStartedAt = 0;
     chatProcessExpectsRetrieval = true;
+    chatProcessSkill = "";
     chatProcess.hidden = true;
     chatProcess.dataset.state = "idle";
     setChatProcessCompact(false);
     chatProcess.style.removeProperty("--process-progress");
   }
 
-  function startChatProcess() {
+  function startChatProcess({ skill = "" } = {}) {
     stopChatProcessTimer();
     stopChatProcessCollapseTimer();
     setChatProcessCompact(false);
     chatProcessStartedAt = performance.now();
     chatProcess.hidden = false;
     chatProcess.dataset.state = "running";
-    chatProcessTitle.textContent = "SmartCAE çalışıyor";
     chatProcessElapsed.textContent = "0.0 sn";
-    chatProcessExpectsRetrieval = chatAssistantMode.value !== "general";
+    chatProcessSkill = skill;
+    chatProcessExpectsRetrieval = !skill && chatAssistantMode.value !== "general";
+    if (skill === "catia") {
+      // Skill turu RAG hattından geçmiyor: aşamalar arama/kanıt değil, komut
+      // planı ve harness yürütmesi.
+      chatProcessTitle.textContent = "CATIA skill'i çalışıyor";
+      setChatProcessStep(chatProcessRequestStep, "done", "Mesaj gönderildi", "Skill oturumuna iletildi");
+      setChatProcessStep(chatProcessRetrievalStep, "", "Komut planı", "Model araç çağrısı seçecek");
+      setChatProcessStep(chatProcessEvidenceStep, "", "Komut yürütme", "Bekliyor");
+      setChatProcessStep(chatProcessGenerationStep, "", "Sonuç okuma", "Bekliyor");
+      setChatProcessStep(chatProcessResponseStep, "", "Tamamlandı", "Tur bekleniyor");
+      chatProcessDetail.textContent = `Mod: CATIA kütle / CG · Kaynak: ${catiaSourceLabel()} · Model: ${state.catiaStatus.model || "—"}`;
+      updateChatProcessElapsed();
+      chatProcessTimerId = window.setInterval(updateChatProcessElapsed, 100);
+      return;
+    }
+    chatProcessTitle.textContent = "SmartCAE çalışıyor";
     setChatProcessStep(chatProcessRequestStep, "done", "Soru gönderildi", "Sunucuya iletildi");
     setChatProcessStep(chatProcessRetrievalStep, "", "Kaynak tarama", "Başlatılıyor");
     setChatProcessStep(chatProcessEvidenceStep, "", "Kanıt seçimi", "Bekliyor");
@@ -1040,7 +1097,7 @@
     chatProcessTimerId = window.setInterval(updateChatProcessElapsed, 100);
   }
 
-  function finishChatProcess({ sourceCount = 0, confidence = null, retrievalUsed = false, error = "" } = {}) {
+  function finishChatProcess({ sourceCount = 0, confidence = null, retrievalUsed = false, error = "", skill = "" } = {}) {
     updateChatProcessElapsed();
     stopChatProcessTimer();
     const elapsedText = chatProcessElapsed.textContent;
@@ -1060,6 +1117,19 @@
       return elapsedText;
     }
     chatProcess.dataset.state = "complete";
+    if (skill === "catia") {
+      chatProcessTitle.textContent = "Skill turu tamamlandı";
+      setChatProcessStep(chatProcessRequestStep, "done", "Mesaj gönderildi", "Skill oturumuna iletildi");
+      setChatProcessStep(chatProcessRetrievalStep, "done", "Komut planı", "Araç çağrısı alındı");
+      setChatProcessStep(chatProcessEvidenceStep, "done", "Komut yürütme", "Komutlar harness'ta çalıştı");
+      setChatProcessStep(chatProcessGenerationStep, "done", "Sonuç okuma", "Ekran kanalı güncellendi");
+      setChatProcessStep(chatProcessResponseStep, "done", "Tamamlandı", `${elapsedText} içinde hazırlandı`);
+      setChatProcessProgress(100, "İşlem tamamlandı");
+      chatProcessDetail.textContent = `CATIA kütle / CG · ${catiaSourceLabel()} · ${state.catiaStatus.model || "model"}`;
+      chatSuggestions.hidden = false;
+      scheduleChatProcessCompact();
+      return elapsedText;
+    }
     chatProcessTitle.textContent = "Yanıt hazır";
     setChatProcessStep(chatProcessRequestStep, "done", "Soru gönderildi", "Sunucuya iletildi");
     if (retrievalUsed) {
@@ -1294,6 +1364,12 @@
     }
     setView("chat", { focus: false });
     chatSuggestions.hidden = true;
+    if (chatAssistantMode.value === "catia") {
+      // Skill turu /chat'e değil skill ucuna gider: oturumu skill servisi
+      // tuttuğu için tur asistan geçmişine yazılmaz.
+      await sendCatiaMessage(catiaChatSurface, cleanMessage);
+      return;
+    }
     appendMessage("user", cleanMessage);
     state.chatHistory.push({ role: "user", content: cleanMessage });
     chatInput.value = "";
@@ -1699,6 +1775,10 @@
   // -- CATIA kütle / CG skill'i ---------------------------------------------
   // Sohbet döngüsü asistandan ayrı: burada model doküman değil, skill
   // harness'ının komutlarını sürüyor ve her önizleme insan onayı bekliyor.
+  // Aynı döngü iki yüzeyde çalışır: skill'in kendi görünümü ve CAE sohbeti.
+  // Yüzey nesnesi yalnızca "olaylar nereye basılır, onay nerede sorulur, süre
+  // nerede gösterilir" sorularını yanıtlar; oturum yönetimi, onay kapısı ve ağ
+  // çağrıları tek yerde kalır.
 
   const catiaStateBadges = {
     PREVIEW_READY: { tone: "pending", label: "Önizleme hazır" },
@@ -1711,6 +1791,89 @@
 
   const catiaWelcomeMessage = 'Merhaba. Araç, varyant ve revizyon numarasını yazarsan montajı tarayıp önizlemeyi hazırlarım. Önce ortamı kontrol etmek istersen "doctor" diyebilirsin.';
 
+  const catiaTabSurface = {
+    messages: catiaMessages,
+    authorLabel: "CATIA skill'i",
+    maxLength: 2000,
+    sessionId: null,
+    pendingRunId: null,
+    rejectedRunId: null,
+    approvalPending: false,
+    busy: false,
+    beginWork(label) {
+      window.clearInterval(catiaTimerId);
+      catiaStartedAt = performance.now();
+      const tick = () => setCatiaStatusLine(`${label} · ${formatChatProcessElapsed(performance.now() - catiaStartedAt)}`);
+      tick();
+      catiaTimerId = window.setInterval(tick, 100);
+    },
+    endWork({ label = "", error = "" } = {}) {
+      window.clearInterval(catiaTimerId);
+      catiaTimerId = null;
+      const elapsed = formatChatProcessElapsed(performance.now() - catiaStartedAt);
+      setCatiaStatusLine(error || (label ? `${label} · ${elapsed}` : ""));
+    },
+    setBusy(busy) {
+      catiaSendButton.disabled = busy;
+      catiaApproveButton.disabled = busy;
+      catiaRejectButton.disabled = busy;
+    },
+    showApproval(pending, runId) {
+      catiaApproval.hidden = !pending;
+      catiaApprovalRun.textContent = pending && runId ? `Ölçüm: ${runId}` : "";
+    },
+    noteSession() {
+      catiaSessionHint.textContent = this.sessionId
+        ? `Oturum ${this.sessionId.slice(0, 8)}`
+        : "Oturum ilk mesajla başlar";
+    },
+    warn(message) { setCatiaStatusLine(message); },
+    clearInput() { catiaInput.value = ""; resizeCatiaInput(); },
+    focusInput() { catiaInput.focus(); },
+  };
+
+  const catiaChatSurface = {
+    messages: chatMessages,
+    authorLabel: "SmartCAE AI · CATIA skill",
+    // Sohbet kutusunun kendi sınırı 1000; skill ucu 2000'e kadar kabul etse de
+    // kullanıcıya yazamayacağı bir sınır söylenmesin.
+    maxLength: 1000,
+    sessionId: null,
+    pendingRunId: null,
+    rejectedRunId: null,
+    approvalPending: false,
+    busy: false,
+    approvalCard: null,
+    beginWork() { startChatProcess({ skill: "catia" }); },
+    endWork({ error = "" } = {}) {
+      const elapsed = finishChatProcess({ skill: "catia", error });
+      setChatStatus(error ? `${error} · ${elapsed}` : "");
+    },
+    setBusy(busy) {
+      chatSendButton.disabled = busy;
+      if (this.approvalCard) {
+        this.approvalCard.querySelectorAll("button").forEach(button => { button.disabled = busy; });
+      }
+    },
+    showApproval(pending, runId) { renderChatCatiaApproval(pending, runId); },
+    noteSession() {},
+    warn(message) { setChatStatus(message); },
+    clearInput() { chatInput.value = ""; resizeChatInput(); },
+    focusInput() { chatInput.focus(); },
+  };
+
+  function catiaSourceLabel() {
+    return state.catiaStatus.source === "catia" ? "CATIA montajı" : "fake montaj";
+  }
+
+  function catiaUnavailableReason() {
+    const status = state.catiaStatus;
+    if (!status.enabled) return "CATIA skill'i kapalı. Sunucuda CATIA_SKILL_ENABLED=true ile açılması gerekiyor.";
+    if (!status.available) return `CATIA skill paketi yüklenemedi: ${status.error || "bilinmeyen hata"}`;
+    if (!status.localClient) return "CATIA skill'i yalnızca CATIA'nın çalıştığı makineden (localhost) kullanılabilir.";
+    return "";
+  }
+
   function resizeCatiaInput() {
     catiaInput.style.height = "auto";
     catiaInput.style.height = `${Math.min(catiaInput.scrollHeight, 120)}px`;
@@ -1721,40 +1884,24 @@
     catiaStatusLine.hidden = !message;
   }
 
-  function startCatiaWork(label) {
-    window.clearInterval(catiaTimerId);
-    catiaStartedAt = performance.now();
-    const tick = () => setCatiaStatusLine(`${label} · ${formatChatProcessElapsed(performance.now() - catiaStartedAt)}`);
-    tick();
-    catiaTimerId = window.setInterval(tick, 100);
+  function setCatiaBusy(surface, busy) {
+    surface.busy = busy;
+    surface.setBusy(busy);
   }
 
-  function stopCatiaWork(message = "") {
-    window.clearInterval(catiaTimerId);
-    catiaTimerId = null;
-    setCatiaStatusLine(message);
+  function appendCatiaNode(surface, node) {
+    surface.messages.appendChild(node);
+    surface.messages.scrollTop = surface.messages.scrollHeight;
   }
 
-  function setCatiaBusy(busy) {
-    state.catiaBusy = busy;
-    catiaSendButton.disabled = busy;
-    catiaApproveButton.disabled = busy;
-    catiaRejectButton.disabled = busy;
-  }
-
-  function appendCatiaNode(node) {
-    catiaMessages.appendChild(node);
-    catiaMessages.scrollTop = catiaMessages.scrollHeight;
-  }
-
-  function appendCatiaMessage(role, content) {
+  function appendCatiaMessage(surface, role, content) {
     const article = document.createElement("article");
     article.className = `message ${role === "user" ? "user-message" : "assistant-message"}`;
     const copy = document.createElement("div");
     copy.className = "message-bubble";
     const author = document.createElement("span");
     author.className = "message-author";
-    author.textContent = role === "user" ? "Siz" : "CATIA skill'i";
+    author.textContent = role === "user" ? "Siz" : surface.authorLabel;
     const paragraph = document.createElement("p");
     paragraph.textContent = content;
     copy.append(author, paragraph);
@@ -1767,7 +1914,7 @@
       avatar.textContent = "⚙️";
       article.append(avatar, copy);
     }
-    appendCatiaNode(article);
+    appendCatiaNode(surface, article);
   }
 
   function catiaTraceEntry(event) {
@@ -1799,12 +1946,12 @@
     };
   }
 
-  function renderCatiaEvents(events) {
+  function renderCatiaEvents(surface, events) {
     let trace = null;
     (Array.isArray(events) ? events : []).forEach(event => {
       if (event.kind === "model") {
         trace = null;
-        appendCatiaMessage("assistant", event.text || "");
+        appendCatiaMessage(surface, "assistant", event.text || "");
         return;
       }
       if (event.kind === "screen") {
@@ -1817,119 +1964,154 @@
           <div class="catia-preview-head"><strong>Değişiklik önizlemesi</strong><span>Onay kodu yalnızca bu ekranda</span></div>
           <pre>${escapeHtml(event.text || "")}</pre>
         `;
-        appendCatiaNode(preview);
+        appendCatiaNode(surface, preview);
         return;
       }
       if (!trace) {
         trace = document.createElement("div");
         trace.className = "catia-trace";
-        appendCatiaNode(trace);
+        appendCatiaNode(surface, trace);
       }
       const rendered = catiaTraceEntry(event);
       const entry = document.createElement("div");
       entry.className = rendered.className;
       entry.innerHTML = rendered.html;
       trace.appendChild(entry);
-      catiaMessages.scrollTop = catiaMessages.scrollHeight;
+      surface.messages.scrollTop = surface.messages.scrollHeight;
     });
   }
 
-  function setCatiaApproval(pending, runId = "") {
-    const dismissed = Boolean(runId) && runId === state.catiaRejectedRunId;
-    state.catiaPendingRunId = runId || null;
-    state.catiaApprovalPending = Boolean(pending) && !dismissed;
-    catiaApproval.hidden = !state.catiaApprovalPending;
-    catiaApprovalRun.textContent = state.catiaApprovalPending && runId ? `Ölçüm: ${runId}` : "";
+  function renderChatCatiaApproval(pending, runId = "") {
+    // Sohbette sabit onay şeridi yok: onay kartı konuşmanın sonunda durur,
+    // reddedilince ya da tur bitince kaldırılır.
+    if (catiaChatSurface.approvalCard) {
+      catiaChatSurface.approvalCard.remove();
+      catiaChatSurface.approvalCard = null;
+    }
+    if (!pending) return;
+    const card = document.createElement("div");
+    card.className = "catia-approval catia-approval-inline";
+    card.setAttribute("role", "group");
+    card.setAttribute("aria-label", "Önizleme onayı");
+    card.innerHTML = `
+      <div class="catia-approval-copy">
+        <strong>Bu önizleme onayını bekliyor</strong>
+        <span>Yukarıdaki tabloyu ve onay kodunu kontrol et. Onaylarsan Adams/Car .cmd dosyası yazılır.</span>
+        ${runId ? `<small>Ölçüm: ${escapeHtml(runId)}</small>` : ""}
+      </div>
+      <div class="catia-approval-actions">
+        <button class="secondary-button compact-button" type="button" data-catia-approval="reject">Reddet</button>
+        <button class="primary-button" type="button" data-catia-approval="approve"><svg><use href="#icon-check"/></svg>Onayla ve .cmd üret</button>
+      </div>
+    `;
+    card.querySelector('[data-catia-approval="approve"]').addEventListener("click", () => approveCatiaPreview(catiaChatSurface));
+    card.querySelector('[data-catia-approval="reject"]').addEventListener("click", () => rejectCatiaPreview(catiaChatSurface));
+    catiaChatSurface.approvalCard = card;
+    appendCatiaNode(catiaChatSurface, card);
   }
 
-  function applyCatiaResponse(data) {
-    state.catiaSessionId = data.session_id || state.catiaSessionId;
-    renderCatiaEvents(data.events);
-    setCatiaApproval(data.approval_pending, String(data.pending_run_id || ""));
-    catiaSessionHint.textContent = state.catiaSessionId
-      ? `Oturum ${state.catiaSessionId.slice(0, 8)}`
-      : "Oturum ilk mesajla başlar";
+  function setCatiaApproval(surface, pending, runId = "") {
+    const dismissed = Boolean(runId) && runId === surface.rejectedRunId;
+    surface.pendingRunId = runId || null;
+    surface.approvalPending = Boolean(pending) && !dismissed;
+    surface.showApproval(surface.approvalPending, runId);
   }
 
-  async function sendCatiaMessage(message) {
+  function applyCatiaResponse(surface, data) {
+    surface.sessionId = data.session_id || surface.sessionId;
+    renderCatiaEvents(surface, data.events);
+    setCatiaApproval(surface, data.approval_pending, String(data.pending_run_id || ""));
+    surface.noteSession();
+  }
+
+  async function sendCatiaMessage(surface, message) {
     const cleanMessage = String(message || "").trim();
-    if (state.catiaBusy) return;
-    if (cleanMessage.length < 2 || cleanMessage.length > 2000) {
-      const validationMessage = "Mesaj 2 ile 2000 karakter arasında olmalı.";
-      setCatiaStatusLine(validationMessage);
+    if (surface.busy) return;
+    if (cleanMessage.length < 2 || cleanMessage.length > surface.maxLength) {
+      const validationMessage = `Mesaj 2 ile ${surface.maxLength} karakter arasında olmalı.`;
+      surface.warn(validationMessage);
       showToast(validationMessage);
       return;
     }
-    appendCatiaMessage("user", cleanMessage);
-    catiaInput.value = "";
-    resizeCatiaInput();
-    setCatiaBusy(true);
-    startCatiaWork("Skill çalışıyor; komutlar sırayla yürütülüyor");
+    appendCatiaMessage(surface, "user", cleanMessage);
+    surface.clearInput();
+    setCatiaBusy(surface, true);
+    surface.beginWork("Skill çalışıyor; komutlar sırayla yürütülüyor");
     try {
       const response = await fetch("/skills/catia-mass-cg/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ message: cleanMessage, session_id: state.catiaSessionId }),
+        body: JSON.stringify({ message: cleanMessage, session_id: surface.sessionId }),
       });
       const data = await readJson(response);
       if (!response.ok) {
         // 404 = oturum sunucuda yok (yeniden başlatma ya da LRU): sonraki
         // mesaj yeni oturum açsın, kullanıcı düğmeye basmak zorunda kalmasın.
-        if (response.status === 404) state.catiaSessionId = null;
+        if (response.status === 404) surface.sessionId = null;
         throw new Error(requestError(data, "Skill yanıt üretemedi."));
       }
-      applyCatiaResponse(data);
-      stopCatiaWork(`Tur tamamlandı · ${formatChatProcessElapsed(performance.now() - catiaStartedAt)}`);
+      applyCatiaResponse(surface, data);
+      surface.endWork({ label: "Tur tamamlandı" });
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Skill yanıt üretemedi.";
-      appendCatiaMessage("assistant", `İstek tamamlanamadı: ${detail}`);
-      stopCatiaWork(detail);
+      appendCatiaMessage(surface, "assistant", `İstek tamamlanamadı: ${detail}`);
+      surface.endWork({ error: detail });
     } finally {
-      setCatiaBusy(false);
-      catiaInput.focus();
+      setCatiaBusy(surface, false);
+      surface.focusInput();
     }
   }
 
-  async function approveCatiaPreview() {
-    if (state.catiaBusy || !state.catiaApprovalPending || !state.catiaSessionId) return;
-    appendCatiaMessage("user", "Ekrandaki önizlemeyi onaylıyorum.");
-    setCatiaBusy(true);
-    startCatiaWork("Onay verildi; aktarım çalışıyor");
+  async function approveCatiaPreview(surface) {
+    if (surface.busy || !surface.approvalPending || !surface.sessionId) return;
+    appendCatiaMessage(surface, "user", "Ekrandaki önizlemeyi onaylıyorum.");
+    // Onay kapısı tur boyunca kapalı: şerit/kart açık kalıp ikinci kez
+    // tıklanabilir görünmesin, hata olursa geri getirilir.
+    surface.showApproval(false, "");
+    setCatiaBusy(surface, true);
+    surface.beginWork("Onay verildi; aktarım çalışıyor");
     try {
       const response = await fetch("/skills/catia-mass-cg/approve", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ session_id: state.catiaSessionId }),
+        body: JSON.stringify({ session_id: surface.sessionId }),
       });
       const data = await readJson(response);
       if (!response.ok) throw new Error(requestError(data, "Aktarım çalıştırılamadı."));
-      applyCatiaResponse(data);
-      stopCatiaWork(`Aktarım tamamlandı · ${formatChatProcessElapsed(performance.now() - catiaStartedAt)}`);
+      applyCatiaResponse(surface, data);
+      surface.endWork({ label: "Aktarım tamamlandı" });
       showToast("Onay verildi; aktarım skill harness'ı üzerinden çalıştırıldı.");
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Aktarım çalıştırılamadı.";
-      appendCatiaMessage("assistant", `Aktarım yapılamadı: ${detail}`);
-      stopCatiaWork(detail);
+      appendCatiaMessage(surface, "assistant", `Aktarım yapılamadı: ${detail}`);
+      surface.endWork({ error: detail });
+      if (surface.approvalPending) surface.showApproval(true, surface.pendingRunId || "");
       showToast(detail);
     } finally {
-      setCatiaBusy(false);
+      setCatiaBusy(surface, false);
     }
   }
 
-  function rejectCatiaPreview() {
-    if (state.catiaBusy || !state.catiaApprovalPending) return;
+  function rejectCatiaPreview(surface) {
+    if (surface.busy || !surface.approvalPending) return;
     // Reddi harness da görmeli: gate "onaylamıyorum" cümlesiyle bekleyen onayı
     // düşürür. Panel bu ölçüm için bir daha açılmasın diye run_id işaretlenir.
-    state.catiaRejectedRunId = state.catiaPendingRunId;
-    setCatiaApproval(false);
-    sendCatiaMessage("Onaylamıyorum, aktarma.");
+    surface.rejectedRunId = surface.pendingRunId;
+    setCatiaApproval(surface, false);
+    sendCatiaMessage(surface, "Onaylamıyorum, aktarma.");
+  }
+
+  function resetCatiaSurface(surface) {
+    surface.sessionId = null;
+    surface.pendingRunId = null;
+    surface.rejectedRunId = null;
+    setCatiaApproval(surface, false);
+    surface.noteSession();
   }
 
   function resetCatiaSession() {
-    stopCatiaWork();
-    state.catiaSessionId = null;
-    state.catiaRejectedRunId = null;
-    setCatiaApproval(false);
+    catiaTabSurface.endWork();
+    resetCatiaSurface(catiaTabSurface);
     catiaMessages.innerHTML = `
       <article class="message assistant-message">
         <div class="message-avatar" aria-hidden="true">⚙️</div>
@@ -1938,8 +2120,43 @@
     `;
     catiaInput.value = "";
     resizeCatiaInput();
-    catiaSessionHint.textContent = "Oturum ilk mesajla başlar";
     catiaInput.focus();
+  }
+
+  function resetChatCatiaSession() {
+    resetCatiaSurface(catiaChatSurface);
+  }
+
+  function updateChatSkillMode() {
+    const skillMode = chatAssistantMode.value === "catia";
+    // Skill turu RAG'den geçmiyor: motor ve arama seçkileri bu modda hiçbir şeyi
+    // değiştirmediği için kapatılır, kullanıcıya yanlış söz verilmesin.
+    chatRetrievalVersion.disabled = skillMode;
+    chatSearchMode.disabled = skillMode;
+    chatInput.placeholder = skillMode
+      ? "Örn. ARAC-X / BASE / R04 için ölçüm al"
+      : "Mühendislik sorunu yaz...";
+    chatAgentEmoji.textContent = skillMode ? "⚙️" : "🤖";
+    chatAgentName.textContent = skillMode ? "CATIA kütle / CG" : "SmartCAE AI";
+    chatAgentTagline.textContent = skillMode
+      ? "Komutları skill harness'ı çalıştırır; sayıları model yazmaz"
+      : "Seçili dokümanlarla kaynaklı yanıt üretir";
+    chatCatiaChip.hidden = !skillMode;
+    renderContext();
+  }
+
+  function enterChatCatiaMode() {
+    if (!state.catiaStatus.usable) {
+      // Skill kapalı ya da uzak istemci: sohbeti çalışmayacak bir moda almak
+      // yerine sebebi söyle.
+      const reason = catiaUnavailableReason() || "CATIA skill'i şu an kullanılamıyor.";
+      setChatStatus(reason);
+      showToast(reason);
+      return false;
+    }
+    chatAssistantMode.value = "catia";
+    updateChatSkillMode();
+    return true;
   }
 
   function applyCatiaStatus(data) {
@@ -1949,11 +2166,27 @@
     const usable = available && localClient;
     const usesCatia = String(data?.source || "") === "catia";
 
+    state.catiaStatus = {
+      enabled,
+      available,
+      localClient,
+      usable,
+      source: usesCatia ? "catia" : "fake",
+      model: data?.model || "",
+      workspaceRoot: data?.workspace_root || "",
+      error: data?.error || "",
+    };
+
     catiaRailButton.hidden = !enabled;
     catiaActionCard.hidden = !enabled;
     // Sohbetteki skill listesi de skill kapalıyken boş yere CATIA vaat etmesin;
-    // düğme rail ile aynı kuralı izler ve tıklanınca kendi görünümüne götürür.
+    // düğme rail ile aynı kuralı izler, ama artık sekmeye götürmek yerine
+    // sohbeti skill moduna alır.
     chatCatiaSkill.hidden = !enabled;
+    // Asistan seçkisindeki mod yalnızca gerçekten çalıştırılabiliyorsa dursun:
+    // uzak istemcide skill uçları 403 döner.
+    chatCatiaModeOption.hidden = !usable;
+    if (!usable && chatAssistantMode.value === "catia") chatAssistantMode.value = "auto";
     quickActions.classList.toggle("has-catia", enabled);
     catiaStage.hidden = !usable;
 
@@ -1966,7 +2199,11 @@
     catiaWorkspaceValue.textContent = data?.workspace_root || "—";
     catiaWorkspaceValue.title = data?.workspace_root || "";
     catiaSourceChip.dataset.source = usesCatia ? "catia" : "fake";
-    catiaSourceChip.textContent = usesCatia ? "CATIA montajı" : "fake montaj";
+    catiaSourceChip.textContent = catiaSourceLabel();
+    chatCatiaChip.dataset.source = usesCatia ? "catia" : "fake";
+    chatCatiaChip.textContent = catiaSourceLabel();
+    chatCatiaChip.title = `Ölçüm kaynağı · model ${data?.model || "—"}`;
+    updateChatSkillMode();
 
     if (!enabled) {
       catiaNotice.innerHTML = "CATIA skill'i kapalı. Açmak için CATIA'nın çalıştığı makinede <code>CATIA_SKILL_ENABLED=true</code> ayarlayıp uygulamayı yeniden başlat. Gerçek montajdan ölçüm için ayrıca <code>CATIA_SKILL_SOURCE=catia</code> gerekir.";
@@ -2121,6 +2358,20 @@
     stopChatProcessCollapseTimer();
     setChatProcessCompact(!chatProcess.classList.contains("compact"));
   });
+  chatAssistantMode.addEventListener("change", () => {
+    if (chatAssistantMode.value === "catia" && !state.catiaStatus.usable) {
+      chatAssistantMode.value = "auto";
+      const reason = catiaUnavailableReason() || "CATIA skill'i şu an kullanılamıyor.";
+      setChatStatus(reason);
+      showToast(reason);
+      updateChatSkillMode();
+      return;
+    }
+    updateChatSkillMode();
+    setChatStatus(chatAssistantMode.value === "catia"
+      ? "CATIA skill'i bu sohbete bağlandı. Örn. \"ARAC-X / BASE / R04 için ölçüm al\" ya da \"doctor\"."
+      : "");
+  });
   chatRetrievalVersion.addEventListener("change", () => {
     const selectedLabel = retrievalVersionLabel(chatRetrievalVersion.value);
     resetChat();
@@ -2155,6 +2406,10 @@
 
   chatSuggestions.querySelectorAll("[data-prompt]").forEach(button => {
     button.addEventListener("click", () => {
+      const assistantMode = button.dataset.assistantMode || "";
+      // CATIA skill'i de diğerleri gibi sohbette kalır: kendi sekmesine
+      // götürmek yerine sohbeti skill moduna alıp kutuyu doldurur.
+      if (assistantMode === "catia" && !enterChatCatiaMode()) return;
       const selectedCount = state.selectedDocumentIds.size;
       const contextPrompt = selectedCount > 1
         ? button.dataset.contextMultiPrompt
@@ -2166,12 +2421,18 @@
         ? ""
         : button.dataset.selectToken || "";
       chatInput.value = prompt;
-      if (button.dataset.assistantMode) chatAssistantMode.value = button.dataset.assistantMode;
+      if (assistantMode && assistantMode !== "catia") {
+        chatAssistantMode.value = assistantMode;
+        updateChatSkillMode();
+      }
+      resizeChatInput();
       chatInput.focus();
       const tokenStart = selectToken ? prompt.indexOf(selectToken) : -1;
       if (tokenStart >= 0) chatInput.setSelectionRange(tokenStart, tokenStart + selectToken.length);
       else chatInput.setSelectionRange(prompt.length, prompt.length);
-      setChatStatus("Örnek soru hazır. Metni düzenleyip gönderebilirsin.");
+      setChatStatus(assistantMode === "catia"
+        ? "CATIA skill'i bu sohbete bağlandı. Araç, varyant ve revizyonu düzenleyip gönderebilirsin."
+        : "Örnek soru hazır. Metni düzenleyip gönderebilirsin.");
     });
   });
 
@@ -2225,7 +2486,7 @@
 
   catiaComposer.addEventListener("submit", event => {
     event.preventDefault();
-    sendCatiaMessage(catiaInput.value);
+    sendCatiaMessage(catiaTabSurface, catiaInput.value);
   });
   catiaInput.addEventListener("keydown", event => {
     if (event.key === "Enter" && !event.shiftKey) {
@@ -2234,8 +2495,8 @@
     }
   });
   catiaInput.addEventListener("input", resizeCatiaInput);
-  catiaApproveButton.addEventListener("click", approveCatiaPreview);
-  catiaRejectButton.addEventListener("click", rejectCatiaPreview);
+  catiaApproveButton.addEventListener("click", () => approveCatiaPreview(catiaTabSurface));
+  catiaRejectButton.addEventListener("click", () => rejectCatiaPreview(catiaTabSurface));
   catiaResetButton.addEventListener("click", resetCatiaSession);
   catiaSuggestions.querySelectorAll("[data-prompt]").forEach(button => {
     button.addEventListener("click", () => {
@@ -2295,6 +2556,7 @@
   updateScrim();
   setView(Object.hasOwn(viewMeta, initialView) ? initialView : "home", { updateHash: false, focus: false });
   loadDocuments();
+  updateChatSkillMode();
   loadCatiaStatus();
   window.setTimeout(loadSystemStatus, 300);
 })();
