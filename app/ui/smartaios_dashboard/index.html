@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fffafb">
+  <title>SmartAIOS · Operasyon Merkezi</title>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="stylesheet" href="/smartaios-dashboard/assets/smartaios-dashboard.css?v=__APP_VERSION__">
+  <script src="/smartaios-dashboard/assets/smartaios-dashboard.js?v=__APP_VERSION__" defer></script>
+</head>
+<body data-dashboard-version="1">
+  <a class="skip-link" href="#dashboardMain">Dashboard içeriğine geç</a>
+
+  <div class="dashboard-shell">
+    <aside class="dashboard-rail" aria-label="SmartAIOS bölümleri">
+      <a class="brand-mark" href="/smartcae-v2" aria-label="SmartCAE AI çalışma alanına dön">
+        <span aria-hidden="true">🤖</span>
+      </a>
+
+      <nav class="rail-navigation" aria-label="Dashboard navigasyonu">
+        <a class="rail-link active" href="#overview" aria-label="Genel bakış" title="Genel bakış">
+          <span aria-hidden="true">▦</span>
+        </a>
+        <a class="rail-link" href="#users" aria-label="İstemci IP adresleri" title="İstemci IP adresleri">
+          <span aria-hidden="true">♟</span>
+        </a>
+        <a class="rail-link" href="#applications" aria-label="Uygulamalar" title="Uygulamalar">
+          <span aria-hidden="true">⌘</span>
+        </a>
+        <a class="rail-link" href="#runningJobs" aria-label="Devam eden işlemler" title="Devam eden işlemler">
+          <span aria-hidden="true">↻</span>
+        </a>
+        <a class="rail-link" href="#activityLogs" aria-label="Aktivite kayıtları" title="Aktivite kayıtları">
+          <span aria-hidden="true">≡</span>
+        </a>
+      </nav>
+
+      <a class="rail-link rail-exit" href="/smartcae-v2" aria-label="SmartCAE AI'a dön" title="SmartCAE AI'a dön">
+        <span aria-hidden="true">←</span>
+      </a>
+    </aside>
+
+    <div class="dashboard-page">
+      <header class="dashboard-topbar">
+        <div class="topbar-copy">
+          <span class="overline">SMARTAIOS · OPERASYON MERKEZİ</span>
+          <strong>Genel Bakış</strong>
+        </div>
+
+        <div class="topbar-actions">
+          <span class="refresh-state" id="refreshState" role="status" aria-live="polite">Veriler hazırlanıyor</span>
+          <button class="icon-action" id="refreshButton" type="button" aria-label="Dashboard verilerini yenile" title="Şimdi yenile">↻</button>
+          <div class="ip-badge" id="ipIdentity" role="status" aria-label="Bağlanan istemci IP adresi">
+            <span class="profile-avatar" id="profileAvatar" aria-hidden="true">IP</span>
+            <span class="profile-copy">
+              <strong id="profileName">IP bekleniyor</strong>
+              <small id="profileRole">Bağlanan IP</small>
+            </span>
+          </div>
+        </div>
+      </header>
+
+      <main class="dashboard-main" id="dashboardMain" tabindex="-1">
+        <section class="dashboard-intro" id="overview" aria-labelledby="dashboardTitle">
+          <div>
+            <span class="section-badge">CANLI KULLANIM GÖRÜNÜMÜ</span>
+            <h1 id="dashboardTitle">SmartAIOS nasıl<br><em>çalışıyor?</em></h1>
+            <p>İstemci aktivitesini, işlem sonuçlarını ve uygulama sağlığını tek ekranda izle.</p>
+          </div>
+
+          <form class="dashboard-filters" id="dashboardFilters" aria-label="Dashboard filtreleri">
+            <label>
+              <span>Dönem</span>
+              <select id="daysFilter" name="days">
+                <option value="7">Son 7 gün</option>
+                <option value="30" selected>Son 30 gün</option>
+                <option value="90">Son 90 gün</option>
+                <option value="3650">Tüm zamanlar</option>
+              </select>
+            </label>
+            <label>
+              <span>Uygulama</span>
+              <select id="applicationFilter" name="application">
+                <option value="">Tüm uygulamalar</option>
+              </select>
+            </label>
+            <label>
+              <span>İstemci IP</span>
+              <select id="actorFilter" name="actor">
+                <option value="">Tüm IP adresleri</option>
+              </select>
+            </label>
+            <label>
+              <span>Durum</span>
+              <select id="statusFilter" name="status">
+                <option value="">Tüm durumlar</option>
+              </select>
+            </label>
+          </form>
+        </section>
+
+        <section class="kpi-grid" aria-label="Genel kullanım özeti">
+          <article class="kpi-card kpi-primary">
+            <span class="kpi-icon" aria-hidden="true">∑</span>
+            <div><span>Toplam işlem</span><strong id="totalOperations">—</strong><small id="totalOperationsNote">Seçili dönem</small></div>
+          </article>
+          <article class="kpi-card kpi-success">
+            <span class="kpi-icon" aria-hidden="true">✓</span>
+            <div><span>Başarılı işlem</span><strong id="successfulOperations">—</strong><small id="successRate">Başarı oranı —</small></div>
+          </article>
+          <article class="kpi-card kpi-danger">
+            <span class="kpi-icon" aria-hidden="true">!</span>
+            <div><span>Başarısız işlem</span><strong id="failedOperations">—</strong><small id="failureRate">Hata oranı —</small></div>
+          </article>
+          <article class="kpi-card kpi-running">
+            <span class="kpi-icon" aria-hidden="true">↻</span>
+            <div><span>Devam eden</span><strong id="runningOperations">—</strong><small>Şu an çalışan işler</small></div>
+          </article>
+          <article class="kpi-card">
+            <span class="kpi-icon" aria-hidden="true">●</span>
+            <div><span>Aktif istemci</span><strong id="activeUsers">—</strong><small id="knownUsers">IP bilgisi bekleniyor</small></div>
+          </article>
+          <article class="kpi-card">
+            <span class="kpi-icon" aria-hidden="true">◷</span>
+            <div><span>Aktif kullanım</span><strong id="activeUsage">—</strong><small id="processingTime">İşlem süresi —</small></div>
+          </article>
+        </section>
+
+        <section class="overview-grid">
+          <article class="panel trend-panel" aria-labelledby="trendTitle">
+            <div class="panel-heading">
+              <div>
+                <span class="overline">İŞLEM HACMİ</span>
+                <h2 id="trendTitle">İşlem trendi</h2>
+              </div>
+              <div class="chart-legend" aria-label="Grafik açıklaması">
+                <span><i class="legend-success"></i>Başarılı</span>
+                <span><i class="legend-failed"></i>Başarısız</span>
+                <span><i class="legend-other"></i>Diğer</span>
+              </div>
+            </div>
+            <div class="trend-chart" id="trendChart" role="img" aria-label="Seçili dönemde işlem trendi">
+              <p class="empty-state">Trend verisi bekleniyor.</p>
+            </div>
+          </article>
+
+          <aside class="panel result-panel" aria-labelledby="resultTitle">
+            <div class="panel-heading compact-heading">
+              <div>
+                <span class="overline">SONUÇ DAĞILIMI</span>
+                <h2 id="resultTitle">İşlem sağlığı</h2>
+              </div>
+            </div>
+            <div class="result-visual" id="resultVisual">
+              <div class="result-ring" id="resultRing" aria-label="Başarı oranı">
+                <span id="resultRingValue">—</span>
+                <small>başarı</small>
+              </div>
+              <dl class="result-breakdown">
+                <div><dt><i class="legend-success"></i>Başarılı</dt><dd id="resultSuccessCount">—</dd></div>
+                <div><dt><i class="legend-failed"></i>Başarısız</dt><dd id="resultFailedCount">—</dd></div>
+                <div><dt><i class="legend-other"></i>Diğer</dt><dd id="resultOtherCount">—</dd></div>
+              </dl>
+            </div>
+          </aside>
+        </section>
+
+        <section class="panel users-panel" id="users" aria-labelledby="usersTitle">
+          <div class="panel-heading">
+            <div>
+              <span class="overline">İSTEMCİ AKTİVİTESİ</span>
+              <h2 id="usersTitle">Hangi IP, ne kadar çalıştı?</h2>
+            </div>
+            <span class="panel-meta" id="usersMeta">Veri bekleniyor</span>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">İstemci IP</th>
+                  <th scope="col">Aktif kullanım</th>
+                  <th scope="col">İşlem</th>
+                  <th scope="col">Başarılı</th>
+                  <th scope="col">Başarısız</th>
+                  <th scope="col">Son yaptığı işlem</th>
+                  <th scope="col">Son aktivite</th>
+                </tr>
+              </thead>
+              <tbody id="usersTableBody">
+                <tr><td colspan="7"><p class="empty-state table-empty">İstemci aktivitesi bekleniyor.</p></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel applications-panel" id="applications" aria-labelledby="applicationsTitle">
+          <div class="panel-heading">
+            <div>
+              <span class="overline">UYGULAMA PORTFÖYÜ</span>
+              <h2 id="applicationsTitle">Uygulama grupları</h2>
+            </div>
+            <span class="panel-meta" id="applicationsMeta">Veri bekleniyor</span>
+          </div>
+          <div class="application-groups" id="applicationGroups">
+            <p class="empty-state">Uygulama kullanım verisi bekleniyor.</p>
+          </div>
+        </section>
+
+        <section class="operations-grid">
+          <article class="panel running-panel" id="runningJobs" aria-labelledby="runningTitle">
+            <div class="panel-heading">
+              <div>
+                <span class="overline">CANLI İŞLEMLER</span>
+                <h2 id="runningTitle">Devam eden işler</h2>
+              </div>
+              <span class="live-chip"><i></i>Canlı</span>
+            </div>
+            <div class="running-jobs" id="runningJobsList">
+              <p class="empty-state">Devam eden işlem verisi bekleniyor.</p>
+            </div>
+          </article>
+
+          <aside class="panel notifications-panel" aria-labelledby="notificationsTitle">
+            <div class="panel-heading">
+              <div>
+                <span class="overline">DİKKAT GEREKTİRENLER</span>
+                <h2 id="notificationsTitle">Bildirimler</h2>
+              </div>
+              <span class="panel-meta" id="notificationsMeta">—</span>
+            </div>
+            <div class="notifications-list" id="notificationsList">
+              <p class="empty-state">Bildirim verisi bekleniyor.</p>
+            </div>
+          </aside>
+        </section>
+
+        <section class="panel logs-panel" id="activityLogs" aria-labelledby="logsTitle">
+          <div class="panel-heading logs-heading">
+            <div>
+              <span class="overline">İZLENEBİLİRLİK</span>
+              <h2 id="logsTitle">Aktivite kayıtları</h2>
+            </div>
+            <div class="log-tools">
+              <div class="log-tabs" role="tablist" aria-label="Log türü">
+                <button class="active" type="button" role="tab" data-log-type="all" aria-selected="true">Tümü</button>
+                <button type="button" role="tab" data-log-type="user" aria-selected="false">İstemci hareketleri</button>
+                <button type="button" role="tab" data-log-type="technical" aria-selected="false">Teknik loglar</button>
+              </div>
+              <label class="log-search">
+                <span class="visually-hidden">Loglarda ara</span>
+                <input id="logSearch" type="search" placeholder="Loglarda ara" autocomplete="off">
+              </label>
+            </div>
+          </div>
+
+          <div class="table-scroll logs-table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Zaman</th>
+                  <th scope="col">Tür</th>
+                  <th scope="col">İstemci IP</th>
+                  <th scope="col">Uygulama</th>
+                  <th scope="col">İşlem</th>
+                  <th scope="col">Durum</th>
+                  <th scope="col">Açıklama</th>
+                </tr>
+              </thead>
+              <tbody id="logsTableBody">
+                <tr><td colspan="7"><p class="empty-state table-empty">Aktivite kaydı bekleniyor.</p></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <footer class="logs-footer">
+            <span id="logsMeta">Veri bekleniyor</span>
+            <div class="pagination">
+              <button id="previousLogsPage" type="button" disabled>Önceki</button>
+              <span id="logsPage">—</span>
+              <button id="nextLogsPage" type="button" disabled>Sonraki</button>
+            </div>
+          </footer>
+        </section>
+
+        <footer class="dashboard-footer">
+          <span>SmartAIOS · Yerel mühendislik çalışma alanı</span>
+          <span id="dataTimestamp">Henüz veri alınmadı</span>
+        </footer>
+      </main>
+    </div>
+  </div>
+
+</body>
+</html>

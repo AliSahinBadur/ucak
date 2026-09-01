@@ -4,6 +4,7 @@
   const viewMeta = {
     home: { overline: "MÜHENDİSLİK ÇALIŞMA ALANI", title: "Ana alan" },
     chat: { overline: "SMARTCAE COPILOT", title: "Kaynaklı mühendislik asistanı" },
+    skills: { overline: "UZMAN İŞ AKIŞLARI", title: "Skill Merkezi" },
     documents: { overline: "MÜHENDİSLİK ÇALIŞMA ALANI", title: "Dokümanlar" },
     search: { overline: "ANLAMSAL ARAMA", title: "Bilgiyi geçtiği yerde bul" },
     compare: { overline: "MÜHENDİSLİK ÇALIŞMA ALANI", title: "Karşılaştırma" },
@@ -14,14 +15,25 @@
     activeView: "home",
     documents: [],
     selectedDocumentIds: new Set(),
+    chatContextDocumentIds: [],
     comparisonDocumentIds: [],
     comparisonReferenceId: null,
     sourceFilter: "all",
     chatHistory: [],
+    activeChatSkill: null,
+    thinkingMode: false,
     evidence: [],
     previewDocumentId: null,
     lastDraftPayload: null,
     systemStatusLoaded: false,
+    catiaSessionId: null,
+    catiaPendingRunId: null,
+    catiaRejectedRunId: null,
+    catiaApprovalPending: false,
+    catiaBusy: false,
+    catiaEnabled: false,
+    catiaAvailable: false,
+    catiaSource: "fake",
   };
 
   const body = document.body;
@@ -69,13 +81,27 @@
   const documentPageFilter = document.getElementById("documentPageFilter");
   const homeContextHint = document.getElementById("homeContextHint");
   const chatContextHint = document.getElementById("chatContextHint");
+  const skillContextHint = document.getElementById("skillContextHint");
 
   const heroComposer = document.getElementById("heroComposer");
   const heroPrompt = document.getElementById("heroPrompt");
   const chatComposer = document.getElementById("chatComposer");
   const chatInput = document.getElementById("chatInput");
   const chatMessages = document.getElementById("chatMessages");
+  const chatAgentIcon = document.getElementById("chatAgentIcon");
+  const chatAgentName = document.getElementById("chatAgentName");
+  const chatAgentDescription = document.getElementById("chatAgentDescription");
+  const chatControls = document.querySelector(".chat-controls");
   const chatSuggestions = document.getElementById("chatSuggestions");
+  const chatSkillModeBar = document.getElementById("chatSkillModeBar");
+  const chatSkillExitButton = document.getElementById("chatSkillExitButton");
+  const chatCatiaModeDetail = document.getElementById("chatCatiaModeDetail");
+  const chatCatiaSuggestions = document.getElementById("chatCatiaSuggestions");
+  const chatCatiaApproval = document.getElementById("chatCatiaApproval");
+  const chatCatiaApprovalRun = document.getElementById("chatCatiaApprovalRun");
+  const chatCatiaApproveButton = document.getElementById("chatCatiaApproveButton");
+  const chatCatiaRejectButton = document.getElementById("chatCatiaRejectButton");
+  const chatCatiaResetButton = document.getElementById("chatCatiaResetButton");
   const chatStatus = document.getElementById("chatStatus");
   const chatProcess = document.getElementById("chatProcess");
   const chatProcessTitle = document.getElementById("chatProcessTitle");
@@ -92,6 +118,7 @@
   const chatAssistantMode = document.getElementById("chatAssistantMode");
   const chatRetrievalVersion = document.getElementById("chatRetrievalVersion");
   const chatSearchMode = document.getElementById("chatSearchMode");
+  const chatThinkingToggle = document.getElementById("chatThinkingToggle");
   const chatEvidenceButton = document.getElementById("chatEvidenceButton");
   const chatEvidenceCount = document.getElementById("chatEvidenceCount");
   const newChatButton = document.getElementById("newChatButton");
@@ -127,6 +154,10 @@
   const draftOutput = document.getElementById("draftOutput");
   const downloadDraftButton = document.getElementById("downloadDraftButton");
 
+  const chatCatiaSkill = document.getElementById("chatCatiaSkill");
+  const catiaSkillCard = document.getElementById("catiaSkillCard");
+  const skillsActiveCount = document.getElementById("skillsActiveCount");
+
   const systemStatusButton = document.getElementById("systemStatusButton");
   const systemStatusPopover = document.getElementById("systemStatusPopover");
   const systemStatusDot = document.getElementById("systemStatusDot");
@@ -145,6 +176,7 @@
   let chatProcessTimerId = null;
   let chatProcessCollapseTimerId = null;
   let chatProcessStartedAt = 0;
+  let chatProcessMode = "document";
   let chatProcessExpectsRetrieval = true;
   const defaultEvidenceWidth = 340;
   const minimumEvidenceWidth = 280;
@@ -342,6 +374,70 @@
     return fallback;
   }
 
+  function createAnalyticsSessionId() {
+    const storageKey = "smartaios.analytics.session_id";
+    try {
+      const stored = sessionStorage.getItem(storageKey);
+      if (stored) return stored;
+      const suffix = typeof crypto?.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+      const sessionId = `smartaios-${suffix}`;
+      sessionStorage.setItem(storageKey, sessionId);
+      return sessionId;
+    } catch (_error) {
+      return `smartaios-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    }
+  }
+
+  const analyticsSessionId = createAnalyticsSessionId();
+  let accumulatedActiveSeconds = 0;
+  let activeClockStartedAt = performance.now();
+  let pageWasActive = document.visibilityState === "visible" && document.hasFocus();
+
+  function captureActiveSeconds() {
+    const now = performance.now();
+    if (pageWasActive) accumulatedActiveSeconds += Math.max(0, (now - activeClockStartedAt) / 1000);
+    activeClockStartedAt = now;
+    pageWasActive = document.visibilityState === "visible" && document.hasFocus();
+  }
+
+  function analyticsHeartbeatPayload(seconds) {
+    return {
+      session_id: analyticsSessionId,
+      application: "big_agent",
+      current_view: state.activeView,
+      active_seconds_delta: seconds,
+    };
+  }
+
+  async function sendAnalyticsHeartbeat() {
+    captureActiveSeconds();
+    const seconds = Math.min(60, Math.floor(accumulatedActiveSeconds));
+    if (seconds <= 0) return;
+    accumulatedActiveSeconds -= seconds;
+    try {
+      const response = await fetch("/analytics/heartbeat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(analyticsHeartbeatPayload(seconds)),
+        keepalive: true,
+      });
+      if (!response.ok) accumulatedActiveSeconds += seconds;
+    } catch (_error) {
+      accumulatedActiveSeconds += seconds;
+    }
+  }
+
+  function flushAnalyticsHeartbeat() {
+    captureActiveSeconds();
+    const seconds = Math.min(60, Math.floor(accumulatedActiveSeconds));
+    if (seconds <= 0 || typeof navigator.sendBeacon !== "function") return;
+    accumulatedActiveSeconds -= seconds;
+    const body = new Blob([JSON.stringify(analyticsHeartbeatPayload(seconds))], { type: "application/json" });
+    if (!navigator.sendBeacon("/analytics/heartbeat", body)) accumulatedActiveSeconds += seconds;
+  }
+
   function updateScrim() {
     const sourceIsDrawer = window.matchMedia("(max-width: 860px)").matches;
     const sourceOpen = body.classList.contains("source-open");
@@ -501,7 +597,12 @@
     sourceSelectionBar.classList.toggle("has-selection", selected.length > 0);
     clearContextButton.disabled = selected.length === 0;
     homeContextHint.textContent = selected.length ? `${selected.length} doküman bağlama eklendi` : "Tüm dokümanlar kullanılacak";
-    chatContextHint.textContent = contextLabel();
+    chatContextHint.textContent = state.activeChatSkill === "catia"
+      ? `CATIA skill · ${state.catiaSource === "catia" ? "gerçek montaj" : "fake montaj"}`
+      : contextLabel();
+    skillContextHint.textContent = selected.length
+      ? `${selected.length} doküman skill bağlamına eklendi`
+      : "Henüz doküman seçilmedi";
     draftStatus.textContent = selected.length
       ? `${selected.length} seçili doküman kaynak olarak kullanılacak.`
       : "Kaynak seçilmedi; SmartCAE ilgili dokümanları arayacak.";
@@ -780,7 +881,12 @@
 
   function resetChat() {
     resetChatProcess();
+    setChatSkillMode(null);
     state.chatHistory = [];
+    state.chatContextDocumentIds = [];
+    state.catiaSessionId = null;
+    state.catiaRejectedRunId = null;
+    setChatCatiaApproval(false);
     chatMessages.innerHTML = `
       <article class="message assistant-message">
         <div class="message-avatar" aria-hidden="true">🤖</div>
@@ -833,6 +939,27 @@
 
   function updateChatProcessStage(milliseconds) {
     if (chatProcess.dataset.state !== "running") return;
+    if (chatProcessMode === "catia") {
+      if (milliseconds < 1600) {
+        setChatProcessStep(chatProcessRetrievalStep, "active", "Skill planlama", "İstek güvenli komuta çevriliyor");
+        setChatProcessStep(chatProcessEvidenceStep, "", "Komut doğrulama", "Harness sırasını bekliyor");
+        setChatProcessStep(chatProcessGenerationStep, "", "CATIA işlemi", "Bekliyor");
+        setChatProcessProgress(28, "CATIA skill planlama aşaması");
+        return;
+      }
+      if (milliseconds < 4200) {
+        setChatProcessStep(chatProcessRetrievalStep, "done", "Skill planlama", "İzinli komut hazırlandı");
+        setChatProcessStep(chatProcessEvidenceStep, "active", "Komut doğrulama", "Güvenlik harness'ı kontrol ediyor");
+        setChatProcessStep(chatProcessGenerationStep, "", "CATIA işlemi", "Bekliyor");
+        setChatProcessProgress(54, "CATIA komut doğrulama aşaması");
+        return;
+      }
+      setChatProcessStep(chatProcessRetrievalStep, "done", "Skill planlama", "İzinli komut hazırlandı");
+      setChatProcessStep(chatProcessEvidenceStep, "done", "Komut doğrulama", "Harness kontrolü tamamlandı");
+      setChatProcessStep(chatProcessGenerationStep, "active", "CATIA işlemi", "Ölçüm veya çıktı hazırlanıyor");
+      setChatProcessProgress(78, "CATIA işlem aşaması");
+      return;
+    }
     if (!chatProcessExpectsRetrieval) {
       setChatProcessStep(chatProcessRetrievalStep, "skipped", "Kaynak tarama", "Genel modda gerekmiyor");
       setChatProcessStep(chatProcessEvidenceStep, "skipped", "Kanıt seçimi", "Kaynak kullanılmayacak");
@@ -957,6 +1084,7 @@
     stopChatProcessCollapseTimer();
     chatProcessStartedAt = 0;
     chatProcessExpectsRetrieval = true;
+    chatProcessMode = "document";
     chatProcess.hidden = true;
     chatProcess.dataset.state = "idle";
     setChatProcessCompact(false);
@@ -968,13 +1096,19 @@
     stopChatProcessCollapseTimer();
     setChatProcessCompact(false);
     chatProcessStartedAt = performance.now();
+    chatProcessMode = "document";
     chatProcess.hidden = false;
     chatProcess.dataset.state = "running";
     chatProcessTitle.textContent = "SmartCAE çalışıyor";
     chatProcessElapsed.textContent = "0.0 sn";
     chatProcessExpectsRetrieval = chatAssistantMode.value !== "general";
     setChatProcessStep(chatProcessRequestStep, "done", "Soru gönderildi", "Sunucuya iletildi");
-    setChatProcessStep(chatProcessRetrievalStep, "", "Kaynak tarama", "Başlatılıyor");
+    setChatProcessStep(
+      chatProcessRetrievalStep,
+      "",
+      state.thinkingMode ? "LLM bağlam çözümü" : "Kaynak tarama",
+      state.thinkingMode ? "Soru yeniden yazılıyor" : "Başlatılıyor",
+    );
     setChatProcessStep(chatProcessEvidenceStep, "", "Kanıt seçimi", "Bekliyor");
     setChatProcessStep(chatProcessGenerationStep, "", "Yanıt üretimi", "Bekliyor");
     setChatProcessStep(chatProcessResponseStep, "", "Tamamlandı", "Yanıt bekleniyor");
@@ -984,12 +1118,13 @@
       ? `${state.selectedDocumentIds.size} seçili doküman`
       : "Tüm dokümanlar";
     const engineLabel = retrievalVersionLabel(chatRetrievalVersion.value).replaceAll(" · ", " ");
-    chatProcessDetail.textContent = `Mod: ${assistantLabel} · Motor: ${engineLabel} · Arama: ${searchLabel} · Kapsam: ${contextLabel}`;
+    const thinkingLabel = state.thinkingMode ? " · Muhakeme: Thinking" : "";
+    chatProcessDetail.textContent = `Mod: ${assistantLabel} · Motor: ${engineLabel} · Arama: ${searchLabel} · Kapsam: ${contextLabel}${thinkingLabel}`;
     updateChatProcessElapsed();
     chatProcessTimerId = window.setInterval(updateChatProcessElapsed, 100);
   }
 
-  function finishChatProcess({ sourceCount = 0, confidence = null, retrievalUsed = false, error = "" } = {}) {
+  function finishChatProcess({ sourceCount = 0, confidence = null, retrievalUsed = false, thinkingRequested = false, thinkingUsed = false, thinkingRoute = null, error = "" } = {}) {
     updateChatProcessElapsed();
     stopChatProcessTimer();
     const elapsedText = chatProcessElapsed.textContent;
@@ -1012,7 +1147,12 @@
     chatProcessTitle.textContent = "Yanıt hazır";
     setChatProcessStep(chatProcessRequestStep, "done", "Soru gönderildi", "Sunucuya iletildi");
     if (retrievalUsed) {
-      setChatProcessStep(chatProcessRetrievalStep, "done", "Kaynak tarama", sourceCount ? `${sourceCount} kaynak bulundu` : "Kaynak bulunamadı");
+      setChatProcessStep(
+        chatProcessRetrievalStep,
+        "done",
+        thinkingUsed ? "LLM + kaynak" : "Kaynak tarama",
+        sourceCount ? `${sourceCount} kaynak bulundu` : "Kaynak bulunamadı",
+      );
       setChatProcessStep(
         chatProcessEvidenceStep,
         sourceCount ? "done" : "skipped",
@@ -1020,7 +1160,12 @@
         sourceCount && Number.isFinite(Number(confidence)) ? `Güven ${formatScore(confidence)}` : "Kanıt kullanılmadı",
       );
     } else {
-      setChatProcessStep(chatProcessRetrievalStep, "skipped", "Kaynak tarama", "Genel yanıtta kullanılmadı");
+      setChatProcessStep(
+        chatProcessRetrievalStep,
+        thinkingUsed ? "done" : "skipped",
+        thinkingUsed ? "LLM bağlam çözümü" : "Kaynak tarama",
+        thinkingUsed ? `Yön: ${thinkingRoute === "general" ? "genel" : "doküman"}` : "Genel yanıtta kullanılmadı",
+      );
       setChatProcessStep(chatProcessEvidenceStep, "skipped", "Kanıt seçimi", "Kaynak kullanılmadı");
     }
     setChatProcessStep(chatProcessGenerationStep, "done", "Yanıt üretimi", "Model yanıtı oluşturdu");
@@ -1028,7 +1173,10 @@
     setChatProcessProgress(100, "İşlem tamamlandı");
     const engineLabel = retrievalUsed ? retrievalVersionLabel(chatRetrievalVersion.value) : "Genel model";
     const confidenceLabel = Number.isFinite(Number(confidence)) ? ` · güven ${formatScore(confidence)}` : "";
-    chatProcessDetail.textContent = `${engineLabel} · ${sourceCount} kaynak${confidenceLabel}`;
+    const thinkingLabel = thinkingUsed
+      ? " · Thinking kullanıldı"
+      : (thinkingRequested ? " · Thinking yedeğe geçti" : "");
+    chatProcessDetail.textContent = `${engineLabel} · ${sourceCount} kaynak${confidenceLabel}${thinkingLabel}`;
     chatSuggestions.hidden = false;
     scheduleChatProcessCompact();
     return elapsedText;
@@ -1252,6 +1400,7 @@
     startChatProcess();
 
     try {
+      const selectedContextIds = [...state.selectedDocumentIds].slice(0, 8);
       const response = await fetch("/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -1262,19 +1411,27 @@
           retrieval_version: chatRetrievalVersion.value,
           mode: chatSearchMode.value,
           limit: 5,
-          document_ids: [...state.selectedDocumentIds].slice(0, 8),
+          thinking_mode: state.thinkingMode,
+          document_ids: selectedContextIds.length
+            ? selectedContextIds
+            : state.chatContextDocumentIds.slice(0, 8),
         }),
       });
       const data = await readJson(response);
       if (!response.ok) throw new Error(requestError(data, "Asistan yanıt oluşturamadı."));
       const engine = data.retrieval_used
-        ? `${retrievalVersionLabel(data.retrieval_version)} · ${formatScore(data.confidence)}`
-        : "Genel yanıt";
+        ? `${retrievalVersionLabel(data.retrieval_version)} · ${formatScore(data.confidence)}${data.thinking_used ? " · Thinking" : ""}`
+        : `Genel yanıt${data.thinking_used ? " · Thinking" : ""}`;
       appendMessage("assistant", data.answer || "Yanıt bulunamadı.", engine);
       state.chatHistory = Array.isArray(data.history)
         ? data.history.slice(-10)
         : [...state.chatHistory, { role: "assistant", content: data.answer || "" }].slice(-10);
       const sources = Array.isArray(data.sources) ? data.sources : [];
+      const sourceDocumentIds = [...new Set(sources
+        .map(source => Number(source.document_id))
+        .filter(documentId => Number.isInteger(documentId) && documentId > 0)
+      )].slice(0, 8);
+      if (sourceDocumentIds.length) state.chatContextDocumentIds = sourceDocumentIds;
       renderEvidence(sources, sources.length
         ? `${sources.length} kaynak · güven ${formatScore(data.confidence)}`
         : "Bu yanıt için doküman kaynağı kullanılmadı.");
@@ -1283,7 +1440,13 @@
         sourceCount: sources.length,
         confidence: data.confidence,
         retrievalUsed: Boolean(data.retrieval_used),
+        thinkingRequested: state.thinkingMode,
+        thinkingUsed: Boolean(data.thinking_used),
+        thinkingRoute: data.thinking_route,
       });
+      if (state.thinkingMode && !data.thinking_used) {
+        showToast("Thinking Mode için LLM kullanılamadı; güvenli yedek akış çalıştı.");
+      }
       setChatStatus();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Asistan yanıt veremedi.";
@@ -1645,6 +1808,259 @@
     }
   }
 
+  // CATIA ana sohbet yüzeyinde çalışır. Model yalnızca skill harness'ının izin
+  // verdiği komutları kullanır; dışa aktarım yine açık kullanıcı onayı ister.
+  const catiaStateBadges = {
+    PREVIEW_READY: { tone: "pending", label: "Önizleme hazır" },
+    NEEDS_CALIBRATION: { tone: "pending", label: "Kalibrasyon gerekli" },
+    NEEDS_VEHICLE_INFO: { tone: "pending", label: "Araç bilgisi gerekli" },
+    READY: { tone: "ok", label: "Hazır" },
+    DONE: { tone: "ok", label: "Tamamlandı" },
+    ERROR: { tone: "error", label: "Hata" },
+  };
+
+  const catiaWelcomeMessage = 'Merhaba. Araç, varyant ve revizyon numarasını yazarsan montajı tarayıp önizlemeyi hazırlarım. Önce ortamı kontrol etmek istersen "doctor" diyebilirsin.';
+
+  function setCatiaBusy(busy) {
+    state.catiaBusy = busy;
+    chatSendButton.disabled = busy;
+    chatCatiaApproveButton.disabled = busy;
+    chatCatiaRejectButton.disabled = busy;
+    chatCatiaResetButton.disabled = busy;
+    chatSkillExitButton.disabled = busy;
+  }
+
+  function appendCatiaNode(node) {
+    chatMessages.appendChild(node);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  function appendCatiaMessage(role, content) {
+    appendMessage(role, content, role === "user" ? "" : "CATIA skill");
+  }
+
+  function catiaTraceEntry(event) {
+    if (event.kind === "command") {
+      return {
+        className: "catia-trace-entry command",
+        html: `<span>Komut</span><code>${escapeHtml(event.text || "")}</code>`,
+      };
+    }
+    if (event.kind === "result") {
+      const badge = catiaStateBadges[String(event.state || "")];
+      const failed = String(event.status || "") === "error";
+      return {
+        className: `catia-trace-entry result${failed ? " error" : ""}`,
+        html: `
+          <span>Sonuç</span>
+          <div>
+            ${badge ? `<span class="catia-state-badge ${badge.tone}">${escapeHtml(badge.label)}</span>` : ""}
+            <p>${escapeHtml(event.message_tr || "Komut tamamlandı.")}</p>
+            ${event.hint_tr ? `<p>${escapeHtml(event.hint_tr)}</p>` : ""}
+            ${event.code ? `<p>Kod: ${escapeHtml(event.code)}</p>` : ""}
+          </div>
+        `,
+      };
+    }
+    return {
+      className: "catia-trace-entry harness",
+      html: `<span>Harness</span><p>${escapeHtml(event.text || "")}</p>`,
+    };
+  }
+
+  function renderCatiaEvents(events) {
+    let trace = null;
+    (Array.isArray(events) ? events : []).forEach(event => {
+      if (event.kind === "model") {
+        trace = null;
+        appendCatiaMessage("assistant", event.text || "");
+        return;
+      }
+      if (event.kind === "screen") {
+        // Önizleme ve onay kodu yalnızca ekran kanalında görünür; modelin
+        // bağlamına eklenmez.
+        trace = null;
+        const preview = document.createElement("article");
+        preview.className = "catia-preview";
+        preview.innerHTML = `
+          <div class="catia-preview-head"><strong>Değişiklik önizlemesi</strong><span>Onay kodu yalnızca bu ekranda</span></div>
+          <pre>${escapeHtml(event.text || "")}</pre>
+        `;
+        appendCatiaNode(preview);
+        return;
+      }
+      if (!trace) {
+        trace = document.createElement("div");
+        trace.className = "catia-trace";
+        appendCatiaNode(trace);
+      }
+      const rendered = catiaTraceEntry(event);
+      const entry = document.createElement("div");
+      entry.className = rendered.className;
+      entry.innerHTML = rendered.html;
+      trace.appendChild(entry);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    });
+  }
+
+  function setChatCatiaApproval(pending, runId = "") {
+    const dismissed = Boolean(runId) && runId === state.catiaRejectedRunId;
+    state.catiaPendingRunId = runId || null;
+    state.catiaApprovalPending = Boolean(pending) && !dismissed;
+    chatCatiaApproval.hidden = !state.catiaApprovalPending;
+    chatCatiaApprovalRun.textContent = state.catiaApprovalPending && runId ? `Ölçüm: ${runId}` : "";
+  }
+
+  function applyCatiaResponse(data) {
+    state.catiaSessionId = data.session_id || state.catiaSessionId;
+    renderCatiaEvents(data.events);
+    setChatCatiaApproval(data.approval_pending, String(data.pending_run_id || ""));
+    chatContextHint.textContent = state.catiaSessionId
+      ? `CATIA oturumu ${state.catiaSessionId.slice(0, 8)} · ${state.catiaSource === "catia" ? "gerçek montaj" : "fake montaj"}`
+      : `CATIA skill · ${state.catiaSource === "catia" ? "gerçek montaj" : "fake montaj"}`;
+  }
+
+  async function sendCatiaMessage(message) {
+    const cleanMessage = String(message || "").trim();
+    if (state.catiaBusy) return;
+    if (cleanMessage.length < 2 || cleanMessage.length > 2000) {
+      const validationMessage = "Mesaj 2 ile 2000 karakter arasında olmalı.";
+      setCatiaStatusLine(validationMessage);
+      showToast(validationMessage);
+      return;
+    }
+    appendCatiaMessage("user", cleanMessage);
+    catiaInput.value = "";
+    resizeCatiaInput();
+    setCatiaBusy(true);
+    startCatiaWork("Skill çalışıyor; komutlar sırayla yürütülüyor");
+    try {
+      const response = await fetch("/skills/catia-mass-cg/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ message: cleanMessage, session_id: state.catiaSessionId }),
+      });
+      const data = await readJson(response);
+      if (!response.ok) {
+        if (response.status === 404) state.catiaSessionId = null;
+        throw new Error(requestError(data, "Skill yanıt üretemedi."));
+      }
+      applyCatiaResponse(data);
+      stopCatiaWork(`Tur tamamlandı · ${formatChatProcessElapsed(performance.now() - catiaStartedAt)}`);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Skill yanıt üretemedi.";
+      appendCatiaMessage("assistant", `İstek tamamlanamadı: ${detail}`);
+      stopCatiaWork(detail);
+    } finally {
+      setCatiaBusy(false);
+      catiaInput.focus();
+    }
+  }
+
+  async function approveCatiaPreview() {
+    if (state.catiaBusy || !state.catiaApprovalPending || !state.catiaSessionId) return;
+    appendCatiaMessage("user", "Ekrandaki önizlemeyi onaylıyorum.");
+    setCatiaBusy(true);
+    startCatiaWork("Onay verildi; aktarım çalışıyor");
+    try {
+      const response = await fetch("/skills/catia-mass-cg/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ session_id: state.catiaSessionId }),
+      });
+      const data = await readJson(response);
+      if (!response.ok) throw new Error(requestError(data, "Aktarım çalıştırılamadı."));
+      applyCatiaResponse(data);
+      stopCatiaWork(`Aktarım tamamlandı · ${formatChatProcessElapsed(performance.now() - catiaStartedAt)}`);
+      showToast("Onay verildi; aktarım skill harness'ı üzerinden çalıştırıldı.");
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Aktarım çalıştırılamadı.";
+      appendCatiaMessage("assistant", `Aktarım yapılamadı: ${detail}`);
+      stopCatiaWork(detail);
+      showToast(detail);
+    } finally {
+      setCatiaBusy(false);
+    }
+  }
+
+  function rejectCatiaPreview() {
+    if (state.catiaBusy || !state.catiaApprovalPending) return;
+    state.catiaRejectedRunId = state.catiaPendingRunId;
+    setCatiaApproval(false);
+    sendCatiaMessage("Onaylamıyorum, aktarma.");
+  }
+
+  function resetCatiaSession() {
+    stopCatiaWork();
+    state.catiaSessionId = null;
+    state.catiaRejectedRunId = null;
+    setCatiaApproval(false);
+    catiaMessages.innerHTML = `
+      <article class="message assistant-message">
+        <div class="message-avatar" aria-hidden="true">⚙️</div>
+        <div class="message-bubble"><span class="message-author">CATIA skill'i</span><p>${escapeHtml(catiaWelcomeMessage)}</p></div>
+      </article>
+    `;
+    catiaInput.value = "";
+    resizeCatiaInput();
+    catiaSessionHint.textContent = "Oturum ilk mesajla başlar";
+    catiaInput.focus();
+  }
+
+  function applyCatiaStatus(data) {
+    const enabled = Boolean(data?.enabled);
+    const available = enabled && data?.available !== false;
+    const localClient = data?.local_client !== false;
+    const usable = available && localClient;
+    const usesCatia = String(data?.source || "") === "catia";
+
+    state.catiaEnabled = enabled;
+    catiaRailButton.hidden = !enabled;
+    catiaActionCard.hidden = !enabled;
+    chatCatiaSkill.hidden = !enabled;
+    catiaSkillCard.hidden = !enabled;
+    skillsActiveCount.textContent = enabled ? "4" : "3";
+    quickActions.classList.toggle("has-catia", enabled);
+    catiaStage.hidden = !usable;
+
+    catiaStateValue.textContent = !enabled
+      ? "Kapalı"
+      : !available ? "Paket yüklenemedi" : !localClient ? "Uzak istemci" : "Hazır";
+    catiaStateValue.className = !enabled ? "" : usable ? "ready" : available ? "warning" : "error";
+    catiaSourceValue.textContent = !enabled ? "—" : usesCatia ? "CATIA (COM)" : "fake (sentetik montaj)";
+    catiaModelValue.textContent = data?.model || "—";
+    catiaWorkspaceValue.textContent = data?.workspace_root || "—";
+    catiaWorkspaceValue.title = data?.workspace_root || "";
+    catiaSourceChip.dataset.source = usesCatia ? "catia" : "fake";
+    catiaSourceChip.textContent = usesCatia ? "CATIA montajı" : "fake montaj";
+
+    if (!enabled) {
+      catiaNotice.innerHTML = "CATIA skill'i kapalı. Açmak için CATIA'nın çalıştığı makinede <code>CATIA_SKILL_ENABLED=true</code> ayarlayıp uygulamayı yeniden başlat. Gerçek montajdan ölçüm için ayrıca <code>CATIA_SKILL_SOURCE=catia</code> gerekir.";
+    } else if (!available) {
+      catiaNotice.innerHTML = `Skill paketi yüklenemedi: ${escapeHtml(data?.error || "bilinmeyen hata")}`;
+    } else if (!localClient) {
+      catiaNotice.innerHTML = "Bu modül yalnızca CATIA'nın çalıştığı makineden (localhost) kullanılabilir: ölçüm sunucunun CATIA'sında başlar ve <code>.cmd</code> dosyası sunucunun diskine yazılır.";
+    } else {
+      catiaNotice.innerHTML = "";
+    }
+    catiaNotice.hidden = usable;
+
+    if (!enabled && state.activeView === "catia") setView("skills");
+  }
+
+  async function loadCatiaStatus() {
+    try {
+      const response = await fetch("/skills/catia-mass-cg/status", { headers: { Accept: "application/json" } });
+      const data = await readJson(response);
+      if (!response.ok) throw new Error(requestError(data, "CATIA skill durumu alınamadı."));
+      applyCatiaStatus(data);
+    } catch (error) {
+      applyCatiaStatus({ enabled: false });
+      catiaNotice.textContent = error instanceof Error ? error.message : "CATIA skill durumu alınamadı.";
+      catiaNotice.hidden = false;
+    }
+  }
+
   function applySystemStatus(data) {
     const embedding = data.embedding || {};
     const ollama = data.ollama || {};
@@ -1678,7 +2094,6 @@
   document.querySelectorAll("[data-view-target]").forEach(control => {
     control.addEventListener("click", () => setView(control.dataset.viewTarget));
   });
-
   openSourceSidebar.addEventListener("click", openSources);
   closeSourceSidebar.addEventListener("click", closeSources);
   toggleSourceSidebar.addEventListener("click", () => {
@@ -1767,6 +2182,13 @@
   documentPageFilter.addEventListener("input", renderDocumentGrid);
   globalFilePicker.addEventListener("change", () => uploadDocuments(globalFilePicker.files));
   newChatButton.addEventListener("click", resetChat);
+  chatThinkingToggle.addEventListener("click", () => {
+    state.thinkingMode = !state.thinkingMode;
+    chatThinkingToggle.setAttribute("aria-checked", String(state.thinkingMode));
+    showToast(state.thinkingMode
+      ? "Thinking Mode açık: sohbet bağlamını yerel LLM çözecek."
+      : "Thinking Mode kapalı: hızlı bağlam çözümü kullanılacak.");
+  });
   chatProcessToggle.addEventListener("click", () => {
     stopChatProcessCollapseTimer();
     setChatProcessCompact(!chatProcess.classList.contains("compact"));
@@ -1803,7 +2225,7 @@
   });
   chatInput.addEventListener("input", resizeChatInput);
 
-  chatSuggestions.querySelectorAll("[data-prompt]").forEach(button => {
+  document.querySelectorAll("[data-prompt]").forEach(button => {
     button.addEventListener("click", () => {
       const selectedCount = state.selectedDocumentIds.size;
       const contextPrompt = selectedCount > 1
@@ -1815,13 +2237,17 @@
       const selectToken = selectedCount > 0 && contextPrompt
         ? ""
         : button.dataset.selectToken || "";
+      const skillLaunch = Boolean(button.dataset.skillLaunch);
+      if (skillLaunch) setView("chat", { focus: false });
       chatInput.value = prompt;
       if (button.dataset.assistantMode) chatAssistantMode.value = button.dataset.assistantMode;
       chatInput.focus();
       const tokenStart = selectToken ? prompt.indexOf(selectToken) : -1;
       if (tokenStart >= 0) chatInput.setSelectionRange(tokenStart, tokenStart + selectToken.length);
       else chatInput.setSelectionRange(prompt.length, prompt.length);
-      setChatStatus("Örnek soru hazır. Metni düzenleyip gönderebilirsin.");
+      setChatStatus(skillLaunch
+        ? "Skill komutu hazır. Metni kontrol edip gönderebilirsin."
+        : "Örnek soru hazır. Metni düzenleyip gönderebilirsin.");
     });
   });
 
@@ -1873,6 +2299,34 @@
   });
   downloadDraftButton.addEventListener("click", downloadDraftPdf);
 
+  catiaComposer.addEventListener("submit", event => {
+    event.preventDefault();
+    sendCatiaMessage(catiaInput.value);
+  });
+  catiaInput.addEventListener("keydown", event => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      catiaComposer.requestSubmit();
+    }
+  });
+  catiaInput.addEventListener("input", resizeCatiaInput);
+  catiaApproveButton.addEventListener("click", approveCatiaPreview);
+  catiaRejectButton.addEventListener("click", rejectCatiaPreview);
+  catiaResetButton.addEventListener("click", resetCatiaSession);
+  catiaSuggestions.querySelectorAll("[data-catia-prompt]").forEach(button => {
+    button.addEventListener("click", () => {
+      const prompt = button.dataset.catiaPrompt || "";
+      const selectToken = button.dataset.catiaSelectToken || "";
+      catiaInput.value = prompt;
+      resizeCatiaInput();
+      catiaInput.focus();
+      const tokenStart = selectToken ? prompt.indexOf(selectToken) : -1;
+      if (tokenStart >= 0) catiaInput.setSelectionRange(tokenStart, tokenStart + selectToken.length);
+      else catiaInput.setSelectionRange(prompt.length, prompt.length);
+      setCatiaStatusLine("Adım hazır. Değerleri düzenleyip gönderebilirsin.");
+    });
+  });
+
   systemStatusButton.addEventListener("click", () => {
     const willOpen = systemStatusPopover.hidden;
     systemStatusPopover.hidden = !willOpen;
@@ -1906,6 +2360,12 @@
     updateScrim();
     if (!window.matchMedia("(max-width: 1120px)").matches) setEvidenceWidth(currentEvidenceWidth());
   });
+  ["visibilitychange", "focus", "blur"].forEach(eventName => {
+    const target = eventName === "visibilitychange" ? document : window;
+    target.addEventListener(eventName, captureActiveSeconds);
+  });
+  window.addEventListener("pagehide", flushAnalyticsHeartbeat);
+  window.setInterval(sendAnalyticsHeartbeat, 30_000);
 
   const initialView = window.location.hash.slice(1);
   if (window.matchMedia("(max-width: 860px)").matches) {
@@ -1917,5 +2377,6 @@
   updateScrim();
   setView(Object.hasOwn(viewMeta, initialView) ? initialView : "home", { updateHash: false, focus: false });
   loadDocuments();
+  loadCatiaStatus();
   window.setTimeout(loadSystemStatus, 300);
 })();

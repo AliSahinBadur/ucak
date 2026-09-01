@@ -139,3 +139,54 @@ class DuplicateReportPair(Base):
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="candidate")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+
+class AnalyticsIdentity(Base):
+    __tablename__ = "analytics_identities"
+
+    client_id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+        nullable=False,
+    )
+
+
+class AnalyticsSession(Base):
+    __tablename__ = "analytics_sessions"
+
+    session_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    client_id: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
+    application: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    current_view: Mapped[str] = mapped_column(String(120), nullable=False, default="home")
+    active_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False, index=True)
+
+
+class AnalyticsOperation(Base):
+    __tablename__ = "analytics_operations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    external_event_id: Mapped[str | None] = mapped_column(
+        String(80),
+        nullable=True,
+        unique=True,
+        index=True,
+    )
+    client_id: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
+    application: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    operation: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(80), nullable=False, default="operation", index=True)
+    method: Mapped[str] = mapped_column(String(12), nullable=False)
+    path: Mapped[str] = mapped_column(String(512), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="running", index=True)
+    status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    detail: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False, index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

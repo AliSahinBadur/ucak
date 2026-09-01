@@ -12,6 +12,26 @@ class HealthResponse(BaseModel):
     variant: Literal["big_agent", "raporhub", "repocto"]
 
 
+class AnalyticsHeartbeatRequest(BaseModel):
+    session_id: str = Field(min_length=8, max_length=80)
+    current_view: str = Field(default="home", min_length=1, max_length=120)
+    active_seconds_delta: int = Field(default=0, ge=0, le=60)
+    application: str | None = Field(default=None, min_length=1, max_length=80)
+    actor: str | None = Field(default=None, min_length=1, max_length=120)
+
+
+class AnalyticsExternalEventRequest(BaseModel):
+    event_id: str | None = Field(default=None, min_length=8, max_length=80)
+    application: str = Field(min_length=1, max_length=80)
+    operation: str = Field(min_length=2, max_length=160)
+    category: str = Field(default="operation", min_length=1, max_length=80)
+    status: Literal["running", "success", "failure", "partial", "cancelled"]
+    status_code: int | None = Field(default=None, ge=100, le=599)
+    duration_ms: float | None = Field(default=None, ge=0, le=86_400_000)
+    actor: str | None = Field(default=None, min_length=1, max_length=120)
+    detail: str | None = Field(default=None, max_length=512)
+
+
 class IngestResponse(BaseModel):
     document_id: int
     status: Literal["ingested", "duplicate"]
@@ -274,6 +294,7 @@ class ChatRequest(BaseModel):
     document_id: int | None = Field(default=None, ge=1)
     document_ids: list[int] = Field(default_factory=list, max_length=8)
     use_llm_answer: bool = False
+    thinking_mode: bool = False
 
 
 class ReportReviewDecisionRequest(BaseModel):
@@ -343,6 +364,10 @@ class ChatResponse(BaseModel):
     retrieval_provider: str | None = None
     retrieval_version: Literal["v1", "v2", "v3"] = "v2"
     retrieval_used: bool = False
+    thinking_mode: bool = False
+    thinking_used: bool = False
+    thinking_route: Literal["document", "general"] | None = None
+    resolved_question: str | None = None
     sources: list[AnswerSourceResponse]
     history: list[ChatMessage]
 
@@ -555,3 +580,30 @@ class CatalogSelectedIngestResponse(BaseModel):
     duplicate_count: int
     error_count: int
     items: list[CatalogSampleIngestItemResponse]
+
+
+class CatiaSkillChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    session_id: str | None = Field(default=None, min_length=8, max_length=64)
+
+
+class CatiaSkillApproveRequest(BaseModel):
+    session_id: str = Field(min_length=8, max_length=64)
+
+
+class CatiaSkillEventResponse(BaseModel):
+    kind: Literal["model", "command", "result", "screen", "harness"]
+    text: str = ""
+    status: str | None = None
+    state: str | None = None
+    code: str | None = None
+    message_tr: str | None = None
+    hint_tr: str | None = None
+
+
+class CatiaSkillChatResponse(BaseModel):
+    session_id: str
+    events: list[CatiaSkillEventResponse]
+    state: str | None = None
+    approval_pending: bool = False
+    pending_run_id: str | None = None

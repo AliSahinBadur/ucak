@@ -32,6 +32,8 @@
     <symbol id="icon-folder-open" viewBox="0 0 24 24"><path d="M3 6.5h6l2 2h10v2.5"/><path d="M3 6.5v12a1.5 1.5 0 0 0 1.5 1.5h13.8a1.5 1.5 0 0 0 1.4-1l2.1-7a1.5 1.5 0 0 0-1.4-2H6.2a1.5 1.5 0 0 0-1.4 1L3 17"/></symbol>
     <symbol id="icon-eye" viewBox="0 0 24 24"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.8"/></symbol>
     <symbol id="icon-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 19h16"/></symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24"><path d="m4 12.5 5.2 5.2L20 7"/></symbol>
+    <symbol id="icon-gauge" viewBox="0 0 24 24"><path d="M4 19a9 9 0 1 1 16 0"/><path d="m12 14 4.5-4.5"/><circle cx="12" cy="14.5" r="1.6"/></symbol>
   </svg>
 
   <div class="app-shell">
@@ -42,6 +44,7 @@
       <div class="rail-nav">
         <button class="rail-button active" type="button" data-view-target="home" aria-label="Ana alan" title="Ana alan"><span class="rail-emoji" aria-hidden="true">🏠</span></button>
         <button class="rail-button" type="button" data-view-target="chat" aria-label="AI asistan" title="AI asistan"><span class="rail-emoji" aria-hidden="true">💬</span></button>
+        <button class="rail-button" type="button" data-view-target="skills" aria-label="Mühendislik skill merkezi" title="Skill Merkezi"><span class="rail-emoji" aria-hidden="true">🧰</span></button>
         <button class="rail-button" type="button" data-view-target="documents" aria-label="Dokümanlar" title="Dokümanlar"><span class="rail-emoji" aria-hidden="true">📚</span></button>
         <button class="rail-button" type="button" data-view-target="search" aria-label="Akıllı arama" title="Akıllı arama"><span class="rail-emoji" aria-hidden="true">🔎</span></button>
         <button class="rail-button" type="button" data-view-target="compare" aria-label="Karşılaştırma" title="Karşılaştırma"><span class="rail-emoji" aria-hidden="true">⚖️</span></button>
@@ -184,10 +187,10 @@
           <div class="chat-stage">
             <div class="chat-workspace-bar">
               <div class="chat-agent-identity">
-                <span class="chat-agent-robot" aria-hidden="true">🤖</span>
+                <span class="chat-agent-robot" id="chatAgentIcon" aria-hidden="true">🤖</span>
                 <div>
-                  <strong>SmartCAE AI</strong>
-                  <span>Seçili dokümanlarla kaynaklı yanıt üretir</span>
+                  <strong id="chatAgentName">SmartCAE AI</strong>
+                  <span id="chatAgentDescription">Seçili dokümanlarla kaynaklı yanıt üretir</span>
                 </div>
               </div>
               <div class="chat-workspace-actions">
@@ -199,6 +202,16 @@
                 <button class="chat-evidence-button" id="chatEvidenceButton" type="button" aria-controls="evidencePanel" aria-expanded="false">
                   <svg><use href="#icon-panel"/></svg><span id="chatEvidenceCount">0 kaynak</span>
                 </button>
+              </div>
+            </div>
+            <div class="chat-skill-mode-bar" id="chatSkillModeBar" hidden>
+              <div class="chat-skill-mode-copy">
+                <span class="chat-skill-mode-icon" aria-hidden="true">⚙️</span>
+                <span><strong>CATIA kütle / CG aktif</strong><small id="chatCatiaModeDetail">Güvenli komut harness'ı üzerinden çalışır</small></span>
+              </div>
+              <div class="chat-skill-mode-actions">
+                <button class="secondary-button compact-button" id="chatCatiaResetButton" type="button" title="Yeni CATIA oturumu başlat"><svg><use href="#icon-refresh"/></svg>Yeni oturum</button>
+                <button class="secondary-button compact-button" id="chatSkillExitButton" type="button"><svg><use href="#icon-close"/></svg>Standart sohbete dön</button>
               </div>
             </div>
             <div class="chat-messages" id="chatMessages" role="log" aria-live="polite" aria-relevant="additions">
@@ -233,7 +246,8 @@
                 <div class="chat-suggestion-track">
                   <button class="skill-example report-review-skill" type="button" data-prompt="RAPOR-KODU raporu kontrol et; hata, eksik ve tutarsızlıkları sayfa kanıtlarıyla göster." data-context-prompt="Bu raporu kontrol et; hata, eksik ve tutarsızlıkları sayfa kanıtlarıyla göster." data-context-multi-prompt="Bu raporları kontrol et; hata, eksik ve tutarsızlıkları ayrı ayrı sayfa kanıtlarıyla göster." data-assistant-mode="report" data-select-token="RAPOR-KODU" title="Soldan seçilen raporu; rapor no, tarih, zorunlu bölümler, tablo/şekil referansları, ondalık biçimi ve metin çıkarımı açısından kontrol eder"><span aria-hidden="true">✅</span>Rapor kontrolü</button>
                   <button class="skill-example revision-review-skill" type="button" data-prompt="Bu iki raporun rapor kontrolü bulgularını revizyon bazında karşılaştır; yeni, giderilen ve devam eden bulguları göster." data-context-multi-prompt="Bu iki raporun rapor kontrolü bulgularını revizyon bazında karşılaştır; yeni, giderilen ve devam eden bulguları göster." data-assistant-mode="report" title="Soldan iki rapor seç; yeni revizyonda oluşan, giderilen ve devam eden kontrol bulgularını karşılaştırır"><span aria-hidden="true">🔄</span>Revizyon kontrolü</button>
-                  <button class="skill-example quality-example" type="button" data-prompt="RAPOR-KODU raporundaki tablo ve şekil numaralandırması doğru mu yapılmış?" data-assistant-mode="report" data-select-token="RAPOR-KODU" title="Rapor kodunu değiştirerek tablo ve şekil sırasını kontrol et"><span aria-hidden="true">🔢</span>Tablo / şekil kontrolü</button>
+                  <button class="skill-example quality-example" type="button" data-prompt="RAPOR-KODU raporundaki tablo ve şekil numaralandırması doğru mu yapılmış?" data-context-prompt="Bu rapordaki tablo ve şekil numaralandırması doğru mu yapılmış?" data-context-multi-prompt="Bu raporlardaki tablo ve şekil numaralandırmasını ayrı ayrı kontrol et." data-assistant-mode="report" data-select-token="RAPOR-KODU" title="Rapor kodunu değiştirerek tablo ve şekil sırasını kontrol et"><span aria-hidden="true">🔢</span>Tablo / şekil kontrolü</button>
+                  <button class="skill-example catia-skill-link" id="chatCatiaSkill" type="button" data-chat-skill="catia" data-catia-prompt="ARAC-X / BASE / R04 montajından kütle ve CG çıkar." data-catia-select-token="ARAC-X / BASE / R04" title="Ana sohbet içinde CATIA ölçümü başlatır; onayından sonra Adams/Car .cmd dosyasını üretir." hidden><span aria-hidden="true">⚙️</span>CATIA kütle / CG</button>
                 </div>
               </div>
               <div class="chat-suggestion-section example-suggestions" data-suggestion-section="examples">
@@ -248,15 +262,158 @@
                 </div>
               </div>
             </div>
+            <div class="chat-suggestions catia-chat-suggestions" id="chatCatiaSuggestions" aria-label="CATIA skill adımları" hidden>
+              <div class="chat-suggestion-section skill-suggestions">
+                <span class="chat-suggestions-label">CATIA adımları</span>
+                <div class="chat-suggestion-track">
+                  <button class="skill-example catia-run-skill" type="button" data-catia-prompt="ARAC-X / BASE / R04 montajından kütle ve CG çıkar." data-catia-select-token="ARAC-X / BASE / R04" title="Montajı tarar ve revizyon farkı önizlemesini hazırlar"><span aria-hidden="true">⚖️</span>Ölçüm al</button>
+                  <button class="skill-example catia-doctor-skill" type="button" data-catia-prompt="Ortamı kontrol et; doctor çalıştır." title="CATIA bağlantısını ve gerekli ayarları kontrol eder"><span aria-hidden="true">🩺</span>Ortam kontrolü</button>
+                  <button class="skill-example catia-calibrate-skill" type="button" data-catia-prompt="Kalibrasyon bloğunun ölçüleri 100 x 50 x 25 mm, yoğunluğu 7850 kg/m³. Kalibrasyonu yap." data-catia-select-token="100 x 50 x 25" title="Birim profilini ölçümle üretir"><span aria-hidden="true">📐</span>Kalibrasyon</button>
+                  <button class="skill-example catia-history-skill" type="button" data-catia-prompt="Bu araç için geçmiş ölçümleri göster." title="Önceki ölçümleri listeler"><span aria-hidden="true">🗂️</span>Geçmiş ölçümler</button>
+                </div>
+              </div>
+            </div>
             <p class="inline-status" id="chatStatus" role="status" hidden></p>
+            <div class="catia-approval chat-catia-approval" id="chatCatiaApproval" role="alertdialog" aria-labelledby="chatCatiaApprovalTitle" aria-describedby="chatCatiaApprovalText" hidden>
+              <div class="catia-approval-copy">
+                <strong id="chatCatiaApprovalTitle">Bu önizleme onayını bekliyor</strong>
+                <span id="chatCatiaApprovalText">Tabloyu ve onay kodunu kontrol et. Onaydan sonra Adams/Car .cmd dosyası yazılır.</span>
+                <small id="chatCatiaApprovalRun"></small>
+              </div>
+              <div class="catia-approval-actions">
+                <button class="secondary-button compact-button" id="chatCatiaRejectButton" type="button">Reddet</button>
+                <button class="primary-button" id="chatCatiaApproveButton" type="button"><svg><use href="#icon-check"/></svg>Onayla ve .cmd üret</button>
+              </div>
+            </div>
             <form class="chat-composer" id="chatComposer">
               <textarea id="chatInput" rows="1" minlength="2" maxlength="1000" required placeholder="Mühendislik sorunu yaz..." aria-label="Asistana mesaj yaz"></textarea>
               <div class="composer-row">
                 <span class="chat-context-state"><i aria-hidden="true"></i><span id="chatContextHint">Tüm dokümanlar</span></span>
+                <button class="thinking-mode-toggle" id="chatThinkingToggle" type="button" role="switch" aria-checked="false" title="Sohbet geçmişini yerel LLM ile yorumlar, takip sorusunu bağımsız sorguya dönüştürür; yanıt süresi uzayabilir.">
+                  <svg aria-hidden="true"><use href="#icon-spark"/></svg><span>Thinking</span>
+                </button>
                 <span class="chat-keyboard-hint">Enter ile gönder · Shift+Enter ile yeni satır</span>
                 <button class="send-button" id="chatSendButton" type="submit" aria-label="Mesajı gönder"><svg><use href="#icon-send"/></svg></button>
               </div>
             </form>
+          </div>
+        </section>
+
+        <section class="workspace-view skills-view" data-view="skills" aria-labelledby="skillsTitle">
+          <div class="view-heading skills-heading">
+            <div>
+              <span class="overline">SMARTCAE SKILL MERKEZİ</span>
+              <h1 id="skillsTitle">Uzman kontroller,<br>tek çalışma alanı.</h1>
+              <p>Tekrarlanan mühendislik kontrollerini seçili raporlar üzerinde, kaynak ve sayfa kanıtlarıyla çalıştır.</p>
+            </div>
+            <div class="skills-heading-meta" aria-label="Skill merkezi özeti">
+              <span><strong id="skillsActiveCount">3</strong> aktif skill</span>
+              <span><strong>Yerel</strong> çalışma</span>
+              <span><strong>Sayfa</strong> kanıtı</span>
+            </div>
+          </div>
+
+          <div class="skill-context-bar">
+            <div>
+              <span class="skill-context-label">AKTİF BAĞLAM</span>
+              <strong id="skillContextHint">Henüz doküman seçilmedi</strong>
+              <small>Soldaki kaynak alanından rapor seçebilir veya skill açıldıktan sonra rapor kodunu yazabilirsin.</small>
+            </div>
+            <button class="secondary-button compact-button" type="button" data-view-target="documents">Doküman seç</button>
+          </div>
+
+          <div class="skill-grid" aria-label="Kullanılabilir mühendislik skill'leri">
+            <article class="skill-card skill-card-review">
+              <div class="skill-card-top">
+                <span class="skill-card-icon" aria-hidden="true">✅</span>
+                <span class="skill-status"><i aria-hidden="true"></i>Kullanıma hazır</span>
+              </div>
+              <div class="skill-card-body">
+                <span class="skill-kicker">KALİTE VE TUTARLILIK</span>
+                <h2>Rapor kontrolü</h2>
+                <p>Rapor yapısını, zorunlu alanları ve anlamsal tutarlılığı sayfa kanıtlarıyla inceler.</p>
+                <ul class="skill-capabilities">
+                  <li><span>01</span>Rapor no, tarih ve zorunlu bölümler</li>
+                  <li><span>02</span>Tutarsız veya eksik teknik ifadeler</li>
+                  <li><span>03</span>Kanıtlı bulgu ve önerilen düzeltme</li>
+                </ul>
+              </div>
+              <footer class="skill-card-footer">
+                <span class="skill-requirement">1+ rapor</span>
+                <button class="skill-launch-button" type="button" data-skill-launch="report-review" data-prompt="RAPOR-KODU raporu kontrol et; hata, eksik ve tutarsızlıkları sayfa kanıtlarıyla göster." data-context-prompt="Bu raporu kontrol et; hata, eksik ve tutarsızlıkları sayfa kanıtlarıyla göster." data-context-multi-prompt="Bu raporları kontrol et; hata, eksik ve tutarsızlıkları ayrı ayrı sayfa kanıtlarıyla göster." data-assistant-mode="report" data-select-token="RAPOR-KODU">Skill'i aç <svg aria-hidden="true"><use href="#icon-chevron"/></svg></button>
+              </footer>
+            </article>
+
+            <article class="skill-card skill-card-revision">
+              <div class="skill-card-top">
+                <span class="skill-card-icon" aria-hidden="true">🔄</span>
+                <span class="skill-status"><i aria-hidden="true"></i>Kullanıma hazır</span>
+              </div>
+              <div class="skill-card-body">
+                <span class="skill-kicker">REVİZYON TAKİBİ</span>
+                <h2>Revizyon kontrolü</h2>
+                <p>İki rapor sürümündeki kontrol bulgularını karşılaştırır ve değişimin durumunu gösterir.</p>
+                <ul class="skill-capabilities">
+                  <li><span>01</span>Yeni oluşan bulgular</li>
+                  <li><span>02</span>Giderilen ve devam eden hatalar</li>
+                  <li><span>03</span>Revizyon bazlı kanıt eşleştirme</li>
+                </ul>
+              </div>
+              <footer class="skill-card-footer">
+                <span class="skill-requirement">2 rapor</span>
+                <button class="skill-launch-button" type="button" data-skill-launch="revision-review" data-prompt="Bu iki raporun rapor kontrolü bulgularını revizyon bazında karşılaştır; yeni, giderilen ve devam eden bulguları göster." data-context-multi-prompt="Bu iki raporun rapor kontrolü bulgularını revizyon bazında karşılaştır; yeni, giderilen ve devam eden bulguları göster." data-assistant-mode="report">Skill'i aç <svg aria-hidden="true"><use href="#icon-chevron"/></svg></button>
+              </footer>
+            </article>
+
+            <article class="skill-card skill-card-numbering">
+              <div class="skill-card-top">
+                <span class="skill-card-icon" aria-hidden="true">🔢</span>
+                <span class="skill-status"><i aria-hidden="true"></i>Kullanıma hazır</span>
+              </div>
+              <div class="skill-card-body">
+                <span class="skill-kicker">DOKÜMAN DÜZENİ</span>
+                <h2>Tablo / şekil kontrolü</h2>
+                <p>Tablo ve şekil sırasını, başlıklarını ve metin içi referanslarını birlikte denetler.</p>
+                <ul class="skill-capabilities">
+                  <li><span>01</span>Atlanan veya tekrarlanan numaralar</li>
+                  <li><span>02</span>Başlıksız tablo ve şekiller</li>
+                  <li><span>03</span>Metinde karşılığı olmayan referanslar</li>
+                </ul>
+              </div>
+              <footer class="skill-card-footer">
+                <span class="skill-requirement">1+ rapor</span>
+                <button class="skill-launch-button" type="button" data-skill-launch="numbering-review" data-prompt="RAPOR-KODU raporundaki tablo ve şekil numaralandırması doğru mu yapılmış?" data-context-prompt="Bu rapordaki tablo ve şekil numaralandırması doğru mu yapılmış?" data-context-multi-prompt="Bu raporlardaki tablo ve şekil numaralandırmasını ayrı ayrı kontrol et." data-assistant-mode="report" data-select-token="RAPOR-KODU">Skill'i aç <svg aria-hidden="true"><use href="#icon-chevron"/></svg></button>
+              </footer>
+            </article>
+
+            <article class="skill-card skill-card-catia catia-skill-card" id="catiaSkillCard" hidden>
+              <div class="skill-card-top">
+                <span class="skill-card-icon" aria-hidden="true">⚙️</span>
+                <span class="skill-status"><i aria-hidden="true"></i>Yerel CATIA bağlantısı</span>
+              </div>
+              <div class="skill-card-body">
+                <span class="skill-kicker">KÜTLE VE AĞIRLIK MERKEZİ</span>
+                <h2>CATIA kütle / CG</h2>
+                <p>Açık CATIA montajından ölçülmüş kütle, CG ve atalet verilerini çıkarıp Adams/Car aktarımını insan onayıyla hazırlar.</p>
+                <ul class="skill-capabilities">
+                  <li><span>01</span>Alt yapı bazında CATIA ölçümü</li>
+                  <li><span>02</span>Önceki revizyonla fark analizi</li>
+                  <li><span>03</span>Onay kapılı Adams .cmd çıktısı</li>
+                </ul>
+              </div>
+              <footer class="skill-card-footer">
+                <span class="skill-requirement">LOCALHOST + CATIA</span>
+                <button class="skill-launch-button" type="button" data-chat-skill="catia" data-catia-prompt="ARAC-X / BASE / R04 montajından kütle ve CG çıkar." data-catia-select-token="ARAC-X / BASE / R04">Sohbette aç <svg aria-hidden="true"><use href="#icon-chevron"/></svg></button>
+              </footer>
+            </article>
+          </div>
+
+          <div class="skill-workflow" aria-label="Skill kullanım akışı">
+            <span><i>1</i><strong>Kaynağı seç</strong><small>Soldan rapor bağlamını belirle</small></span>
+            <svg aria-hidden="true"><use href="#icon-chevron"/></svg>
+            <span><i>2</i><strong>Skill'i aç</strong><small>Hazır komutu kontrol et</small></span>
+            <svg aria-hidden="true"><use href="#icon-chevron"/></svg>
+            <span><i>3</i><strong>Kanıtı incele</strong><small>Sayfa ve pasajı doğrula</small></span>
           </div>
         </section>
 

@@ -2,7 +2,7 @@
 
 SmartCAE AI is a local-first report assistant for vehicle test and analysis documents. It ingests PDF, DOCX, and PPTX files, stores searchable chunks, links catalog records to report files, and answers questions with source passages.
 
-Current version: `v0.50.114`
+Current version: `v0.50.198`
 
 ## SmartCAE AI, RaporHub and RepOcto
 
@@ -44,6 +44,26 @@ Both variants use the same API, RAG services, reports, chunks, and embeddings.
 The old standalone `RaporHub` folder is not modified by this setup. New shared
 features should be developed here once; product-specific UI work is selected by
 the variant configuration.
+
+## SmartAIOS Operations Dashboard
+
+The shared operations dashboard is served by the SmartCAE AI process:
+
+```text
+http://127.0.0.1:8002/smartaios-dashboard
+```
+
+In the SmartAIOS engineering-tools application, a single click on the red factory
+home icon keeps the existing home-page behavior. Double-clicking that icon opens
+the operations dashboard on the SmartCAE AI service at port `8002`.
+The dashboard records meaningful engineering operations, result state, server
+processing time, active browser time, application health, and an audit-friendly
+activity log. Page loads and static asset requests are not counted as operations.
+
+Telemetry starts collecting after this version is deployed; it does not invent or
+reconstruct historical usage. The dashboard identifies activity only by the
+connecting client IP; it does not maintain display-name mappings.
+Prompt content and document content are not written to the analytics log.
 
 ## What Works
 

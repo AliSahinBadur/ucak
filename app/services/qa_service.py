@@ -78,19 +78,24 @@ class QAService:
                 "sources": [],
             }
 
-        question_tokens = self.search_service.embedding_service.tokenize(cleaned_question)
         question_profile = self._question_profile(cleaned_question)
+        question_tokens = question_profile["subject_tokens"] or self.search_service.embedding_service.tokenize(
+            cleaned_question
+        )
         ranked_results = self._prioritize_results_for_question(question_tokens, question_profile, results)
         answer, answer_score = self._build_answer(cleaned_question, ranked_results)
         generated_answer = self._generate_llm_answer(cleaned_question, ranked_results[:5]) if use_llm_answer else None
         answer_found = answer_score >= self.MIN_ANSWER_SCORE
+        confidence = self._normalize_confidence(answer_score)
+        if not generated_answer:
+            confidence = min(confidence, 0.88)
         return {
             "question": cleaned_question,
             "mode": mode,
             "answer": generated_answer
             or (answer if answer_found else "Bu soruya yakin gorunen pasajlar bulundu ama guvenilir bir kisa cevap secilemedi."),
             "answer_found": bool(generated_answer) or answer_found,
-            "confidence": round(self._normalize_confidence(answer_score), 3),
+            "confidence": round(confidence, 3),
             "embedding_provider": self._retrieval_provider_name(retrieval_version),
             "sources": ranked_results[:3],
         }
@@ -201,8 +206,8 @@ class QAService:
         return SearchService._normalize_document_ids(matches)
 
     def _build_answer(self, question: str, results: list[dict]) -> tuple[str, float]:
-        question_tokens = self.search_service.embedding_service.tokenize(question)
         question_profile = self._question_profile(question)
+        question_tokens = question_profile["subject_tokens"] or self.search_service.embedding_service.tokenize(question)
         ranked_results = self._prioritize_results_for_question(question_tokens, question_profile, results)
         contexts = self._build_candidate_contexts(question_tokens, ranked_results, question_profile)
 
@@ -740,6 +745,11 @@ class QAService:
         section_bonus = context["section_match"] * 0.2
         short_sentence_bonus = 0.08 if 35 <= len(sentence) <= 220 else 0.0
         heading_like_penalty = 0.45 if len(sentence) < 90 and sentence.rstrip().endswith(":") else 0.0
+        source_header_penalty = 0.8 if re.search(
+            r"(?:[a-z]:\\|\\\\).*\bpage\s+\d+\s*/\s*\d+",
+            sentence,
+            flags=re.IGNORECASE,
+        ) else 0.0
         measurement_noise_penalty = (
             0.35
             if question_profile["wants_measurement"]
@@ -765,6 +775,7 @@ class QAService:
             + rank_bonus
             - low_overlap_penalty
             - heading_like_penalty
+            - source_header_penalty
             - measurement_noise_penalty
             - length_penalty
         )
@@ -868,7 +879,17 @@ class QAService:
             "ve",
             "veya",
         }
-        subject_tokens = [token for token in raw_tokens if token not in filler_tokens and len(token) >= 3]
+        subject_source = lowered
+        report_marker = re.search(r"\brapor(?:u|un|unda|undaki|unun|ununki)?\b", lowered)
+        if report_marker:
+            report_tail = lowered[report_marker.end():].strip(" :-")
+            if len(re.findall(r"\w+", report_tail)) >= 2:
+                subject_source = report_tail
+        subject_tokens = [
+            token
+            for token in re.findall(r"\w+", subject_source)
+            if token not in filler_tokens and len(token) >= 3
+        ]
         expanded_subject_tokens = QAService._expand_tokens(subject_tokens)
         subject_aliases = QAService._build_subject_aliases(subject_tokens)
         subject_search_terms = list(
@@ -979,6 +1000,13 @@ class QAService:
         variants = [question]
         subject_text = question_profile["subject_text"]
         normalized_question = cls._normalize_text(question)
+        normalized_subject = cls._normalize_text(subject_text)
+        if (
+            normalized_subject
+            and normalized_subject != normalized_question
+            and len(normalized_subject.split()) <= 8
+        ):
+            variants.append(subject_text)
         for alias in question_profile["subject_aliases"]:
             if not alias or alias == cls._normalize_text(subject_text):
                 continue

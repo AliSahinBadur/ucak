@@ -153,6 +153,16 @@ if errorlevel 1 (
   exit /b 1
 )
 
+if exist "%APP_DIR%requirements-skill.txt" (
+  echo [3/6] Opsiyonel skill paketleri yukleniyor...
+  "%PYTHON_EXE%" -m pip install -r "%APP_DIR%requirements-skill.txt"
+  if errorlevel 1 (
+    echo [HATA] Skill paket kurulumu basarisiz.
+    pause
+    exit /b 1
+  )
+)
+
 echo [4/6] CUDA destekli PyTorch kontrol ediliyor...
 "%PYTHON_EXE%" -c "import sys, torch; sys.exit(0 if torch.version.cuda and torch.cuda.is_available() else 1)" >nul 2>nul
 if errorlevel 1 (

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import hmac
 from html import escape
@@ -23,6 +24,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .api_models import (
+    AnalyticsExternalEventRequest,
+    AnalyticsHeartbeatRequest,
     AskRequest,
     AskResponse,
     BatchIngestItemResponse,
@@ -30,6 +33,9 @@ from .api_models import (
     CatalogAskRequest,
     CatalogAskResponse,
     CatalogCandidateIngestRequest,
+    CatiaSkillApproveRequest,
+    CatiaSkillChatRequest,
+    CatiaSkillChatResponse,
     CatalogImportResponse,
     CatalogSampleIngestItemResponse,
     CatalogSampleIngestResponse,
@@ -69,9 +75,16 @@ from .db.models import (
     ReportCatalogEntry,
 )
 from .services.embedding_reindex_service import EmbeddingReindexService
+from .services.analytics_service import AnalyticsService, tracked_operation
 from .services.embedding_service import build_embedding_service
 from .services.catalog_ingest_service import CatalogIngestService
 from .services.catalog_service import CatalogService
+from .services.catia_skill_service import (
+    CatiaSkillBusyError,
+    CatiaSkillLLMError,
+    CatiaSkillUnavailableError,
+    get_catia_skill_service,
+)
 from .services.duplicate_detection_service import DuplicateDetectionService
 from .services.document_intelligence_service import DocumentIntelligenceService
 from .services.document_path_service import resolve_document_file_path
@@ -108,6 +121,7 @@ from .config import (
     CHAT_LLM_BACKEND,
     CHAT_LLM_ENABLED,
     CHAT_LLM_MODEL_NAME,
+    CATIA_SKILL_ENABLED,
     EMBEDDING_DEVICE,
     EMBEDDING_LOCAL_FILES_ONLY,
     EMBEDDING_MODEL_NAME,
@@ -121,10 +135,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 #dfgasdgfasdfasdfasdfasdf
 app = FastAPI(title=APP_BRAND.api_title, version=APP_VERSION)
+_ANALYTICS_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="big-agent-analytics")
 RAPORHUB_LANDING_DIR = Path(__file__).resolve().parent / "ui" / "raporhub_landing"
 REPOCTO_LANDING_DIR = Path(__file__).resolve().parent / "ui" / "repocto_landing"
 REPOCTO_LANDING_V2_DIR = REPOCTO_LANDING_DIR / "v2"
 SMARTCAE_V2_DIR = Path(__file__).resolve().parent / "ui" / "smartcae_v2"
+SMARTAIOS_DASHBOARD_DIR = Path(__file__).resolve().parent / "ui" / "smartaios_dashboard"
 REPORT_WORKSPACE_VARIANTS = frozenset({"raporhub", "repocto"})
 app.mount(
     "/raporhub-landing",
@@ -141,6 +157,11 @@ if APP_VARIANT == "big_agent":
         "/smartcae-v2/assets",
         StaticFiles(directory=str(SMARTCAE_V2_DIR / "assets")),
         name="smartcae-v2-assets",
+    )
+    app.mount(
+        "/smartaios-dashboard/assets",
+        StaticFiles(directory=str(SMARTAIOS_DASHBOARD_DIR / "assets")),
+        name="smartaios-dashboard-assets",
     )
 AUTH_COOKIE_NAME = APP_AUTH_COOKIE_NAME
 AUTH_SESSION_SECONDS = 8 * 60 * 60
@@ -277,6 +298,175 @@ async def auth_middleware(request: Request, call_next):
     return JSONResponse({"detail": "Authentication required."}, status_code=401)
 
 
+def _analytics_client_id(request: Request, claimed_user: str | None = None) -> str:
+    username = _read_session_user(request)
+    client_host = request.client.host if request.client else None
+    header_user = request.headers.get("X-SmartAIOS-User")
+    return AnalyticsService.client_id(
+        username=username,
+        client_host=client_host,
+        claimed_user=claimed_user or header_user,
+    )
+
+
+def _analytics_public_host(request: Request) -> str:
+    forwarded_host = request.headers.get("X-SmartAIOS-Public-Host", "").split(",", 1)[0].strip()
+    if forwarded_host and re.fullmatch(r"[A-Za-z0-9.-]+", forwarded_host):
+        return forwarded_host
+    return request.url.hostname or "127.0.0.1"
+
+
+def _record_analytics_start(
+    *,
+    event_id: str,
+    client_id: str,
+    application: str,
+    operation: str,
+    category: str,
+    method: str,
+    path: str,
+) -> None:
+    try:
+        with SessionLocal() as session:
+            AnalyticsService(session).start_operation(
+                client_id=client_id,
+                application=application,
+                operation=operation,
+                category=category,
+                method=method,
+                path=path,
+                external_event_id=event_id,
+            )
+    except Exception as exc:
+        logger.warning("Analytics operation could not be started: %s", type(exc).__name__)
+
+
+def _record_analytics_finish(
+    *,
+    event_id: str,
+    client_id: str,
+    application: str,
+    operation: str,
+    category: str,
+    method: str,
+    path: str,
+    status: str,
+    status_code: int,
+    duration_ms: float,
+    detail: str | None,
+) -> None:
+    try:
+        with SessionLocal() as session:
+            AnalyticsService(session).finish_operation_by_event_id(
+                event_id,
+                client_id=client_id,
+                application=application,
+                operation=operation,
+                category=category,
+                method=method,
+                path=path,
+                status=status,
+                status_code=status_code,
+                duration_ms=duration_ms,
+                detail=detail,
+            )
+    except Exception as exc:
+        logger.warning("Analytics completion could not be recorded: %s", type(exc).__name__)
+
+
+@app.middleware("http")
+async def analytics_middleware(request: Request, call_next):
+    tracked = tracked_operation(request.method, request.url.path)
+    if tracked is None:
+        return await call_next(request)
+
+    operation_name, category = tracked
+    event_id = f"local-{secrets.token_hex(16)}"
+    client_id = _analytics_client_id(request)
+    application = APP_VARIANT
+    method = request.method
+    path = request.url.path
+    started_at = time.perf_counter()
+    try:
+        _ANALYTICS_EXECUTOR.submit(
+            _record_analytics_start,
+            event_id=event_id,
+            client_id=client_id,
+            application=application,
+            operation=operation_name,
+            category=category,
+            method=method,
+            path=path,
+        )
+    except Exception as exc:
+        logger.warning("Analytics start could not be queued: %s", type(exc).__name__)
+
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        try:
+            _ANALYTICS_EXECUTOR.submit(
+                _record_analytics_finish,
+                event_id=event_id,
+                client_id=client_id,
+                application=application,
+                operation=operation_name,
+                category=category,
+                method=method,
+                path=path,
+                status="failure",
+                status_code=500,
+                duration_ms=(time.perf_counter() - started_at) * 1000,
+                detail=f"Beklenmeyen sunucu hatası: {type(exc).__name__}",
+            )
+        except Exception as analytics_exc:
+            logger.warning("Analytics failure could not be queued: %s", type(analytics_exc).__name__)
+        raise
+
+    explicit_status = getattr(request.state, "analytics_status", None)
+    if explicit_status in {"success", "failure", "partial", "cancelled"}:
+        final_status = explicit_status
+    else:
+        final_status = "success" if response.status_code < 400 else "failure"
+    detail = getattr(request.state, "analytics_detail", None)
+    if not detail and response.status_code >= 400:
+        detail = f"HTTP {response.status_code}"
+    try:
+        _ANALYTICS_EXECUTOR.submit(
+            _record_analytics_finish,
+            event_id=event_id,
+            client_id=client_id,
+            application=application,
+            operation=operation_name,
+            category=category,
+            method=method,
+            path=path,
+            status=final_status,
+            status_code=response.status_code,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+            detail=detail,
+        )
+    except Exception as exc:
+        logger.warning("Analytics completion could not be queued: %s", type(exc).__name__)
+    return response
+
+
+def _set_analytics_batch_outcome(
+    request: Request,
+    *,
+    total_count: int,
+    error_count: int,
+    label: str,
+) -> None:
+    total = max(0, int(total_count))
+    errors = max(0, int(error_count))
+    if errors <= 0:
+        request.state.analytics_status = "success"
+        return
+    request.state.analytics_status = "failure" if total > 0 and errors >= total else "partial"
+    request.state.analytics_detail = f"{label}: {total} kaydın {errors} tanesi tamamlanamadı."
+
+
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -319,6 +509,13 @@ def _convert_content_media_type_to_binary(node: dict) -> None:
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
+    try:
+        with SessionLocal() as session:
+            recovered = AnalyticsService(session).recover_stale_operations()
+        if recovered:
+            logger.warning("Recovered %s stale analytics operations.", recovered)
+    except Exception as exc:
+        logger.warning("Analytics startup recovery skipped: %s", type(exc).__name__)
 
 
 def _display_model_name() -> str:
@@ -590,6 +787,82 @@ def smartcae_v2_page() -> HTMLResponse:
         html.replace("__APP_VERSION__", APP_VERSION),
         headers={"Cache-Control": "no-cache"},
     )
+
+
+@app.get("/smartaios-dashboard/", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/smartaios-dashboard", response_class=HTMLResponse, include_in_schema=False)
+def smartaios_dashboard_page() -> HTMLResponse:
+    if APP_VARIANT != "big_agent":
+        raise HTTPException(status_code=404, detail="Not found")
+    html = SMARTAIOS_DASHBOARD_DIR.joinpath("index.html").read_text(encoding="utf-8")
+    return HTMLResponse(
+        html.replace("__APP_VERSION__", APP_VERSION),
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/analytics/dashboard")
+def analytics_dashboard(
+    request: Request,
+    days: Annotated[int, Query(ge=1, le=3650)] = 30,
+    application: Annotated[str, Query(max_length=80)] = "",
+    actor: Annotated[str, Query(max_length=160)] = "",
+    status: Annotated[str, Query(max_length=24)] = "",
+    session: Session = Depends(get_session),
+) -> dict[str, object]:
+    if APP_VARIANT != "big_agent":
+        raise HTTPException(status_code=404, detail="Not found")
+    public_host = _analytics_public_host(request)
+    return AnalyticsService(session).dashboard(
+        client_id=_analytics_client_id(request),
+        days=days,
+        public_host=public_host,
+        application_filter=application,
+        actor_filter=actor,
+        status_filter=status,
+    )
+
+
+@app.post("/analytics/heartbeat")
+def analytics_heartbeat(
+    payload: AnalyticsHeartbeatRequest,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> dict[str, object]:
+    return AnalyticsService(session).heartbeat(
+        session_id=payload.session_id,
+        client_id=_analytics_client_id(request, claimed_user=payload.actor),
+        application=payload.application or APP_VARIANT,
+        current_view=payload.current_view,
+        active_seconds_delta=payload.active_seconds_delta,
+    )
+
+
+@app.post("/analytics/events")
+def analytics_external_event(
+    payload: AnalyticsExternalEventRequest,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> dict[str, object]:
+    if APP_VARIANT != "big_agent":
+        raise HTTPException(status_code=404, detail="Not found")
+    client_id = _analytics_client_id(request, claimed_user=payload.actor)
+    operation_id = AnalyticsService(session).record_external_event(
+        client_id=client_id,
+        application=payload.application,
+        operation=payload.operation,
+        category=payload.category,
+        status=payload.status,
+        duration_ms=payload.duration_ms,
+        detail=payload.detail,
+        event_id=payload.event_id,
+        status_code=payload.status_code,
+    )
+    return {
+        "status": "recorded",
+        "operation_id": operation_id,
+        "event_id": payload.event_id,
+    }
 
 
 @app.get("/app/", response_class=HTMLResponse, include_in_schema=False)
@@ -6722,6 +6995,42 @@ __VARIANT_CSS__
     draftClearButton.addEventListener("click", clearDraftForm);
     draftCopyButton.addEventListener("click", copyDraftText);
     draftPdfButton.addEventListener("click", downloadLatestDraftPdf);
+
+    const analyticsSessionStorageKey = "smartaios.analytics.session";
+    const analyticsSessionId = sessionStorage.getItem(analyticsSessionStorageKey)
+      || (window.crypto?.randomUUID?.() || `session-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    sessionStorage.setItem(analyticsSessionStorageKey, analyticsSessionId);
+    let analyticsLastPulseAt = Date.now();
+    let analyticsLastInteractionAt = Date.now();
+    ["pointerdown", "keydown", "wheel", "touchstart"].forEach(eventName => {
+      window.addEventListener(eventName, () => { analyticsLastInteractionAt = Date.now(); }, { passive: true });
+    });
+    async function sendAnalyticsHeartbeat() {
+      const now = Date.now();
+      const elapsedSeconds = Math.max(0, Math.min(60, Math.round((now - analyticsLastPulseAt) / 1000)));
+      analyticsLastPulseAt = now;
+      if (document.visibilityState !== "visible") return;
+      const isActive = now - analyticsLastInteractionAt <= 90000;
+      try {
+        await fetch("/analytics/heartbeat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: analyticsSessionId,
+            application: document.body.dataset.appVariant || "big_agent",
+            current_view: selectedModuleFilter || "home",
+            active_seconds_delta: isActive ? elapsedSeconds : 0,
+          }),
+          keepalive: true,
+        });
+      } catch (_) {
+        // Telemetry must never interrupt the engineering workflow.
+      }
+    }
+    window.setInterval(sendAnalyticsHeartbeat, 30000);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") analyticsLastPulseAt = Date.now();
+    });
     ensureDraftDefaults();
     updateCatalogScope([], "");
     resetMultiDocumentWorkspace();
@@ -6773,6 +7082,7 @@ def ingest_file(
 
 @app.post("/ingest/batch", response_model=BatchIngestResponse, include_in_schema=False)
 def ingest_files_batch(
+    request: Request,
     files: Annotated[list[UploadFile], File(...)],
 ) -> BatchIngestResponse:
     items: list[BatchIngestItemResponse] = []
@@ -6823,6 +7133,12 @@ def ingest_files_batch(
     ingested_count = sum(1 for item in items if item.status == "ingested")
     duplicate_count = sum(1 for item in items if item.status == "duplicate")
     error_count = sum(1 for item in items if item.status == "error")
+    _set_analytics_batch_outcome(
+        request,
+        total_count=len(files),
+        error_count=error_count,
+        label="Toplu doküman yükleme",
+    )
 
     return BatchIngestResponse(
         total_files=len(files),
@@ -7190,7 +7506,25 @@ def chat(
     ):
         history.pop()
 
-    if _should_use_general_chat(payload.assistant_mode, payload.message):
+    service: DocumentIntelligenceService | None = None
+    thinking_resolution = None
+    if (
+        payload.thinking_mode
+        and payload.assistant_mode != "general"
+        and not _is_chat_small_talk(payload.message)
+    ):
+        service = DocumentIntelligenceService(session)
+        thinking_resolution = service.resolve_conversation(
+            payload.message,
+            history=history,
+            context_document_ids=payload.document_ids,
+        )
+
+    use_general_chat = _should_use_general_chat(payload.assistant_mode, payload.message)
+    if thinking_resolution is not None and payload.assistant_mode == "auto":
+        use_general_chat = thinking_resolution.route == "general"
+
+    if use_general_chat:
         answer_text, provider_name, confidence = _chat_general_answer(payload.message, history)
         history.append({"role": "user", "content": payload.message})
         history.append({"role": "assistant", "content": answer_text})
@@ -7203,11 +7537,19 @@ def chat(
             retrieval_provider=None,
             retrieval_version=payload.retrieval_version,
             retrieval_used=False,
+            thinking_mode=payload.thinking_mode,
+            thinking_used=thinking_resolution is not None,
+            thinking_route=thinking_resolution.route if thinking_resolution is not None else None,
+            resolved_question=(
+                thinking_resolution.standalone_question
+                if thinking_resolution is not None
+                else None
+            ),
             sources=[],
             history=history[-10:],
         )
 
-    service = DocumentIntelligenceService(session)
+    service = service or DocumentIntelligenceService(session)
     try:
         answer = service.answer_question(
             payload.message,
@@ -7217,6 +7559,8 @@ def chat(
             document_id=payload.document_id,
             context_document_ids=payload.document_ids,
             retrieval_version=payload.retrieval_version,
+            thinking_mode=payload.thinking_mode,
+            thinking_resolution=thinking_resolution,
         )
     except (HaystackUnavailableError, HaystackRetrievalError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -7231,6 +7575,10 @@ def chat(
         retrieval_provider=service.retrieval_provider_name(payload.retrieval_version),
         retrieval_version=payload.retrieval_version,
         retrieval_used=True,
+        thinking_mode=payload.thinking_mode,
+        thinking_used=service.last_thinking_used,
+        thinking_route=service.last_thinking_route,
+        resolved_question=service.last_resolved_question,
         sources=answer["sources"],
         history=history[-10:],
     )
@@ -7452,6 +7800,7 @@ def _fold_chat_text(message: str) -> str:
 
 @app.post("/catalog/import", response_model=CatalogImportResponse)
 def import_catalog(
+    request: Request,
     file: Annotated[UploadFile, File(...)],
     session: Session = Depends(get_session),
 ) -> CatalogImportResponse:
@@ -7461,7 +7810,14 @@ def import_catalog(
 
     try:
         service = CatalogService(session)
-        return CatalogImportResponse(**service.import_bytes(file.filename or "catalog", file.file.read()))
+        result = CatalogImportResponse(**service.import_bytes(file.filename or "catalog", file.file.read()))
+        _set_analytics_batch_outcome(
+            request,
+            total_count=result.rows_seen,
+            error_count=result.error_count,
+            label="Katalog içe aktarma",
+        )
+        return result
     except ValueError as exc:
         session.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -7510,19 +7866,27 @@ def ask_multi_document(
 
 @app.post("/catalog/ingest-sample", response_model=CatalogSampleIngestResponse)
 def ingest_catalog_sample(
+    request: Request,
     per_discipline: int = Query(2, ge=1, le=10),
     dry_run: bool = Query(True),
     scan_limit_per_discipline: int = Query(25, ge=1, le=500),
     session: Session = Depends(get_session),
 ) -> CatalogSampleIngestResponse:
     service = CatalogIngestService(session)
-    return CatalogSampleIngestResponse(
+    result = CatalogSampleIngestResponse(
         **service.ingest_sample_per_discipline(
             per_discipline=per_discipline,
             dry_run=dry_run,
             scan_limit_per_discipline=scan_limit_per_discipline,
         )
     )
+    _set_analytics_batch_outcome(
+        request,
+        total_count=len(result.items),
+        error_count=result.error_count,
+        label="Katalog örnek yükleme",
+    )
+    return result
 
 
 @app.get("/catalog/table", response_model=CatalogTableResponse)
@@ -7650,13 +8014,21 @@ def catalog_open_best_file(
 
 @app.post("/catalog/ingest-candidate", response_model=CatalogSampleIngestItemResponse)
 def ingest_catalog_candidate(
+    request: Request,
     payload: CatalogCandidateIngestRequest,
     session: Session = Depends(get_session),
 ) -> CatalogSampleIngestItemResponse:
     service = CatalogIngestService(session)
-    return CatalogSampleIngestItemResponse(
+    result = CatalogSampleIngestItemResponse(
         **service.ingest_catalog_candidate(payload.catalog_entry_id, payload.file_path)
     )
+    _set_analytics_batch_outcome(
+        request,
+        total_count=1,
+        error_count=1 if result.status == "error" else 0,
+        label="Katalog dokümanı yükleme",
+    )
+    return result
 
 
 @app.get("/graph/overview")
@@ -7666,6 +8038,90 @@ def graph_overview(
 ) -> dict:
     service = GraphService(session)
     return service.overview(limit=limit)
+
+
+def _catia_skill_username(request: Request) -> str:
+    return str(getattr(request.state, "username", "") or "local")
+
+
+def _is_local_catia_client(request: Request) -> bool:
+    host = request.client.host if request.client else None
+    return host in {"127.0.0.1", "::1", "testclient"}
+
+
+def _require_catia_skill_client(request: Request) -> None:
+    if APP_VARIANT != "big_agent" or not CATIA_SKILL_ENABLED:
+        raise HTTPException(
+            status_code=404,
+            detail="CATIA skill'i devre disi. CATIA_SKILL_ENABLED=true ile etkinlestirin.",
+        )
+    if not _is_local_catia_client(request):
+        raise HTTPException(
+            status_code=403,
+            detail="CATIA skill'i yalnizca CATIA'nin calistigi makineden (localhost) kullanilabilir.",
+        )
+
+
+@app.get("/skills/catia-mass-cg/status")
+def catia_skill_status(request: Request) -> dict:
+    if APP_VARIANT != "big_agent" or not CATIA_SKILL_ENABLED:
+        return {"enabled": False}
+    local_client = _is_local_catia_client(request)
+    try:
+        return {
+            "enabled": True,
+            "available": True,
+            **get_catia_skill_service().status(),
+            "local_client": local_client,
+        }
+    except CatiaSkillUnavailableError as exc:
+        return {
+            "enabled": True,
+            "available": False,
+            "local_client": local_client,
+            "error": str(exc),
+        }
+
+
+@app.post("/skills/catia-mass-cg/chat", response_model=CatiaSkillChatResponse)
+def catia_skill_chat(
+    payload: CatiaSkillChatRequest,
+    request: Request,
+) -> CatiaSkillChatResponse:
+    _require_catia_skill_client(request)
+    try:
+        result = get_catia_skill_service().chat(
+            payload.message,
+            session_id=payload.session_id,
+            username=_catia_skill_username(request),
+        )
+        return CatiaSkillChatResponse(**result)
+    except (CatiaSkillUnavailableError, CatiaSkillLLMError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except CatiaSkillBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/skills/catia-mass-cg/approve", response_model=CatiaSkillChatResponse)
+def catia_skill_approve(
+    payload: CatiaSkillApproveRequest,
+    request: Request,
+) -> CatiaSkillChatResponse:
+    _require_catia_skill_client(request)
+    try:
+        result = get_catia_skill_service().approve_and_export(
+            payload.session_id,
+            username=_catia_skill_username(request),
+        )
+        return CatiaSkillChatResponse(**result)
+    except CatiaSkillUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except CatiaSkillBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.post("/library/scan")
@@ -7682,11 +8138,19 @@ def scan_library(payload: LibraryScanRequest) -> dict:
 
 @app.post("/catalog/ingest-selected", response_model=CatalogSelectedIngestResponse)
 def ingest_selected_catalog_entries(
+    request: Request,
     payload: CatalogSelectedIngestRequest,
     session: Session = Depends(get_session),
 ) -> CatalogSelectedIngestResponse:
     service = CatalogIngestService(session)
-    return CatalogSelectedIngestResponse(**service.ingest_catalog_entries(payload.catalog_entry_ids))
+    result = CatalogSelectedIngestResponse(**service.ingest_catalog_entries(payload.catalog_entry_ids))
+    _set_analytics_batch_outcome(
+        request,
+        total_count=result.requested_count,
+        error_count=result.error_count,
+        label="Seçili katalog dokümanlarını yükleme",
+    )
+    return result
 
 
 @app.post("/draft-report", response_model=DraftReportResponse)

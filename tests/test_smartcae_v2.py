@@ -100,17 +100,19 @@ def test_smartcae_v2_has_functional_workspace_targets_and_no_placeholder_links()
     view_targets = set(re.findall(r'data-view-target="([^"]+)"', html))
     views = set(re.findall(r'data-view="([^"]+)"', html))
     element_ids = re.findall(r'\sid="([^"]+)"', html)
-    assert view_targets == {"home", "chat", "documents", "search", "compare", "writing"}
+    assert view_targets == {"home", "chat", "skills", "documents", "search", "compare", "writing", "catia"}
     assert view_targets == views
     assert len(element_ids) == len(set(element_ids))
     assert '<span class="brand-robot" aria-hidden="true">🤖</span>' in html
     for target, icon in {
         "home": "🏠",
         "chat": "💬",
+        "skills": "🧰",
         "documents": "📚",
         "search": "🔎",
         "compare": "⚖️",
         "writing": "📝",
+        "catia": "⚙️",
     }.items():
         assert f'data-view-target="{target}"' in html
         assert f'<span class="rail-emoji" aria-hidden="true">{icon}</span>' in html
@@ -128,6 +130,9 @@ def test_smartcae_v2_has_functional_workspace_targets_and_no_placeholder_links()
         'fetch("/report-comparison/multi"',
         'fetch("/draft-report"',
         'fetch("/draft-report/pdf"',
+        'fetch("/skills/catia-mass-cg/status"',
+        'fetch("/skills/catia-mass-cg/chat"',
+        'fetch("/skills/catia-mass-cg/approve"',
     ):
         assert endpoint in script
 
@@ -137,7 +142,90 @@ def test_smartcae_v2_has_functional_workspace_targets_and_no_placeholder_links()
     assert ":focus-visible" in css
     assert 'minlength="2" maxlength="1000"' in html
     assert 'aria-hidden="true" inert' in html
+    assert 'id="chatThinkingToggle"' in html
+    assert 'role="switch" aria-checked="false"' in html
     assert "evidencePanel.inert = !evidenceOpen" in script
+    assert "chatContextDocumentIds: []" in script
+    assert ": state.chatContextDocumentIds.slice(0, 8)" in script
+    assert "state.chatContextDocumentIds = sourceDocumentIds" in script
+    assert "thinking_mode: state.thinkingMode" in script
+    assert 'state.thinkingMode ? "LLM bağlam çözümü"' in script
+    assert '.thinking-mode-toggle[aria-checked="true"]' in css
+
+
+def test_smartcae_v2_has_a_dedicated_engineering_skill_center() -> None:
+    html = (V2_DIR / "index.html").read_text(encoding="utf-8")
+    script = (V2_DIR / "assets" / "smartcae-v2.js").read_text(encoding="utf-8")
+    css = (V2_DIR / "assets" / "smartcae-v2.css").read_text(encoding="utf-8")
+
+    assert 'data-view="skills"' in html
+    assert 'aria-label="Mühendislik skill merkezi"' in html
+    assert 'id="skillsTitle"' in html
+    assert 'id="skillContextHint"' in html
+    assert 'aria-label="Kullanılabilir mühendislik skill\'leri"' in html
+    assert html.count('data-skill-launch=') == 3
+    assert 'data-skill-launch="report-review"' in html
+    assert 'data-skill-launch="revision-review"' in html
+    assert 'data-skill-launch="numbering-review"' in html
+    assert "Rapor kontrolü" in html
+    assert "Revizyon kontrolü" in html
+    assert "Tablo / şekil kontrolü" in html
+    assert '<strong id="skillsActiveCount">3</strong> aktif skill' in html
+    assert 'skills: { overline: "UZMAN İŞ AKIŞLARI", title: "Skill Merkezi" }' in script
+    assert 'const skillContextHint = document.getElementById("skillContextHint")' in script
+    assert 'document.querySelectorAll("[data-prompt]")' in script
+    assert 'if (skillLaunch) setView("chat", { focus: false })' in script
+    assert '"Skill komutu hazır. Metni kontrol edip gönderebilirsin."' in script
+    assert ".skill-grid" in css
+    assert ".skill-card-review" in css
+    assert ".skill-card-revision" in css
+    assert ".skill-card-numbering" in css
+    assert ".skill-workflow" in css
+
+
+def test_catia_skill_is_feature_flagged_and_connected_to_smartcae_v2(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    html = (V2_DIR / "index.html").read_text(encoding="utf-8")
+    script = (V2_DIR / "assets" / "smartcae-v2.js").read_text(encoding="utf-8")
+    css = (V2_DIR / "assets" / "smartcae-v2.css").read_text(encoding="utf-8")
+
+    assert 'data-view-target="catia" aria-label="CATIA kütle ve ağırlık merkezi"' in html
+    assert 'id="catiaSkillCard" hidden' in html
+    assert 'id="chatCatiaSkill"' in html
+    assert 'class="skill-example catia-skill-link"' in html
+    assert 'data-view="catia"' in html
+    assert 'id="catiaApproval"' in html
+    assert 'data-catia-prompt=' in html
+    assert 'catia: { overline: "CATIA KÜTLE / CG HATTI", title: "CATIA kütle / CG" }' in script
+    assert 'skillsActiveCount.textContent = enabled ? "4" : "3"' in script
+    assert 'chatCatiaSkill.hidden = !enabled' in script
+    assert 'catiaSuggestions.querySelectorAll("[data-catia-prompt]")' in script
+    assert 'fetch("/skills/catia-mass-cg/status"' in script
+    assert 'fetch("/skills/catia-mass-cg/chat"' in script
+    assert 'fetch("/skills/catia-mass-cg/approve"' in script
+    assert ".catia-status-grid" in css
+    assert ".catia-approval" in css
+    assert ".chat-suggestions .catia-skill-link" in css
+
+    request = SimpleNamespace(client=SimpleNamespace(host="testclient"))
+    monkeypatch.setattr(main_module, "CATIA_SKILL_ENABLED", False)
+    assert main_module.catia_skill_status(request) == {"enabled": False}
+
+    service = SimpleNamespace(
+        status=lambda: {
+            "source": "fake",
+            "model": "test-model",
+            "workspace_root": "test-workspace",
+        }
+    )
+    monkeypatch.setattr(main_module, "CATIA_SKILL_ENABLED", True)
+    monkeypatch.setattr(main_module, "get_catia_skill_service", lambda: service)
+    status = main_module.catia_skill_status(request)
+    assert status["enabled"] is True
+    assert status["available"] is True
+    assert status["local_client"] is True
+    assert status["source"] == "fake"
 
 
 def test_smartcae_v2_comparison_supports_an_unbounded_dynamic_source_list() -> None:
@@ -255,7 +343,7 @@ def test_smartcae_v2_chat_workspace_and_light_emoji_rail_contract() -> None:
     assert "const selectedCount = state.selectedDocumentIds.size" in script
     assert "button.dataset.contextMultiPrompt" in script
     assert "selectedCount > 0 && contextPrompt" in script
-    assert 'setChatStatus("Örnek soru hazır. Metni düzenleyip gönderebilirsin.")' in script
+    assert '"Örnek soru hazır. Metni düzenleyip gönderebilirsin."' in script
     assert "kaynakla yanıtlandı" not in script
     assert 'button.addEventListener("click", () => sendChatMessage(button.dataset.prompt))' not in script
     assert "👤" not in script
