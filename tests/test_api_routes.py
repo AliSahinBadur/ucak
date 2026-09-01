@@ -9,6 +9,7 @@ model, no Ollama and no network.
 from __future__ import annotations
 
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -447,3 +448,50 @@ def test_catia_skill_reports_itself_disabled(client) -> None:
 
     assert response.status_code == 200
     assert response.json()["enabled"] is False
+
+
+def test_catia_skill_status_describes_a_ready_module(client, monkeypatch) -> None:
+    """The V2 UI decides whether to show the module from these fields."""
+    from app import main
+
+    monkeypatch.setattr(main.settings, "CATIA_SKILL_ENABLED", True)
+    monkeypatch.setattr(
+        main,
+        "get_catia_skill_service",
+        lambda: SimpleNamespace(
+            status=lambda: {
+                "enabled": True,
+                "source": "fake",
+                "model": "qwen3:4b-instruct",
+                "ollama_host": "http://localhost:11434",
+                "skill_root": "/tmp/skills/catia-mass-cg",
+                "workspace_root": "/tmp/catia-workspace",
+                "sessions": 0,
+            }
+        ),
+    )
+
+    payload = client.get("/skills/catia-mass-cg/status").json()
+
+    assert payload["available"] is True
+    # TestClient talks to the app in-process, so it counts as local.
+    assert payload["local_client"] is True
+    assert payload["source"] == "fake"
+    assert payload["model"] == "qwen3:4b-instruct"
+
+
+def test_catia_skill_status_reports_an_unloadable_bundle(client, monkeypatch) -> None:
+    from app import main
+
+    def explode():
+        raise main.CatiaSkillUnavailableError("Skill paketi bulunamadi")
+
+    monkeypatch.setattr(main.settings, "CATIA_SKILL_ENABLED", True)
+    monkeypatch.setattr(main, "get_catia_skill_service", explode)
+
+    payload = client.get("/skills/catia-mass-cg/status").json()
+
+    assert payload["enabled"] is True
+    assert payload["available"] is False
+    assert payload["local_client"] is True
+    assert "bulunamadi" in payload["error"]

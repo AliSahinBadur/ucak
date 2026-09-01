@@ -32,6 +32,8 @@
     <symbol id="icon-folder-open" viewBox="0 0 24 24"><path d="M3 6.5h6l2 2h10v2.5"/><path d="M3 6.5v12a1.5 1.5 0 0 0 1.5 1.5h13.8a1.5 1.5 0 0 0 1.4-1l2.1-7a1.5 1.5 0 0 0-1.4-2H6.2a1.5 1.5 0 0 0-1.4 1L3 17"/></symbol>
     <symbol id="icon-eye" viewBox="0 0 24 24"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.8"/></symbol>
     <symbol id="icon-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 19h16"/></symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24"><path d="m4 12.5 5.2 5.2L20 7"/></symbol>
+    <symbol id="icon-gauge" viewBox="0 0 24 24"><path d="M4 19a9 9 0 1 1 16 0"/><path d="m12 14 4.5-4.5"/><circle cx="12" cy="14.5" r="1.6"/></symbol>
   </svg>
 
   <div class="app-shell">
@@ -46,6 +48,7 @@
         <button class="rail-button" type="button" data-view-target="search" aria-label="Akıllı arama" title="Akıllı arama"><span class="rail-emoji" aria-hidden="true">🔎</span></button>
         <button class="rail-button" type="button" data-view-target="compare" aria-label="Karşılaştırma" title="Karşılaştırma"><span class="rail-emoji" aria-hidden="true">⚖️</span></button>
         <button class="rail-button" type="button" data-view-target="writing" aria-label="Doküman hazırlama" title="Doküman hazırlama"><span class="rail-emoji" aria-hidden="true">📝</span></button>
+        <button class="rail-button" type="button" data-view-target="catia" aria-label="CATIA kütle / CG" title="CATIA kütle / CG" hidden><span class="rail-emoji" aria-hidden="true">⚙️</span></button>
       </div>
       <a class="rail-button rail-legacy" href="/legacy" aria-label="Eski SmartCAE arayüzünü aç" title="Eski arayüz"><svg><use href="#icon-external"/></svg></a>
     </nav>
@@ -157,6 +160,11 @@
             <button class="action-card" type="button" data-view-target="writing">
               <span class="action-icon"><svg><use href="#icon-write"/></svg></span>
               <span><strong>Doküman taslağı hazırla</strong><small>Notları izlenebilir çıktıya dönüştür</small></span>
+              <svg class="action-arrow"><use href="#icon-chevron"/></svg>
+            </button>
+            <button class="action-card catia-action-card" type="button" data-view-target="catia" hidden>
+              <span class="action-icon"><svg><use href="#icon-gauge"/></svg></span>
+              <span><strong>CATIA kütle / CG çıkar</strong><small>Montajı ölç, Adams'a aktar</small></span>
               <svg class="action-arrow"><use href="#icon-chevron"/></svg>
             </button>
           </div>
@@ -336,6 +344,79 @@
             <section class="draft-preview surface-panel" aria-label="Oluşturulan doküman taslağı">
               <div class="draft-paper" id="draftOutput"><p class="empty-state">Oluşturulan taslak burada görüntülenecek.</p></div>
             </section>
+          </div>
+        </section>
+
+        <section class="workspace-view catia-view" data-view="catia" aria-labelledby="catiaTitle">
+          <div class="view-heading">
+            <div><span class="overline">CATIA KÜTLE / CG HATTI</span><h1 id="catiaTitle">Montajdan Adams'a<br><em>ölçülmüş kütle</em></h1><p>Açık CATIA montajından alt yapı bazında kütle, ağırlık merkezi ve atalet çıkarır; önceki revizyonla karşılaştırır ve senin onayından sonra Adams/Car .cmd dosyasını üretir.</p></div>
+            <button class="secondary-button" id="catiaResetButton" type="button"><svg><use href="#icon-refresh"/></svg>Yeni oturum</button>
+          </div>
+
+          <div class="catia-status-grid">
+            <div><span>Durum</span><strong id="catiaStateValue">Kontrol ediliyor</strong></div>
+            <div><span>Kaynak</span><strong id="catiaSourceValue">—</strong></div>
+            <div><span>Model</span><strong id="catiaModelValue">—</strong></div>
+            <div><span>Çalışma klasörü</span><strong id="catiaWorkspaceValue">—</strong></div>
+          </div>
+
+          <p class="catia-notice" id="catiaNotice" role="status" hidden></p>
+
+          <div class="chat-stage catia-stage" id="catiaStage" hidden>
+            <div class="chat-workspace-bar">
+              <div class="chat-agent-identity">
+                <span class="chat-agent-robot" aria-hidden="true">⚙️</span>
+                <div>
+                  <strong>CATIA kütle / CG skill'i</strong>
+                  <span>Komutları skill harness'ı çalıştırır; sayıları model yazmaz</span>
+                </div>
+              </div>
+              <div class="chat-workspace-actions">
+                <span class="catia-source-chip" id="catiaSourceChip" data-source="fake" title="Ölçümün hangi kaynaktan alındığı">fake montaj</span>
+              </div>
+            </div>
+
+            <div class="chat-messages catia-messages" id="catiaMessages" role="log" aria-live="polite" aria-relevant="additions">
+              <article class="message assistant-message">
+                <div class="message-avatar" aria-hidden="true">⚙️</div>
+                <div class="message-bubble"><span class="message-author">CATIA skill'i</span><p>Merhaba. Araç, varyant ve revizyon numarasını yazarsan montajı tarayıp önizlemeyi hazırlarım. Önce ortamı kontrol etmek istersen "doctor" diyebilirsin.</p></div>
+              </article>
+            </div>
+
+            <div class="catia-approval" id="catiaApproval" role="alertdialog" aria-labelledby="catiaApprovalTitle" aria-describedby="catiaApprovalText" hidden>
+              <div class="catia-approval-copy">
+                <strong id="catiaApprovalTitle">Bu önizleme onayını bekliyor</strong>
+                <span id="catiaApprovalText">Yukarıdaki tabloyu ve onay kodunu kontrol et. Onaylarsan Adams/Car .cmd dosyası yazılır.</span>
+                <small id="catiaApprovalRun"></small>
+              </div>
+              <div class="catia-approval-actions">
+                <button class="secondary-button compact-button" id="catiaRejectButton" type="button">Reddet</button>
+                <button class="primary-button" id="catiaApproveButton" type="button"><svg><use href="#icon-check"/></svg>Onayla ve .cmd üret</button>
+              </div>
+            </div>
+
+            <div class="chat-suggestions catia-suggestions" id="catiaSuggestions" aria-label="CATIA skill kısayolları">
+              <div class="chat-suggestion-section skill-suggestions" data-suggestion-section="skills">
+                <span class="chat-suggestions-label">Skill adımları</span>
+                <div class="chat-suggestion-track">
+                  <button class="skill-example catia-run-skill" type="button" data-prompt="ARAC-X / BASE / R04 montajından kütle ve CG çıkar." data-select-token="ARAC-X / BASE / R04" title="Montajı tarar, alt yapı bazında toplar, önceki revizyonla karşılaştırır ve önizlemeyi ekrana basar"><span aria-hidden="true">⚖️</span>Ölçüm al</button>
+                  <button class="skill-example catia-doctor-skill" type="button" data-prompt="Ortamı kontrol et; doctor çalıştır." title="CATIA bağlantısını, ayar dosyalarını ve kalibrasyonu kontrol eder"><span aria-hidden="true">🩺</span>Ortam kontrolü</button>
+                  <button class="skill-example catia-calibrate-skill" type="button" data-prompt="Kalibrasyon bloğunun ölçüleri 100 x 50 x 25 mm, yoğunluğu 7850 kg/m³. Kalibrasyonu yap." data-select-token="100 x 50 x 25" title="Birim profilini ölçümle üretir; makine başına bir kez gerekir"><span aria-hidden="true">📐</span>Kalibrasyon</button>
+                  <button class="skill-example catia-history-skill" type="button" data-prompt="Bu araç için geçmiş ölçümleri göster." title="Daha önce alınmış ölçümleri listeler"><span aria-hidden="true">🗂️</span>Geçmiş ölçümler</button>
+                </div>
+              </div>
+            </div>
+
+            <p class="inline-status" id="catiaStatusLine" role="status" hidden></p>
+
+            <form class="chat-composer catia-composer" id="catiaComposer">
+              <textarea id="catiaInput" rows="1" minlength="2" maxlength="2000" required placeholder="Örn. ARAC-X / BASE / R04 için ölçüm al" aria-label="CATIA skill'ine mesaj yaz"></textarea>
+              <div class="composer-row">
+                <span class="chat-context-state"><i aria-hidden="true"></i><span id="catiaSessionHint">Oturum ilk mesajla başlar</span></span>
+                <span class="chat-keyboard-hint">Enter ile gönder · Shift+Enter ile yeni satır</span>
+                <button class="send-button" id="catiaSendButton" type="submit" aria-label="Mesajı gönder"><svg><use href="#icon-send"/></svg></button>
+              </div>
+            </form>
           </div>
         </section>
       </main>

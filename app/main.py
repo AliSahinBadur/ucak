@@ -1477,6 +1477,12 @@ def _catia_skill_username(request: Request) -> str:
     return str(getattr(request.state, "username", "") or "local")
 
 
+def _is_local_catia_client(request: Request) -> bool:
+    # "testclient": Starlette TestClient süreç içinden gelir, ağdan gelmez.
+    host = request.client.host if request.client else None
+    return host in {"127.0.0.1", "::1", "testclient"}
+
+
 def _require_catia_skill_client(request: Request) -> None:
     """CATIA skill uçları: bayrak açık olmalı ve istemci yerel olmalı.
 
@@ -1489,9 +1495,7 @@ def _require_catia_skill_client(request: Request) -> None:
             status_code=404,
             detail="CATIA skill'i devre dışı. Açmak için CATIA_SKILL_ENABLED=true ayarlayın.",
         )
-    host = request.client.host if request.client else None
-    # "testclient": Starlette TestClient süreç içinden gelir, ağdan gelmez.
-    if host not in {"127.0.0.1", "::1", "testclient"}:
+    if not _is_local_catia_client(request):
         raise HTTPException(
             status_code=403,
             detail="CATIA skill'i yalnızca CATIA'nın çalıştığı makineden (localhost) kullanılabilir.",
@@ -1500,12 +1504,24 @@ def _require_catia_skill_client(request: Request) -> None:
 
 @app.get("/skills/catia-mass-cg/status")
 def catia_skill_status(request: Request) -> dict:
+    """UI bu uca bakarak modülü gösterip göstermeyeceğine karar verir.
+
+    `local_client`, chat/approve uçlarının bu istemci için 403 döneceğini
+    arayüzün önceden söyleyebilmesi içindir: LAN'dan bakan biri modülü boş
+    bir sohbet olarak değil, sebebiyle birlikte görür.
+    """
     if not settings.CATIA_SKILL_ENABLED:
         return {"enabled": False}
+    local_client = _is_local_catia_client(request)
     try:
-        return get_catia_skill_service().status()
+        return {"available": True, **get_catia_skill_service().status(), "local_client": local_client}
     except CatiaSkillUnavailableError as exc:
-        return {"enabled": True, "available": False, "error": str(exc)}
+        return {
+            "enabled": True,
+            "available": False,
+            "local_client": local_client,
+            "error": str(exc),
+        }
 
 
 @app.post("/skills/catia-mass-cg/chat", response_model=CatiaSkillChatResponse)

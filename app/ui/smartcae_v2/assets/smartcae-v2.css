@@ -187,6 +187,8 @@ body.evidence-open .app-shell {
   transition: color 150ms ease, background 150ms ease, border-color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
 }
 
+.rail-button[hidden] { display: none; }
+
 .rail-nav .rail-button + .rail-button::after {
   position: absolute;
   top: -5px;
@@ -959,6 +961,16 @@ body[data-active-view="chat"] .workspace-main {
   width: 100%;
   margin-top: 38px;
 }
+
+/* CATIA modulu acikken bes kart var; auto-fit tek sirada tutar, sigmazsa sarar.
+   Bes kart daha dar oldugu icin ikon ve bosluklar biraz kisilir, yer metne gider. */
+.quick-actions.has-catia { grid-template-columns: repeat(auto-fit, minmax(214px, 1fr)); }
+.quick-actions.has-catia .action-card { grid-template-columns: 34px minmax(0, 1fr) 14px; gap: 9px; padding: 13px 12px; }
+.quick-actions.has-catia .action-icon { width: 34px; height: 34px; border-radius: 11px; }
+.quick-actions.has-catia .action-icon svg { width: 17px; height: 17px; }
+.quick-actions.has-catia .action-arrow { width: 13px; height: 13px; }
+
+.action-card[hidden] { display: none; }
 
 .action-card {
   display: grid;
@@ -2318,9 +2330,225 @@ body.evidence-open .evidence-panel.preview-active {
 
 .toast[hidden] { display: none; }
 
+.catia-view .view-heading { align-items: flex-end; }
+
+.catia-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.catia-status-grid div {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fff;
+}
+
+.catia-status-grid span,
+.catia-status-grid strong { display: block; }
+.catia-status-grid span { color: var(--muted); font-size: 8px; text-transform: uppercase; }
+.catia-status-grid strong {
+  margin-top: 5px;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catia-status-grid strong.ready { color: var(--success); }
+.catia-status-grid strong.warning { color: var(--warning); }
+.catia-status-grid strong.error { color: var(--red-strong); }
+
+.catia-notice {
+  margin: 14px 0 0;
+  padding: 13px 15px;
+  border: 1px solid #e8cfd4;
+  border-left: 3px solid var(--red);
+  border-radius: 12px;
+  background: var(--red-faint);
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.catia-notice[hidden] { display: none; }
+.catia-notice code {
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: #fff;
+  color: var(--red-strong);
+  font-family: "Cascadia Mono", Consolas, "SFMono-Regular", monospace;
+  font-size: 10px;
+}
+
+.catia-stage {
+  height: clamp(440px, calc(100dvh - 340px), 700px);
+  min-height: 0;
+  margin-top: 16px;
+}
+
+.catia-stage[hidden] { display: none; }
+
+.catia-source-chip {
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink-soft);
+  font-size: 9px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.catia-source-chip[data-source="catia"] { border-color: #d59818; background: #fff8e9; color: #77520a; }
+
+.catia-messages .message-avatar {
+  border-color: #cddbe0;
+  background: #eef5f7;
+}
+
+.catia-trace,
+.catia-preview {
+  width: min(880px, 100%);
+  margin: 0 auto 10px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.catia-trace { padding: 4px 0; }
+
+.catia-trace-entry {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 13px;
+}
+
+.catia-trace-entry + .catia-trace-entry { border-top: 1px solid #f3ebed; }
+
+.catia-trace-entry > span:first-child {
+  color: var(--muted);
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.catia-trace-entry code {
+  display: block;
+  overflow-x: auto;
+  color: var(--ink);
+  font-family: "Cascadia Mono", Consolas, "SFMono-Regular", monospace;
+  font-size: 10px;
+  white-space: pre;
+}
+
+.catia-trace-entry p { margin: 0; color: var(--ink-soft); font-size: 11px; line-height: 1.5; }
+.catia-trace-entry p + p { margin-top: 4px; color: var(--muted); font-size: 10px; }
+.catia-trace-entry.command > span:first-child { color: var(--red-strong); }
+.catia-trace-entry.error { background: var(--red-faint); }
+.catia-trace-entry.error p { color: var(--red-strong); }
+
+.catia-state-badge {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #eef2f3;
+  color: var(--ink-soft);
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.catia-state-badge.ok { background: #e6f4ee; color: #0f5b42; }
+.catia-state-badge.pending { background: #fff1c9; color: #765300; }
+.catia-state-badge.error { background: var(--red-soft); color: var(--red-strong); }
+
+.catia-preview { overflow: hidden; border-color: #d7aab2; }
+
+.catia-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 13px;
+  border-bottom: 1px solid #f0dde1;
+  background: #fff8f9;
+}
+
+.catia-preview-head strong { color: var(--red-strong); font-size: 10px; }
+.catia-preview-head span { color: var(--muted); font-size: 8px; }
+
+.catia-preview pre {
+  max-height: 320px;
+  margin: 0;
+  overflow: auto;
+  padding: 12px 13px;
+  color: var(--ink);
+  font-family: "Cascadia Mono", Consolas, "SFMono-Regular", monospace;
+  font-size: 10px;
+  line-height: 1.5;
+  tab-size: 4;
+}
+
+.catia-approval {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: min(920px, calc(100% - 36px));
+  flex: 0 0 auto;
+  margin: 6px auto 3px;
+  padding: 11px 14px;
+  border: 1px solid #d7aab2;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #fff8f9, #fdeff2);
+}
+
+.catia-approval[hidden] { display: none; }
+.catia-approval-copy { min-width: 0; }
+.catia-approval-copy strong,
+.catia-approval-copy span,
+.catia-approval-copy small { display: block; }
+.catia-approval-copy strong { color: var(--red-strong); font-size: 11px; }
+.catia-approval-copy span { margin-top: 3px; color: var(--ink-soft); font-size: 10px; line-height: 1.45; }
+.catia-approval-copy small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-family: "Cascadia Mono", Consolas, "SFMono-Regular", monospace;
+  font-size: 9px;
+}
+
+.catia-approval-actions { display: flex; flex: 0 0 auto; gap: 8px; }
+.catia-approval-actions .primary-button { min-height: 38px; }
+
+/* Tek bolum var: sohbetteki iki kolonluk izgara yerine tam genislik. */
+.catia-suggestions { grid-template-columns: minmax(0, 1fr); }
+
+/* Sahnede onay seridi de var; sabit satirlar buzulmesin, yeri mesaj alani versin. */
+.catia-stage > .chat-suggestions,
+.catia-stage > .inline-status,
+.catia-stage > .chat-composer { flex: 0 0 auto; }
+
+.chat-suggestions .catia-run-skill { border-color: #a8c9dd; background: #f1f8fc; color: #235f80; }
+.chat-suggestions .catia-run-skill:hover { border-color: #4b94bb; color: #174d6a; }
+.chat-suggestions .catia-doctor-skill { border-color: #a9d2c3; background: #f0f9f5; color: #176548; }
+.chat-suggestions .catia-doctor-skill:hover { border-color: #52a988; color: #104f39; }
+.chat-suggestions .catia-calibrate-skill { border-color: #d9c7a2; background: #fdf8ef; color: #77520a; }
+.chat-suggestions .catia-calibrate-skill:hover { border-color: #c39a3f; color: #5c3f05; }
+.chat-suggestions .catia-history-skill { border-color: #e3bdc5; background: #fff7f9; color: var(--red-strong); }
+
 @media (max-width: 1320px) {
   :root { --source-width: 278px; --evidence-width: 310px; }
-  .quick-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .quick-actions,
+  .quick-actions.has-catia { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .home-view.active { justify-content: flex-start; }
   .document-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -2415,7 +2643,8 @@ body.evidence-open .evidence-panel.preview-active {
   .welcome-block h1 { font-size: clamp(38px, 12vw, 52px); }
   .welcome-block > p { font-size: 13px; }
   .hero-composer { margin-top: 22px; padding: 13px; border-radius: 15px; }
-  .quick-actions { grid-template-columns: 1fr; gap: 8px; margin-top: 24px; }
+  .quick-actions,
+  .quick-actions.has-catia { grid-template-columns: 1fr; gap: 8px; margin-top: 24px; }
   .action-card { min-height: 72px; }
   .home-lower-grid { margin-top: 10px; }
   .recent-documents { grid-template-columns: 1fr; }
@@ -2470,6 +2699,12 @@ body.evidence-open .evidence-panel.preview-active {
   .comparison-pair-titles > span { display: none; }
   .comparison-pair-actions { align-items: flex-start; flex-direction: column; padding: 10px 0; }
   .comparison-summary { grid-template-columns: 1fr 1fr; }
+  .catia-status-grid { grid-template-columns: 1fr 1fr; }
+  .catia-stage { height: clamp(420px, calc(100dvh - 300px), 620px); }
+  .catia-approval { align-items: stretch; flex-direction: column; width: calc(100% - 24px); }
+  .catia-approval-actions .primary-button,
+  .catia-approval-actions .secondary-button { flex: 1 1 auto; }
+  .catia-trace-entry { grid-template-columns: minmax(0, 1fr); gap: 3px; }
   .two-fields { grid-template-columns: 1fr; }
   .writing-form,
   .draft-preview { padding: 14px; }
