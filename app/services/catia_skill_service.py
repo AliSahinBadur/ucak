@@ -11,6 +11,7 @@ import hashlib
 import importlib.util
 import logging
 import os
+import shlex
 import shutil
 import stat
 import subprocess
@@ -52,6 +53,32 @@ class CatiaSkillLLMError(RuntimeError):
 
 class CatiaSkillBusyError(RuntimeError):
     """A turn is already running for the same session."""
+
+
+def _repair_missing_cmc_subcommand(command: str) -> tuple[str, str | None]:
+    """Repair only unambiguous option-only tool calls from small models."""
+    stripped = str(command or "").strip()
+    try:
+        tokens = shlex.split(stripped)
+    except ValueError:
+        return stripped, None
+
+    while tokens and tokens[0] in {"python", "python3", "py", "-m", "cmc"}:
+        tokens.pop(0)
+    if not tokens or not tokens[0].startswith("--"):
+        return stripped, None
+
+    flags = {token.split("=", 1)[0] for token in tokens if token.startswith("--")}
+    subcommand = None
+    if {"--vehicle", "--variant", "--revision"}.issubset(flags):
+        subcommand = "run"
+    elif {"--length", "--width", "--height", "--density"}.issubset(flags):
+        subcommand = "calibrate"
+    if subcommand is None:
+        return stripped, None
+
+    repaired = shlex.join([subcommand, *tokens])
+    return repaired, f"Modelin eksik '{subcommand}' alt komutu güvenli biçimde tamamlandı."
 
 
 def _archive_digest(archive_path: Path) -> str:
@@ -276,6 +303,47 @@ class CatiaSkillService:
         finally:
             session.lock.release()
 
+    def run_shortcut(
+        self,
+        shortcut: str,
+        *,
+        message: str,
+        session_id: str | None = None,
+        username: str = "local",
+    ) -> dict:
+        """Run a UI-owned, argument-free command without LLM interpretation."""
+        commands = {"doctor": "doctor", "history": "history", "selftest": "selftest"}
+        command = commands.get(shortcut)
+        if command is None:
+            raise ValueError("Desteklenmeyen CATIA skill kisayolu.")
+        session = self._get_session(session_id, username) if session_id else self._new_session(username)
+        if not session.lock.acquire(blocking=False):
+            raise CatiaSkillBusyError("Bu oturumda suren bir istek var; bitmesini bekleyin.")
+        try:
+            clean_message = message.strip()
+            session.gate.note_user(clean_message)
+            session.messages.append({"role": "user", "content": clean_message})
+            session.messages.append(
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "function": {
+                                "name": "run_cmc",
+                                "arguments": {"command": f"python -m cmc {command}"},
+                            }
+                        }
+                    ],
+                }
+            )
+            events: list[dict] = []
+            self._dispatch(session, command, events)
+            session.updated_at = time.time()
+            return self._response(session, events)
+        finally:
+            session.lock.release()
+
     def approve_and_export(self, session_id: str, *, username: str = "local") -> dict:
         """Approve the exact visible preview and export deterministically."""
         session = self._get_session(session_id, username)
@@ -334,7 +402,7 @@ class CatiaSkillService:
 
             tool_calls = message.get("tool_calls") or []
             content = (message.get("content") or "").strip()
-            if content:
+            if content and not tool_calls:
                 events.append({"kind": "model", "text": content})
 
             if not tool_calls and not content:
@@ -383,7 +451,10 @@ class CatiaSkillService:
                 function = tool_call.get("function", {}) if isinstance(tool_call, dict) else {}
                 arguments = function.get("arguments") or {}
                 command = arguments.get("command", "") if isinstance(arguments, dict) else ""
-                self._dispatch(session, str(command), events)
+                repaired_command, repair_note = _repair_missing_cmc_subcommand(str(command))
+                if repair_note:
+                    events.append({"kind": "harness", "text": repair_note})
+                self._dispatch(session, repaired_command, events)
         return events
 
     def _dispatch(

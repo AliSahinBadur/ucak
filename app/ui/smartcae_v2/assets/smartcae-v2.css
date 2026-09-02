@@ -1285,6 +1285,27 @@ body[data-active-view="chat"] .workspace-main {
   font-weight: 900;
 }
 
+.skill-howto {
+  display: grid;
+  gap: 4px;
+  margin-top: 16px;
+  padding: 11px 12px;
+  border-left: 3px solid var(--skill-accent);
+  border-radius: 0 7px 7px 0;
+  background: var(--skill-soft);
+}
+
+.skill-howto strong {
+  color: var(--skill-accent-strong);
+  font-size: 9px;
+}
+
+.skill-howto span {
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
 .skill-card-footer {
   display: flex;
   align-items: center;
@@ -1446,6 +1467,47 @@ body[data-active-view="chat"] .chat-stage {
   background: rgba(255,255,255,0.88);
   backdrop-filter: blur(14px);
 }
+
+.chat-skill-mode-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: min(920px, calc(100% - 36px));
+  flex: 0 0 auto;
+  margin: 8px auto 0;
+  padding: 8px 10px;
+  border: 1px solid #b8d3e3;
+  border-radius: 10px;
+  background: #f2f8fc;
+}
+
+.chat-skill-mode-bar[hidden] { display: none; }
+.chat-controls[hidden],
+.chat-evidence-button[hidden],
+.thinking-mode-toggle[hidden] { display: none; }
+.chat-skill-mode-copy,
+.chat-skill-mode-actions { display: flex; align-items: center; gap: 8px; }
+.chat-skill-mode-copy { min-width: 0; }
+.chat-skill-mode-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border: 1px solid #a8c9dd;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 16px;
+}
+.chat-skill-mode-copy strong,
+.chat-skill-mode-copy small { display: block; }
+.chat-skill-mode-copy strong { color: #174d6a; font-size: 10px; }
+.chat-skill-mode-copy small { margin-top: 2px; color: #547589; font-size: 8px; }
+.chat-skill-mode-actions { flex: 0 0 auto; }
+.catia-chat-active .chat-agent-robot,
+.catia-chat-active .message-avatar { border-color: #b8d3e3; background: #eef7fb; }
+.catia-chat-active .chat-context-state > i { background: #2a83ad; box-shadow: 0 0 0 3px rgba(42,131,173,0.12); }
 
 .chat-agent-identity,
 .chat-workspace-actions {
@@ -2801,6 +2863,9 @@ body.evidence-open .evidence-panel.preview-active {
 .catia-approval-actions { display: flex; flex: 0 0 auto; gap: 8px; }
 .catia-approval-actions .primary-button { min-height: 38px; }
 .catia-suggestions { grid-template-columns: minmax(0, 1fr); }
+.catia-chat-suggestions { grid-template-columns: minmax(0, 1fr); flex: 0 0 auto; }
+.chat-catia-approval { border-color: #a8c9dd; background: linear-gradient(135deg, #f4fafe, #edf6fb); }
+.chat-catia-approval .catia-approval-copy strong { color: #174d6a; }
 .catia-stage > .chat-suggestions,
 .catia-stage > .inline-status,
 .catia-stage > .chat-composer { flex: 0 0 auto; }
@@ -2928,6 +2993,8 @@ body.evidence-open .evidence-panel.preview-active {
   .skill-workflow > svg { margin-left: 8px; transform: rotate(90deg); }
   .chat-view { padding: 6px 0; }
   .chat-workspace-bar { align-items: stretch; flex-direction: column; flex-wrap: nowrap; gap: 8px; padding: 8px 10px; }
+  .chat-skill-mode-bar { align-items: stretch; flex-direction: column; }
+  .chat-skill-mode-actions { justify-content: flex-end; flex-wrap: wrap; }
   .chat-workspace-actions { width: 100%; flex-wrap: wrap; }
   .chat-controls { width: 100%; min-width: 0; flex: 1 1 100%; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
   .chat-controls::-webkit-scrollbar { display: none; }

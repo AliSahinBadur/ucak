@@ -585,6 +585,7 @@ class CatalogSelectedIngestResponse(BaseModel):
 class CatiaSkillChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
     session_id: str | None = Field(default=None, min_length=8, max_length=64)
+    shortcut: Literal["doctor", "history", "selftest"] | None = None
 
 
 class CatiaSkillApproveRequest(BaseModel):

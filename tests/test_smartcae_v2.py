@@ -164,6 +164,8 @@ def test_smartcae_v2_has_a_dedicated_engineering_skill_center() -> None:
     assert 'id="skillContextHint"' in html
     assert 'aria-label="Kullanılabilir mühendislik skill\'leri"' in html
     assert html.count('data-skill-launch=') == 3
+    assert html.count('class="skill-howto"') == 4
+    assert html.count("Nasıl kullanılır?") == 4
     assert 'data-skill-launch="report-review"' in html
     assert 'data-skill-launch="revision-review"' in html
     assert 'data-skill-launch="numbering-review"' in html
@@ -190,21 +192,31 @@ def test_catia_skill_is_feature_flagged_and_connected_to_smartcae_v2(
     script = (V2_DIR / "assets" / "smartcae-v2.js").read_text(encoding="utf-8")
     css = (V2_DIR / "assets" / "smartcae-v2.css").read_text(encoding="utf-8")
 
-    assert 'data-view-target="catia" aria-label="CATIA kütle ve ağırlık merkezi"' in html
     assert 'id="catiaSkillCard" hidden' in html
     assert 'id="chatCatiaSkill"' in html
     assert 'class="skill-example catia-skill-link"' in html
-    assert 'data-view="catia"' in html
-    assert 'id="catiaApproval"' in html
+    assert 'data-chat-skill="catia"' in html
+    assert 'data-view="catia"' not in html
+    assert 'data-view-target="catia"' not in html
+    assert 'id="catiaComposer"' not in html
+    assert 'id="chatSkillModeBar"' in html
+    assert 'id="chatCatiaSuggestions"' in html
+    assert 'id="chatCatiaApproval"' in html
     assert 'data-catia-prompt=' in html
-    assert 'catia: { overline: "CATIA KÜTLE / CG HATTI", title: "CATIA kütle / CG" }' in script
-    assert 'skillsActiveCount.textContent = enabled ? "4" : "3"' in script
-    assert 'chatCatiaSkill.hidden = !enabled' in script
-    assert 'catiaSuggestions.querySelectorAll("[data-catia-prompt]")' in script
+    assert 'data-catia-shortcut="doctor"' in html
+    assert 'activeChatSkill: null' in script
+    assert 'function activateCatiaChat(trigger)' in script
+    assert 'if (state.activeChatSkill === "catia")' in script
+    assert 'await sendCatiaMessage(message)' in script
+    assert 'session_id: state.catiaSessionId, shortcut' in script
+    assert 'skillsActiveCount.textContent = usable ? "4" : "3"' in script
+    assert 'chatCatiaSkill.hidden = !usable' in script
+    assert 'chatCatiaSuggestions.querySelectorAll("[data-catia-prompt]")' in script
     assert 'fetch("/skills/catia-mass-cg/status"' in script
     assert 'fetch("/skills/catia-mass-cg/chat"' in script
     assert 'fetch("/skills/catia-mass-cg/approve"' in script
-    assert ".catia-status-grid" in css
+    assert ".chat-skill-mode-bar" in css
+    assert ".catia-chat-active" in css
     assert ".catia-approval" in css
     assert ".chat-suggestions .catia-skill-link" in css
 

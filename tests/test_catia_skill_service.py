@@ -7,6 +7,7 @@ import sys
 
 from app.services.catia_skill_service import (
     CatiaSkillService,
+    _repair_missing_cmc_subcommand,
     ensure_skill_unpacked,
     load_runner,
 )
@@ -74,6 +75,81 @@ def test_source_flag_is_normalised_not_blocked(tmp_path: Path) -> None:
         assert "--length" in str(error)
     else:
         raise AssertionError("Unknown calibrate arguments were accepted")
+
+
+def test_argument_free_shortcut_bypasses_llm_command_rewriting(tmp_path: Path) -> None:
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("The LLM must not rewrite a deterministic CATIA shortcut")
+
+    service = CatiaSkillService(
+        skill_target_root=tmp_path / "skills",
+        workspace_root=tmp_path / "workspace",
+        fake=True,
+        llm_client=fail_if_called,
+    )
+    result = service.run_shortcut(
+        "doctor",
+        message="Ortamı kontrol et; doctor çalıştır.",
+    )
+
+    assert result["events"][0] == {"kind": "command", "text": "doctor"}
+    assert result["events"][1]["kind"] == "result"
+    assert result["events"][1]["status"] in {"ok", "error"}
+
+
+def test_unambiguous_option_only_commands_are_repaired() -> None:
+    run_command, run_note = _repair_missing_cmc_subcommand(
+        "--vehicle ARAC-X --variant BASE --revision R04"
+    )
+    calibrate_command, calibrate_note = _repair_missing_cmc_subcommand(
+        "python -m cmc --length 100 --width 50 --height 25 --density 7850"
+    )
+
+    assert run_command == "run --vehicle ARAC-X --variant BASE --revision R04"
+    assert run_note is not None
+    assert calibrate_command == "calibrate --length 100 --width 50 --height 25 --density 7850"
+    assert calibrate_note is not None
+    assert _repair_missing_cmc_subcommand("--run last") == ("--run last", None)
+    assert _repair_missing_cmc_subcommand("rm -rf /") == ("rm -rf /", None)
+
+
+def test_small_model_missing_run_subcommand_reaches_harness(tmp_path: Path) -> None:
+    replies = iter(
+        [
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "function": {
+                            "name": "run_cmc",
+                            "arguments": {
+                                "command": "--vehicle ARAC-X --variant BASE --revision R04"
+                            },
+                        }
+                    }
+                ],
+            },
+            {"role": "assistant", "content": "İşlem sonucu hazır."},
+        ]
+    )
+
+    def small_model_client(*args, **kwargs):
+        return next(replies)
+
+    service = CatiaSkillService(
+        skill_target_root=tmp_path / "skills",
+        workspace_root=tmp_path / "workspace",
+        fake=True,
+        llm_client=small_model_client,
+    )
+    result = service.chat("ARAC-X / BASE / R04 montajından kütle ve CG çıkar.")
+
+    commands = [event["text"] for event in result["events"] if event["kind"] == "command"]
+    codes = [event["code"] for event in result["events"] if event["kind"] == "result"]
+    assert commands == ["run --vehicle ARAC-X --variant BASE --revision R04"]
+    assert "E_BLOCKED" not in codes
+    assert any(event["kind"] == "harness" for event in result["events"])
 
 
 def test_approval_word_gate_is_fail_closed(tmp_path: Path) -> None:

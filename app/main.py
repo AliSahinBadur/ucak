@@ -8090,11 +8090,20 @@ def catia_skill_chat(
 ) -> CatiaSkillChatResponse:
     _require_catia_skill_client(request)
     try:
-        result = get_catia_skill_service().chat(
-            payload.message,
-            session_id=payload.session_id,
-            username=_catia_skill_username(request),
-        )
+        service = get_catia_skill_service()
+        if payload.shortcut:
+            result = service.run_shortcut(
+                payload.shortcut,
+                message=payload.message,
+                session_id=payload.session_id,
+                username=_catia_skill_username(request),
+            )
+        else:
+            result = service.chat(
+                payload.message,
+                session_id=payload.session_id,
+                username=_catia_skill_username(request),
+            )
         return CatiaSkillChatResponse(**result)
     except (CatiaSkillUnavailableError, CatiaSkillLLMError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
