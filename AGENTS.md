@@ -1,251 +1,92 @@
-# AGENTS.md
+# Big_Agent çalışma kuralları
 
-## Purpose
-This project builds an MVP for intelligent engineering report search and similar-report discovery.
+## Proje yapısı
 
-The first working version should:
-- accept PDF and DOCX reports
-- extract selectable text
-- split content into meaningful chunks
-- make chunks searchable
-- support similar report suggestions
+`Big_Agent`, üç ürün varyantının ortak ve kanonik kod tabanıdır:
 
----
+- `APP_VARIANT=big_agent`: SmartCAE AI
+- `APP_VARIANT=raporhub`: RaporHub
+- `APP_VARIANT=repocto`: Repocto
 
-## MVP Scope
+API, veritabanı modelleri, belge yükleme, katalog, arama, RAG, karşılaştırma,
+rapor yazımı ve ortak servisler paylaşılır. Ürün kimliği ve ürüne özel ekranlar
+varyant üzerinden seçilir. Ortak bir servis değiştiğinde etkilenen bütün varyantlar
+kontrol edilmelidir.
 
-### In scope
-- PDF/DOCX upload and ingest
-- text extraction
-- text cleaning and normalization
-- chunking with overlap
-- keyword search
-- semantic search
-- similar report listing
+## Kullanıcıyla çalışma biçimi
 
-### Out of scope for the first version
-- OCR
-- image-to-text extraction
-- summarization
-- question-answer interface
-- lessons learned extraction
-- revision comparison
+- Kullanıcı Türkçe ve kısa iletişim ister.
+- Kod değişikliğinden önce yapılacak işi bir veya iki cümleyle açıkla.
+- Değişiklikten sonra hedefli testi çalıştır ve sonucu kısa biçimde bildir.
+- Kullanıcının açık talebi olmadan commit veya push yapma; git komutlarını kullanıcıya ver.
+- Kullanıcı sunucuyu kendisi başlatmak istediğinde süreci arka planda başlatma.
+- Uzun veya maliyetli test gerekiyorsa önce haber ver.
 
----
+## Kod ve arayüz kuralları
 
-## Delivery Priority
-Build the system in this order:
+- Uygulama FastAPI tabanlıdır; ana eski arayüz `app/main.py` içinde inline HTML/CSS/JS içerir.
+- Mevcut yapıyı okumadan React veya yeni bir frontend çatısı ekleme.
+- SmartCAE AI v2 dosyaları `app/ui/smartcae_v2/` altındadır.
+- Repocto arayüzü `app/ui/repocto_landing/` ve `app/ui/repocto_styles.py` içindedir.
+- RaporHub arayüzü `app/ui/raporhub_landing/` ve ortak varyant stillerini kullanır.
+- Ortak iş mantığını `app/services/` altında tut; ürüne özel görünümü servis katmanına taşıma.
+- Manuel dosya değişikliklerinde `apply_patch` kullan.
+- Kullanıcının veya başka bir çalışmanın mevcut değişikliklerini geri alma.
+- Her çalışma zamanı kodu ya da arayüz değişikliğinde `app/version.py` değerini bir artır.
+- Sadece dokümantasyon değişikliğinde sürüm artırmak gerekmez.
 
-1. Parsing
-2. Cleaning
-3. Chunking
-4. Database persistence
-5. Basic search
+## Veri ve güvenlik
 
-Do not prioritize advanced search, OCR, or UI polish before the ingestion pipeline is stable.
+- `data`, model, veritabanı, yüklenen belgeler ve ekran görüntüleri GitHub'a eklenmez.
+- Veri yolu ortam değişkenleriyle seçilir; sabit kullanıcı yolu kodlama.
+- Workstation kurulumunda hedef, ürünleri aynı rapor havuzuna yönlendirmektir:
+  `C:\SmartAIOS\Big_Agent\data`.
+- SmartCAE için `BIG_AGENT_DATA_DIR`, RaporHub ve Repocto için mevcut yapıda
+  `RAPORHUB_DATA_DIR` kullanılır. Aynı veri isteniyorsa ikisi de aynı klasörü göstermelidir.
+- Farklı ekipler için veri izolasyonu istendiğinde ayrı veri klasörleri ve ayrı süreçler kullanılır.
+- Kaynak dışı LLM cümlesi üretmektense kanıt yok yanıtı tercih edilir.
+- Dosya yolları ve yerel ağ ayrıntıları arayüzde gereksiz yere ifşa edilmez.
 
----
+## Ürün sınırları
 
-## Architecture
+### Ortak backend
 
-### 1. Ingest Layer
-Purpose:
-- accept `.pdf` and `.docx`
-- store files
-- generate file hash
-- detect duplicates
-- record basic metadata
+- Belge yükleme ve çıkarım: PDF, DOCX, PPTX; gerektiğinde OCR.
+- Keyword, semantic ve hybrid arama.
+- RAG v1, RAG v2 ve deneysel RAG v3/Haystack seçimi.
+- Kaynaklı soru-cevap, karşılaştırma, benzerlik ve rapor kontrolü.
+- Rapor yazımı ve dışa aktarım.
 
-Requirements:
-- duplicate files must be detected by hash
-- ingestion should be idempotent where possible
-- file type must be validated before parsing
+### SmartCAE AI
 
-### 2. Parser Layer
-Purpose:
-- extract page text from PDF
-- extract headings, paragraphs, and tables from DOCX
-- preserve page number or logical section information
-- detect possible section titles when available
+- Mühendislik çalışma alanı ve kaynaklı sohbet.
+- Skill merkezi: rapor kontrolü, revizyon kontrolü, tablo/şekil kontrolü ve CATIA kütle/CG.
+- Yeni v2 arayüz ana deneyimdir; eski arayüz erişilebilir kalır.
 
-Requirements:
-- parser output should use a consistent internal structure
-- preserve Turkish characters correctly
-- return empty-safe structured outputs instead of crashing on weak documents
+### Repocto
 
-### 3. Normalize Layer
-Purpose:
-- remove unnecessary whitespace
-- normalize line breaks
-- preserve Unicode and Turkish characters
-- filter empty or very short content
-- reduce repeated headers and footers
+- Ortak backend üzerinde ayrı ürün kimliği ve arayüz.
+- Kök klasörü özyinelemeli tarayıp belge ağacı, klasör haritası, filtreler ve belge profili üretir.
+- Kurumsal hafıza ve doküman keşfi odağındadır.
 
-Requirements:
-- avoid overly aggressive cleaning
-- preserve retrieval-relevant wording
-- keep both raw text and cleaned text when useful
+### RaporHub
 
-### 4. Chunking Layer
-Purpose:
-- split documents into meaningful searchable pieces
-- support overlap between chunks
+- Ortak backend üzerinde ayrı tanıtım ve ürün arayüzü.
+- Rapor arama, kaynaklı sohbet ve kurumsal hafıza deneyimine odaklanır.
 
-Defaults:
-- chunk size: 500-800 words
-- overlap: 50-100 words
+## Kalite beklentileri
 
-Strategy:
-- **PDF**: split by page first, then split long pages into overlapping word blocks
-- **DOCX**: split by heading first, then re-split very long sections if needed
+- Dar değişiklikte ilgili hedefli testleri çalıştır.
+- Ortak backend değişikliğinde en az SmartCAE AI, RaporHub ve Repocto varyant sözleşmelerini kontrol et.
+- Arama yanlış sonuç döndürmektense güçlü eşleşme yoksa boş dönmelidir.
+- CATIA gibi dış sisteme yazan skill'lerde güvenli komut listesi ve insan onayı korunmalıdır.
+- Gerçek CATIA kaynağı ile fake/test kaynağını arayüzde açıkça ayır.
 
-Requirements:
-- chunks are the main searchable unit
-- chunk order must be preserved
-- page range and section title should be attached when available
+## Kalıcı proje hafızası
 
-### 5. Indexing Layer
-Purpose:
-- maintain keyword search support
-- maintain vector/embedding search support
-- support hybrid retrieval
-
-Target model:
-`keyword score + semantic score = final retrieval score`
-
-Requirements:
-- keyword search must work even if semantic search is temporarily unavailable
-- semantic search should be added only after the ingest pipeline is stable
-
----
-
-## Data Model
-
-Primary tables:
-- `documents`
-- `document_pages`
-- `document_chunks`
-- `chunk_embeddings`
-
-Expected chunk fields:
-- `document_id`
-- `chunk_id`
-- `page_start`
-- `page_end`
-- `section_title`
-- `chunk_text`
-- `chunk_order`
-
-Requirements:
-- duplicate files must be detected by hash
-- raw text and cleaned text should both be preserved when useful
-- chunks are the main searchable unit
-
----
-
-## Search Flow
-
-Expected flow:
-1. clean the query
-2. run keyword search
-3. run semantic search
-4. combine scores
-5. rank the most relevant chunks
-6. return document title, page, relevant passage, and similar reports
-
----
-
-## LLM-Assisted RAG Direction
-
-The existing deterministic retrieval system is the main system and must be preserved.
-
-Optional LLM features are layered on top:
-- query understanding
-- Turkish/English technical term expansion
-- metadata filter extraction
-- grounded answer generation
-
-Defaults:
-- `LLM_ENABLED=false`
-- `LLM_BACKEND=disabled`
-- `RERANKER_ENABLED=false`
-
-The app must start and remain useful without an LLM. LLM failures should fall back to the current heuristic/extractive flow.
-
-Embedding models and generation models are separate roles:
-- `Qwen3-Embedding-*` = retrieval/similarity embeddings only
-- Chat/Instruct LLM = optional query support and answer generation
-- Reranker = optional candidate ordering
-
-Do not load an embedding model with `AutoModelForCausalLM`.
-
----
-
-## Similar Report Strategy
-
-Start with chunk-based similarity.
-
-Initial approach:
-- find chunks similar to the query
-- aggregate strong matches at the document level
-
-A document-centroid strategy can be added later.
-
----
-
-## File Layout
-
-```text
-app/
-├── parsers/
-│   ├── pdf_parser.py
-│   └── docx_parser.py
-├── processing/
-│   ├── text_cleaner.py
-│   └── chunker.py
-├── db/
-│   ├── models.py
-│   └── crud.py
-├── services/
-│   ├── ingest_service.py
-│   └── search_service.py
-└── main.py
-```
-
----
-
-## Engineering Rules
-
-- Prefer simple, testable implementations over complex abstractions.
-- Keep parser, processing, db, and service responsibilities separate.
-- Focus on selectable text before OCR.
-- Preserve Turkish characters correctly.
-- Avoid overly aggressive cleaning that harms retrieval quality.
-- Update README when setup or usage changes.
-- Add semantic search only after the ingest pipeline is stable.
-- Add logging around ingest and parsing failures.
-- Keep interfaces modular so embedding provider and vector backend can change later.
-
----
-
-## Minimum Testing Expectations
-
-Add tests for:
-
-- PDF parsing on selectable-text PDFs
-- DOCX parsing with headings and paragraphs
-- text cleaning behavior
-- chunk creation with overlap
-- duplicate detection by file hash
-
----
-
-## Success Criteria for the First Demo
-
-The MVP demo is successful if:
-
-- 20-30 reports can be ingested
-- a user can submit a query
-- the system returns 5 relevant results
-- each result includes document title, page, and passage
-- the system can suggest 2-3 similar reports
+- `docs/PROJECT_STATE.md`: çalışan ürünler, sürüm, portlar ve güncel durum.
+- `docs/DECISIONS.md`: kalıcı mimari ve ürün kararları.
+- `docs/NEXT_STEPS.md`: doğrulanmış açık işler ve sıradaki adımlar.
+- Önemli bir karar, tamamlanan aşama, yeni risk veya değişen port/veri yolu oluştuğunda
+  kullanıcıdan ayrıca istemesini beklemeden ilgili dosyayı güncelle.
+- Sohbet geçmişini tek kaynak kabul etme; yeni çalışmaya başlarken bu dosyaları ve kodu oku.

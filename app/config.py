@@ -111,6 +111,11 @@ LLM_MAX_CONTEXT_TOKENS = int(os.getenv("LLM_MAX_CONTEXT_TOKENS", "4096"))
 LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
 LLM_ANSWER_ENABLED = _env_bool("LLM_ANSWER_ENABLED", default=False)
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+DEFAULT_CHAT_LLM_MODEL_NAME = (
+    os.getenv("CHAT_LLM_MODEL_NAME")
+    or os.getenv("LLM_MODEL_NAME")
+    or "qwen2.5:3b"
+).strip() or "qwen2.5:3b"
 
 # CATIA V5 mass / center-of-gravity skill is visible by default with the
 # synthetic source. Real COM access still requires CATIA_SKILL_SOURCE=catia.
@@ -118,7 +123,10 @@ CATIA_SKILL_ENABLED = _env_bool("CATIA_SKILL_ENABLED", default=True)
 CATIA_SKILL_SOURCE = os.getenv("CATIA_SKILL_SOURCE", "fake").strip().casefold()
 if CATIA_SKILL_SOURCE not in {"fake", "catia"}:
     CATIA_SKILL_SOURCE = "fake"
-CATIA_SKILL_MODEL_NAME = os.getenv("CATIA_SKILL_MODEL_NAME", "qwen3:4b-instruct").strip() or "qwen3:4b-instruct"
+CATIA_SKILL_MODEL_NAME = (
+    os.getenv("CATIA_SKILL_MODEL_NAME", "").strip()
+    or DEFAULT_CHAT_LLM_MODEL_NAME
+)
 CATIA_SKILL_WORKSPACE_ROOT = Path(
     os.getenv("CATIA_SKILL_WORKSPACE_ROOT", "").strip() or DATA_DIR / "catia_skill"
 ).expanduser()
@@ -129,7 +137,7 @@ CATIA_SKILL_MAX_NUDGES = max(0, min(int(os.getenv("CATIA_SKILL_MAX_NUDGES", "3")
 
 CHAT_LLM_ENABLED = _env_bool("CHAT_LLM_ENABLED", default=True)
 CHAT_LLM_BACKEND = os.getenv("CHAT_LLM_BACKEND", "ollama").strip().casefold()
-CHAT_LLM_MODEL_NAME = os.getenv("CHAT_LLM_MODEL_NAME", os.getenv("LLM_MODEL_NAME", "qwen2.5:3b"))
+CHAT_LLM_MODEL_NAME = DEFAULT_CHAT_LLM_MODEL_NAME
 CHAT_LLM_TIMEOUT_SECONDS = float(os.getenv("CHAT_LLM_TIMEOUT_SECONDS", os.getenv("LLM_TIMEOUT_SECONDS", "45")))
 
 REPORT_LLM_ENABLED = _env_bool("REPORT_LLM_ENABLED", default=True)

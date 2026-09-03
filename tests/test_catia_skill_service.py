@@ -13,6 +13,31 @@ from app.services.catia_skill_service import (
 )
 
 
+def test_catia_model_defaults_to_configured_chat_model(tmp_path: Path) -> None:
+    env = os.environ.copy()
+    env.pop("CATIA_SKILL_MODEL_NAME", None)
+    env["CHAT_LLM_MODEL_NAME"] = "test-chat-model"
+    env["APP_DATA_DIR"] = str(tmp_path / "data")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from app import config; "
+                "print(config.CHAT_LLM_MODEL_NAME); "
+                "print(config.CATIA_SKILL_MODEL_NAME)"
+            ),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert completed.stdout.splitlines() == ["test-chat-model", "test-chat-model"]
+
+
 def test_unpack_and_load_runner(tmp_path: Path) -> None:
     skill_root = ensure_skill_unpacked(target_root=tmp_path)
     assert (skill_root / "SKILL.md").is_file()
