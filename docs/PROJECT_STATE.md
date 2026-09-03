@@ -4,7 +4,7 @@ Son güncelleme: 2026-09-03
 
 ## Genel durum
 
-- Aktif sürüm: `v0.50.211`
+- Aktif sürüm: `v0.50.212`
 - Kalan ana dal: `main`
 - Kanonik kod tabanı: `Big_Agent`
 - Frontend yapısı: FastAPI tarafından sunulan HTML/CSS/JS; React kullanılmıyor.
@@ -36,12 +36,16 @@ SmartCAE süreci bu yolu `BIG_AGENT_DATA_DIR` ile; RaporHub ve Repocto süreçle
 - Kullanıcının workstation `ollama list` çıktısında model `qwen3.5:9b` olarak doğrulandı (6.6 GB, ID: `6488c96fa5fa`); bundan sonraki workstation LLM kullanımı için bu model tercih edilecek.
 - Mevcut başlatma dosyaları `LLM_MODEL_NAME`, `CHAT_LLM_MODEL_NAME`, `REPORT_LLM_MODEL_NAME` ve `CATIA_SKILL_MODEL_NAME` ortam değişkenlerini koruyor. Workstation'da bu dört ayar `qwen3.5:9b` olacak; kodun yerel varsayılanı değiştirilmedi.
 - Workstation'da ayarların uygulanması ve çalışan süreçlerin yeni modeli kullanması henüz doğrulanmadı. Embedding modeli değişmeyecek.
+- Kullanıcının sonraki workstation logunda genel sohbet için `httpx.ReadTimeout` görüldü. Mevcut genel sohbet varsayılanı 45 saniye; ilk adım olarak workstation'da `LLM_TIMEOUT_SECONDS`, `CHAT_LLM_TIMEOUT_SECONDS` ve `REPORT_LLM_TIMEOUT_SECONDS` değerlerinin 180 saniyeye alınması önerildi. Bu ayarın uygulanması ve sorunu çözmesi henüz doğrulanmadı; yavaşlığın donanım, model yüklemesi veya eşzamanlı istek kaynaklı olduğu logdan tek başına belirlenemez.
+- `v0.50.212`: Ortak Ollama çağrıları native düşünmeyi `think: false` ile açıkça kapatır; uygulamanın Thinking/LLM bağlam çözümlemesi ayrı olarak korunur. Genel sohbet talimatları artık kullanıcı metnine gömülmek yerine ayrı `system` mesajı olarak gönderilir. Boş/geçersiz model cevabı yanıt sayılmaz; genel sohbet hatası sabit bir cevapla gizlenmeden HTTP 503 döner.
+- Thinking'in atlanması ile denenip başarısız olması API'de `thinking_attempted` ile ayrılır. Başarısız bağlam çözümü aynı istekte tekrar çağrılmaz. Genel sohbette özgün kullanıcı mesajı korunur.
 
 ## SmartCAE AI
 
 - Yeni SmartCAE v2 arayüzü ana arayüzdür; eski arayüz ayrı geçişle korunur.
 - Kaynak paneli daraltılıp genişletilebilir ve belge önizlemesi panel içinde açılır.
 - Sistem durumu kutusu embedding modelini ve sunucuda yapılandırılan sohbet LLM modelini ayrı satırlarda gösterir.
+- Genel sohbet ilerlemesinde güven yüzdesi gösterilmez; hazır uygulama yanıtı ile model yanıtı ayrılır. Thinking gerekli olmadığı için atlandığında başarısızlık uyarısı gösterilmez.
 - RAG sürümü seçilebilir: v1 klasik, v2 beta ve v3 Haystack.
 - Sohbet ekranında skill ve örnek soru alanları bulunur.
 - Skill merkezi; rapor kontrolü, revizyon kontrolü, tablo/şekil kontrolü ve CATIA kütle/CG kartlarını içerir.
@@ -77,5 +81,6 @@ SmartCAE süreci bu yolu `BIG_AGENT_DATA_DIR` ile; RaporHub ve Repocto süreçle
 
 - Skill merkezi kart sözleşme testi geçti.
 - Fake CATIA komutları `doctor -> calibrate -> run -> PREVIEW_READY` sırasıyla doğrulandı; bu test serbest sohbetin güvenilir çalıştığını kanıtlamaz. Onay ve `.cmd` dışa aktarımı yapılmadı.
-- Çalışan SmartCAE sağlık ucu kod değişikliğinden önce `v0.50.209` döndürdü; yeni süreçte `v0.50.210` beklenir.
+- `v0.50.212` için ortak sağlayıcı, genel sohbet hata akışı, Thinking ve üç varyantı kapsayan 35 hedefli test ile 10 alt test geçti. Yerel `qwen2.5:3b` ile `selam`, `naber`, yaş sorusu ve yazım hatalı yaş sorusu gerçek LLM cevabı aldı; workstation `qwen3.5:9b` henüz canlı doğrulanmadı.
+- Tarayıcıda Thinking açıkken `selam` için gerçek model cevabı, güven yüzdesinin gizlenmesi ve Thinking'in gereksiz olduğu durumun doğru gösterilmesi doğrulandı. Yerel 3B modelin cevap kalitesi ayrıca değerlendirilmelidir; başarılı HTTP/araç akışı cevap doğruluğunu kanıtlamaz.
 - Geniş SmartCAE UI sözleşme testinde `resizeChatInput` dinleyicisine ait eski bir assertion uyuşmazlığı bulunuyor; çalışma zamanı arızası olduğu henüz gösterilmedi.

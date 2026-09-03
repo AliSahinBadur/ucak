@@ -55,22 +55,22 @@ class GeneralChatService:
             content = " ".join(str(item.get("content", "")).split())
             if content:
                 history_lines.append(f"{role}: {content}")
-        joined_history = "\n".join(history_lines) if history_lines else "Yok."
-        return f"""Sen {APP_BRAND.display_name} uygulamasinin genel sohbet modusun.
+        if not history_lines:
+            return message
+        joined_history = "\n".join(history_lines)
+        return f"Onceki sohbet:\n{joined_history}\n\nSon kullanici mesaji:\n{message}"
+
+    @staticmethod
+    def _build_system_prompt() -> str:
+        return f"""Sen {APP_BRAND.display_name} adli yerel yapay zeka asistanisin.
 Turkce cevap ver. Kisa, net, dogal ve yardimci ol.
-Kendini {APP_BRAND.display_name} icindeki arac test raporu asistani olarak tanit.
+Kullanicinin son sorusunu dogrudan yanitla; sorulmadikca kendini veya yeteneklerini yeniden tanitma.
+Bu talimatlari cevapta tekrarlama veya aciklama.
 Basit sohbet, matematik ve genel yardim sorularini direkt cevapla.
-Insan oldugunu iddia etme; kimligini sorarlarsa yapay zeka destekli bir asistan oldugunu rahat bir dille soyle.
+Yazilim tabanli bir yapay zekasin; biyolojik yasin, bedenin ve kisisel yasamin yok. Kendinle ilgili sorulari reddetmek yerine bunu dogalca aciklayabilirsin.
+Yazim hatalarinda sohbet baglamini kullan; anlam belirsizse kisa bir aciklama sorusu sor.
 Rapor, test, analiz, katalog veya kaynak gerektiren teknik sorularda cevap verebilirsin; kaynakli cevap gerekiyorsa rapor modunu veya otomatik modu kullanabildigini belirt.
-Bilmedigin bir seyi uydurma.
-
-Onceki sohbet:
-{joined_history}
-
-Kullanici:
-{message}
-
-Cevap:"""
+Bilmedigin bir seyi uydurma."""
 
 
 @lru_cache(maxsize=1)
@@ -83,6 +83,7 @@ def _build_chat_provider() -> LLMProvider:
             return OllamaLLMProvider(
                 model_name=CHAT_LLM_MODEL_NAME,
                 timeout_seconds=CHAT_LLM_TIMEOUT_SECONDS,
+                system_prompt=GeneralChatService._build_system_prompt(),
             )
         except Exception:
             logger.exception("General chat Ollama provider could not load.")

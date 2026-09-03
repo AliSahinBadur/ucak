@@ -32,6 +32,17 @@ def test_smartcae_v2_is_separate_from_the_legacy_workspace() -> None:
     assert 'class="smartcae-v2-link"' in main_source
 
 
+def test_chat_progress_distinguishes_model_direct_and_failed_thinking() -> None:
+    script = (V2_DIR / "assets" / "smartcae-v2.js").read_text(encoding="utf-8")
+    assert 'providerName: data.embedding_provider' in script
+    assert 'thinkingAttempted: Boolean(data.thinking_attempted)' in script
+    assert 'if (data.thinking_attempted && !data.thinking_used)' in script
+    assert 'if (state.thinkingMode && !data.thinking_used)' not in script
+    assert 'const directAnswer = providerName === "chat-direct";' in script
+    assert 'const confidenceLabel = retrievalUsed && sourceCount > 0' in script
+    assert 'Thinking gerekli değildi' in script
+
+
 def test_smartcae_v2_system_status_shows_configured_llm_model() -> None:
     html = (V2_DIR / "index.html").read_text(encoding="utf-8")
     script = (V2_DIR / "assets" / "smartcae-v2.js").read_text(encoding="utf-8")

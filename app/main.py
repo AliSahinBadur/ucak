@@ -7508,11 +7508,13 @@ def chat(
 
     service: DocumentIntelligenceService | None = None
     thinking_resolution = None
+    thinking_attempted = False
     if (
         payload.thinking_mode
         and payload.assistant_mode != "general"
         and not _is_chat_small_talk(payload.message)
     ):
+        thinking_attempted = True
         service = DocumentIntelligenceService(session)
         thinking_resolution = service.resolve_conversation(
             payload.message,
@@ -7539,6 +7541,7 @@ def chat(
             retrieval_used=False,
             thinking_mode=payload.thinking_mode,
             thinking_used=thinking_resolution is not None,
+            thinking_attempted=thinking_attempted,
             thinking_route=thinking_resolution.route if thinking_resolution is not None else None,
             resolved_question=(
                 thinking_resolution.standalone_question
@@ -7561,6 +7564,7 @@ def chat(
             retrieval_version=payload.retrieval_version,
             thinking_mode=payload.thinking_mode,
             thinking_resolution=thinking_resolution,
+            thinking_resolution_attempted=thinking_attempted,
         )
     except (HaystackUnavailableError, HaystackRetrievalError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -7577,6 +7581,7 @@ def chat(
         retrieval_used=True,
         thinking_mode=payload.thinking_mode,
         thinking_used=service.last_thinking_used,
+        thinking_attempted=payload.thinking_mode,
         thinking_route=service.last_thinking_route,
         resolved_question=service.last_resolved_question,
         sources=answer["sources"],
@@ -7773,12 +7778,17 @@ def _chat_general_answer(message: str, history: list[dict] | None = None) -> tup
             "chat-direct",
             1.0,
         )
-    if "nasil" in normalized or "iyi misin" in normalized:
-        return "Iyiyim, hazirim. Raporlar uzerinden bir sey sormak istersen beraber bakalim.", "chat-direct", 1.0
     result = GeneralChatService().answer(message, history or [])
     if result is not None:
         return result.answer, result.provider_name, result.confidence
-    return "Buradayim, hazirim. Bana rapor, test, analiz veya katalogla ilgili bir soru sorabilirsin.", "chat-direct", 1.0
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            "Genel sohbet modelinden geçerli bir yanıt alınamadı. "
+            "Model boş yanıt vermiş, kullanılamıyor veya zaman aşımına uğramış olabilir. "
+            "Ollama model durumunu kontrol edip yeniden deneyin."
+        ),
+    )
 
 
 def _fold_chat_text(message: str) -> str:

@@ -366,6 +366,7 @@ class ChatResponse(BaseModel):
     retrieval_used: bool = False
     thinking_mode: bool = False
     thinking_used: bool = False
+    thinking_attempted: bool = False
     thinking_route: Literal["document", "general"] | None = None
     resolved_question: str | None = None
     sources: list[AnswerSourceResponse]

@@ -357,6 +357,7 @@ Yalniz ConversationResolution semasina uygun JSON dondur.
         retrieval_version: str = "v2",
         thinking_mode: bool = False,
         thinking_resolution: ConversationResolution | None = None,
+        thinking_resolution_attempted: bool = False,
     ) -> dict:
         original_question = " ".join(question.split())
         requested_retrieval_version = str(retrieval_version or "").strip().casefold()
@@ -382,7 +383,7 @@ Yalniz ConversationResolution semasina uygun JSON dondur.
                 require_context_reference=not thinking_mode,
             )
         )
-        if thinking_resolution is None and thinking_mode:
+        if thinking_resolution is None and thinking_mode and not thinking_resolution_attempted:
             thinking_resolution = self.resolve_conversation(
                 original_question,
                 history=history,

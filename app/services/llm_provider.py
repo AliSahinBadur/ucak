@@ -60,11 +60,12 @@ class DisabledLLMProvider:
 
 
 class OllamaLLMProvider:
-    def __init__(self, model_name: str, timeout_seconds: float = 30.0) -> None:
+    def __init__(self, model_name: str, timeout_seconds: float = 30.0, *, system_prompt: str | None = None) -> None:
         if not model_name:
             raise RuntimeError("LLM_MODEL_NAME is required for Ollama.")
         self.model_name = model_name
         self.timeout_seconds = timeout_seconds
+        self.system_prompt = system_prompt
         self.provider_name = f"ollama:{model_name}"
 
     def is_available(self) -> bool:
@@ -89,10 +90,15 @@ class OllamaLLMProvider:
         options: dict[str, float | int],
         output_format: str | dict | None = None,
     ) -> str:
+        messages = []
+        if self.system_prompt:
+            messages.append({"role": "system", "content": self.system_prompt})
+        messages.append({"role": "user", "content": prompt})
         request_payload: dict = {
             "model": self.model_name,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "stream": False,
+            "think": False,
             "options": options,
         }
         if output_format is not None:
@@ -104,7 +110,11 @@ class OllamaLLMProvider:
             )
             response.raise_for_status()
             payload = response.json()
-        return str(payload["message"]["content"])
+        message = payload.get("message") if isinstance(payload, dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, str) or not content.strip():
+            raise RuntimeError("Ollama returned an empty or invalid answer.")
+        return content
 
     def generate_json(self, prompt: str, schema: type[SchemaT]) -> SchemaT:
         raw_text = self._chat(

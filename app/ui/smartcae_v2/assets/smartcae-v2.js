@@ -1126,7 +1126,7 @@
     chatProcessTimerId = window.setInterval(updateChatProcessElapsed, 100);
   }
 
-  function finishChatProcess({ sourceCount = 0, confidence = null, retrievalUsed = false, thinkingRequested = false, thinkingUsed = false, thinkingRoute = null, error = "" } = {}) {
+  function finishChatProcess({ sourceCount = 0, confidence = null, retrievalUsed = false, providerName = "", thinkingRequested = false, thinkingUsed = false, thinkingAttempted = false, thinkingRoute = null, error = "" } = {}) {
     updateChatProcessElapsed();
     stopChatProcessTimer();
     const elapsedText = chatProcessElapsed.textContent;
@@ -1170,14 +1170,21 @@
       );
       setChatProcessStep(chatProcessEvidenceStep, "skipped", "Kanıt seçimi", "Kaynak kullanılmadı");
     }
-    setChatProcessStep(chatProcessGenerationStep, "done", "Yanıt üretimi", "Model yanıtı oluşturdu");
+    const directAnswer = providerName === "chat-direct";
+    const modelAnswer = String(providerName).startsWith("chat-llm:");
+    setChatProcessStep(
+      chatProcessGenerationStep,
+      directAnswer ? "skipped" : "done",
+      "Yanıt üretimi",
+      directAnswer ? "Hazır uygulama yanıtı" : (modelAnswer ? "Model yanıtı oluşturdu" : "Yanıt hazırlandı"),
+    );
     setChatProcessStep(chatProcessResponseStep, "done", "Tamamlandı", `${elapsedText} içinde hazırlandı`);
     setChatProcessProgress(100, "İşlem tamamlandı");
-    const engineLabel = retrievalUsed ? retrievalVersionLabel(chatRetrievalVersion.value) : "Genel model";
-    const confidenceLabel = Number.isFinite(Number(confidence)) ? ` · güven ${formatScore(confidence)}` : "";
+    const engineLabel = retrievalUsed ? retrievalVersionLabel(chatRetrievalVersion.value) : (directAnswer ? "Uygulama yanıtı" : "Genel model");
+    const confidenceLabel = retrievalUsed && sourceCount > 0 && confidence != null && Number.isFinite(Number(confidence)) ? ` · güven ${formatScore(confidence)}` : "";
     const thinkingLabel = thinkingUsed
       ? " · Thinking kullanıldı"
-      : (thinkingRequested ? " · Thinking yedeğe geçti" : "");
+      : (thinkingRequested ? (thinkingAttempted ? " · Thinking yedeğe geçti" : " · Thinking gerekli değildi") : "");
     chatProcessDetail.textContent = `${engineLabel} · ${sourceCount} kaynak${confidenceLabel}${thinkingLabel}`;
     chatSuggestions.hidden = false;
     scheduleChatProcessCompact();
@@ -1446,11 +1453,13 @@
         sourceCount: sources.length,
         confidence: data.confidence,
         retrievalUsed: Boolean(data.retrieval_used),
+        providerName: data.embedding_provider,
         thinkingRequested: state.thinkingMode,
         thinkingUsed: Boolean(data.thinking_used),
+        thinkingAttempted: Boolean(data.thinking_attempted),
         thinkingRoute: data.thinking_route,
       });
-      if (state.thinkingMode && !data.thinking_used) {
+      if (data.thinking_attempted && !data.thinking_used) {
         showToast("Thinking Mode için LLM kullanılamadı; güvenli yedek akış çalıştı.");
       }
       setChatStatus();

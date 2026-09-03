@@ -4,6 +4,8 @@ Son güncelleme: 2026-09-03
 
 ## Öncelikli
 
+Workstation'a `v0.50.212` aktarılıp süreç yeniden başlatıldıktan sonra `qwen3.5:9b` ile genel sohbeti, Thinking bağlam çözümünü ve kaynaklı rapor sorusunu doğrula. Ortak çağrılarda `think: false`, boş cevap hatası ve gerçeğe uygun ilerleme durumları düzeltildi; yalnızca timeout artırmak yeterli çözüm sayılmaz. Gecikme sürerse soru işlenirken `ollama ps` çıktısıyla CPU/GPU yerleşimini ve Ollama loglarıyla bekleme nedenini kontrol et. Başarılı HTTP cevabı, model yanıtının anlamsal doğruluğunu tek başına kanıtlamaz.
+
 Workstation için `qwen3.5:9b` etiketi kullanıcı çıktısıyla doğrulandı. Workstation LLM ortam ayarlarını bu modele yönlendirip süreçleri yeniden başlat; sohbet ve gerçek araç çağrısı ile kontrol et. `start_all_apps.bat` ayrı Ollama sürecini 11435 portunda başlattığı için modelin uygulamanın bağlandığı Ollama sunucusunda da bulunduğunu doğrula. Model değişikliği, CATIA sohbetinde araç çalışmadan başarı iddiası üretilmesi sorununu kendiliğinden çözmüş sayılmaz. Fake/test kalibrasyonunu gerçek CATIA profilinden ayrı tutan akış ve sonuç doğrulaması ayrıca ele alınmalıdır.
 
 1. CATIA skill'ini gerçek CATIA bağlantısı ve gerçek birim kalibrasyonuyla uçtan uca doğrula.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import Mock
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -49,6 +50,21 @@ class DocumentIntelligenceAnswerTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.session.close()
         self.engine.dispose()
+
+    def test_previously_attempted_resolution_is_not_retried(self) -> None:
+        service = DocumentIntelligenceService(self.session, llm_provider=DisabledLLMProvider())
+        service.resolve_conversation = Mock(side_effect=AssertionError("Planner must not run twice"))
+        service._detect_intent = Mock(return_value="metadata")
+        service._metadata_answer = Mock(return_value={"answer": "test"})
+
+        result = service.answer_question(
+            "En uzun rapor hangisi?",
+            thinking_mode=True,
+            thinking_resolution_attempted=True,
+        )
+
+        self.assertEqual(result, {"answer": "test"})
+        service.resolve_conversation.assert_not_called()
 
     def test_report_heading_focuses_attribute_answer_and_follow_up(self) -> None:
         document = Document(
