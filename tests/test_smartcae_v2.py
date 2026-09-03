@@ -32,6 +32,16 @@ def test_smartcae_v2_is_separate_from_the_legacy_workspace() -> None:
     assert 'class="smartcae-v2-link"' in main_source
 
 
+def test_smartcae_v2_system_status_shows_configured_llm_model() -> None:
+    html = (V2_DIR / "index.html").read_text(encoding="utf-8")
+    script = (V2_DIR / "assets" / "smartcae-v2.js").read_text(encoding="utf-8")
+
+    assert '<span>Embedding modeli</span><strong id="embeddingModel">' in html
+    assert '<span>LLM modeli</span><strong id="llmModel">' in html
+    assert 'const llmModel = document.getElementById("llmModel");' in script
+    assert 'llmModel.textContent = ollama.configured_model || "—";' in script
+
+
 @pytest.mark.skipif(APP_VARIANT != "big_agent", reason="SmartCAE V2 is served only by the big_agent variant")
 def test_smartcae_v2_route_and_assets_are_served_for_big_agent() -> None:
     with TestClient(app) as client:

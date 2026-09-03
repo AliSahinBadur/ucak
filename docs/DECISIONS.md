@@ -44,3 +44,6 @@ Asistan kullanıcı açıkça istemedikçe commit veya push yapmaz. Gerekli komu
 
 Sohbet geçmişi tek kaynak sayılmaz. Ürün durumu, kararlar ve açık işler `docs/` altında güncel tutulur; önemli değişikliklerde kullanıcıdan ayrıca talep beklenmez.
 
+## D-012: Workstation için 9B Qwen tercihi
+
+Kullanıcının workstation'a kurduğu ve `ollama list` çıktısıyla doğruladığı `qwen3.5:9b`, sonraki workstation LLM çalışmaları için kullanılacak. Model, workstation ortam değişkenleriyle seçilecek; koda sabitlenmeyecek. Bu karar embedding modelini veya yerel geliştirme makinesinin modelini değiştirmez.

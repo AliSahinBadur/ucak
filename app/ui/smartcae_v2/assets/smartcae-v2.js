@@ -167,6 +167,7 @@
   const embeddingModel = document.getElementById("embeddingModel");
   const embeddingDevice = document.getElementById("embeddingDevice");
   const ollamaStatus = document.getElementById("ollamaStatus");
+  const llmModel = document.getElementById("llmModel");
   const systemStatusMessage = document.getElementById("systemStatusMessage");
 
   let toastTimer = null;
@@ -2166,6 +2167,7 @@
     embeddingStatus.textContent = embedding.ready ? "Hazır" : (embedding.fallback_active ? "Yedek mod" : "Kontrol gerekli");
     embeddingModel.textContent = embedding.active_model || embedding.configured_model || "—";
     embeddingDevice.textContent = String(embedding.device || "—").toUpperCase();
+    llmModel.textContent = ollama.configured_model || "—";
     ollamaStatus.textContent = !ollama.configured
       ? "Devre dışı"
       : (ollama.connected ? (ollama.model_available ? "Bağlı · model hazır" : "Bağlı · model eksik") : "Bağlantı yok");

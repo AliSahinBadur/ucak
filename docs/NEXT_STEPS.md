@@ -1,8 +1,10 @@
 # Sıradaki işler
 
-Son güncelleme: 2026-09-02
+Son güncelleme: 2026-09-03
 
 ## Öncelikli
+
+Workstation için `qwen3.5:9b` etiketi kullanıcı çıktısıyla doğrulandı. Workstation LLM ortam ayarlarını bu modele yönlendirip süreçleri yeniden başlat; sohbet ve gerçek araç çağrısı ile kontrol et. `start_all_apps.bat` ayrı Ollama sürecini 11435 portunda başlattığı için modelin uygulamanın bağlandığı Ollama sunucusunda da bulunduğunu doğrula. Model değişikliği, CATIA sohbetinde araç çalışmadan başarı iddiası üretilmesi sorununu kendiliğinden çözmüş sayılmaz. Fake/test kalibrasyonunu gerçek CATIA profilinden ayrı tutan akış ve sonuç doğrulaması ayrıca ele alınmalıdır.
 
 1. CATIA skill'ini gerçek CATIA bağlantısı ve gerçek birim kalibrasyonuyla uçtan uca doğrula.
 2. Ölçüm sonucunun ana sohbette önizleme ve onay kartına dönüştüğünü canlı arayüzde kontrol et.
