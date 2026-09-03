@@ -30,7 +30,8 @@ tmp_*.py
 *.xls
 *.csv
 *.tsv
-
+REPORT_REVIEW_SKILL.md
+TEST_CORPUS_GUIDE.md
 .env
 .env.*
 !.env.example

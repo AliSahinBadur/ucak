@@ -213,11 +213,33 @@ Run the QA/search regression set:
 & '.venv\Scripts\python.exe' scripts\run_qa_checks.py
 ```
 
-Expected current regression result:
+Cases name reports (`"report_code"` or `"title_contains"`), not database ids, so
+the set runs against any machine holding the same corpus. Besides the pass/fail
+gate the run scores retrieval with the Haystack evaluators, for the in-house
+stack (`v2`) and the Haystack pipeline (`v3`) side by side:
 
 ```text
-Summary: 22 passed, 0 failed
+Summary: 22 passed, 0 failed (gate: v2)
+
+version     cases   recall@k      MRR     nDCG  provider
+v2             22     100.0%    0.977    0.983  token-hash-v1
+v3             22      90.9%    0.886    0.892  haystack:3.1.0
 ```
+
+Each run is written to `data/qa_runs/<timestamp>.json` so a regression reads as
+a trend. `--no-metrics` runs the gate alone, and the gate still runs on its own
+if `haystack-ai` is not installed. Run the report-review rules and the per-rule
+confirm rate the same way:
+
+```powershell
+& '.venv\Scripts\python.exe' scripts\run_report_review_checks.py --precision
+```
+
+The discipline half of that rule catalog is data: one file per discipline under
+`app/rules/profiles/`, holding the profile's label, the aliases and title
+patterns `auto` detects it by, and its rules. Adding a discipline check is a
+data edit plus a golden case — see `REPORT_REVIEW_SKILL.md` for the schema and
+the steps.
 
 ## Demo
 

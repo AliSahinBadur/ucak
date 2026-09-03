@@ -6,6 +6,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.db.models import Base, CatalogDocumentLink, Document, DocumentPage, ReportCatalogEntry
+from app.processing import extraction_metrics
 from app.services.document_intelligence_service import DocumentIntelligenceService
 from app.services.llm_provider import DisabledLLMProvider
 from app.services.report_quality_service import ReportQualityService
@@ -38,26 +39,49 @@ class ReportQualityServiceTests(unittest.TestCase):
         self.session.close()
         self.engine.dispose()
 
-    def _add_document(self, title: str, page_texts: list[str]) -> int:
+    def _add_document(
+        self,
+        title: str,
+        page_texts: list[str],
+        *,
+        extraction_quality: dict | None = None,
+        page_provenance: dict[int, dict] | None = None,
+        record_page_metrics: bool = True,
+    ) -> int:
+        """Insert a document with pages.
+
+        `page_provenance` plants `extraction_method` / `ocr_attempted` on the
+        given page numbers, and `record_page_metrics=False` leaves all four
+        provenance columns NULL, which is how pages ingested before those
+        columns existed look on disk.
+        """
         document = Document(
             title=title,
             file_name=f"{title}.pdf",
             file_type="pdf",
             file_hash=(title.lower().replace("-", "") + "0" * 64)[:64],
             file_path=f"C:/{title}.pdf",
+            extraction_quality=extraction_quality,
         )
         self.session.add(document)
         self.session.flush()
+        provenance = page_provenance or {}
         for page_number, text in enumerate(page_texts, start=1):
-            self.session.add(
-                DocumentPage(
-                    document_id=document.id,
-                    page_number=page_number,
-                    raw_text=text,
-                    clean_text=text,
-                    section_title=None,
-                )
+            page = DocumentPage(
+                document_id=document.id,
+                page_number=page_number,
+                raw_text=text,
+                clean_text=text,
+                section_title=None,
             )
+            if record_page_metrics:
+                page.extraction_method = provenance.get(page_number, {}).get(
+                    "extraction_method", "native"
+                )
+                page.ocr_attempted = provenance.get(page_number, {}).get("ocr_attempted", False)
+                page.char_count = extraction_metrics.char_count(text)
+                page.word_count = extraction_metrics.word_count(text)
+            self.session.add(page)
         self.session.commit()
         return int(document.id)
 
@@ -171,7 +195,7 @@ class ReportQualityServiceTests(unittest.TestCase):
         self.assertTrue(result["answer_found"])
         self.assertIn("review", result)
         self.assertEqual(0, result["review"]["summary"]["findings"])
-        self.assertEqual(8, result["review"]["summary"]["passed"])
+        self.assertEqual(9, result["review"]["summary"]["passed"])
 
     def test_general_review_reports_missing_metadata_and_sections(self) -> None:
         document_id = self._add_document(
@@ -552,6 +576,181 @@ class ReportQualityServiceTests(unittest.TestCase):
 
         self.assertEqual("not_applicable", result["review"]["semantic"]["status"])
         self.assertEqual("", provider.prompt)
+
+    # --- extraction quality ---------------------------------------------------
+    #
+    # extraction.no_text and extraction.ocr_low_quality replaced the single
+    # extraction.sparse_pages rule, which re-derived quality from a character
+    # threshold and so scored a badly-OCR'd page as clean. Both now read the
+    # provenance ingest persisted.
+
+    def test_extraction_no_text_fails_for_pages_without_readable_text(self) -> None:
+        document_id = self._add_document(
+            "SYN-EXTRACTION-EMPTY",
+            [
+                (
+                    "RAPOR NO: SYN-EXTRACTION-EMPTY TARIH: 2026-08-27 HAZIRLAYAN: TEST "
+                    "KONTROL: TEST KAPSAM Braket dayanimi incelenmistir."
+                ),
+                (
+                    "SONUCLAR Olculen gerilme degerleri kabul kriterinin altinda kalmis ve "
+                    "tasarim uygun bulunmustur."
+                ),
+                "- 3 -",
+            ],
+        )
+
+        review = ReportReviewService(self.session).analyze_documents([document_id])
+
+        finding = next(
+            item for item in review["findings"] if item["rule_id"] == "extraction.no_text"
+        )
+        self.assertEqual("fail", finding["status"])
+        self.assertIn("3", finding["message"])
+        self.assertEqual(3, finding["page_start"])
+        self.assertEqual(3, finding["page_end"])
+        self.assertGreaterEqual(review["summary"]["failed"], 1)
+
+    def test_extraction_no_text_reports_pages_dropped_before_persistence(self) -> None:
+        # A page whose text does not survive cleaning never reaches
+        # document_pages, so the ingest rollup is the only record of it.
+        document_id = self._add_document(
+            "SYN-EXTRACTION-DROPPED",
+            [
+                (
+                    "RAPOR NO: SYN-EXTRACTION-DROPPED TARIH: 2026-08-27 HAZIRLAYAN: TEST "
+                    "KONTROL: TEST KAPSAM Kaynak dikisi incelenmistir."
+                ),
+                (
+                    "SONUCLAR Olculen gerilme degerleri kabul kriterinin altinda kalmis ve "
+                    "tasarim uygun bulunmustur."
+                ),
+            ],
+            extraction_quality={"page_count": 3, "stored_page_count": 2, "empty_pages": [2]},
+        )
+
+        review = ReportReviewService(self.session).analyze_documents([document_id])
+
+        finding = next(
+            item for item in review["findings"] if item["rule_id"] == "extraction.no_text"
+        )
+        self.assertEqual("fail", finding["status"])
+        self.assertIn("2", finding["message"])
+        self.assertTrue(
+            any("hic metin uretmeyen" in evidence for evidence in finding["evidence"]),
+            finding["evidence"],
+        )
+
+    def test_extraction_ocr_low_quality_flags_a_page_ocr_barely_rescued(self) -> None:
+        document_id = self._add_document(
+            "SYN-EXTRACTION-OCR",
+            [
+                (
+                    "RAPOR NO: SYN-EXTRACTION-OCR TARIH: 2026-08-27 HAZIRLAYAN: TEST "
+                    "KONTROL: TEST KAPSAM Sasi baglanti noktalari incelenmistir."
+                ),
+                # Long enough to be readable, short enough to stay under the
+                # quality bar OCR itself uses to decide a page is text-poor.
+                "SONUCLAR Tablo 1 gerilme dagilimi uygun bulundu.",
+            ],
+            page_provenance={2: {"extraction_method": "ocr", "ocr_attempted": True}},
+        )
+
+        review = ReportReviewService(self.session).analyze_documents([document_id])
+
+        rule_ids = {item["rule_id"] for item in review["findings"]}
+        self.assertNotIn("extraction.no_text", rule_ids)
+        finding = next(
+            item for item in review["findings"] if item["rule_id"] == "extraction.ocr_low_quality"
+        )
+        self.assertEqual("needs_review", finding["status"])
+        self.assertEqual(2, finding["page_start"])
+        self.assertTrue(
+            any("OCR ile kurtarilan" in evidence for evidence in finding["evidence"]),
+            finding["evidence"],
+        )
+
+    def test_extraction_ocr_low_quality_separates_pages_ocr_could_not_improve(self) -> None:
+        document_id = self._add_document(
+            "SYN-EXTRACTION-OCR-FAILED",
+            [
+                (
+                    "RAPOR NO: SYN-EXTRACTION-OCR-FAILED TARIH: 2026-08-27 HAZIRLAYAN: TEST "
+                    "KONTROL: TEST KAPSAM Kapi menteselerinin dayanimi incelenmistir."
+                ),
+                # OCR ran and lost to the native text, so the method stays
+                # "native" while ocr_attempted records that Tesseract tried.
+                "SONUCLAR Sekil 1 deformasyon uygundur.",
+            ],
+            page_provenance={2: {"extraction_method": "native", "ocr_attempted": True}},
+        )
+
+        review = ReportReviewService(self.session).analyze_documents([document_id])
+
+        finding = next(
+            item for item in review["findings"] if item["rule_id"] == "extraction.ocr_low_quality"
+        )
+        self.assertTrue(
+            any("iyilestirilemeyen" in evidence for evidence in finding["evidence"]),
+            finding["evidence"],
+        )
+
+    def test_extraction_rules_pass_for_an_ocr_rescued_page_with_solid_text(self) -> None:
+        # The case the old character-threshold rule could not express: OCR ran,
+        # produced plenty of good text, and the page needs no human attention.
+        document_id = self._add_document(
+            "SYN-EXTRACTION-OCR-GOOD",
+            [
+                (
+                    "RAPOR NO: SYN-EXTRACTION-OCR-GOOD TARIH: 2026-08-27 HAZIRLAYAN: TEST "
+                    "KONTROL: TEST KAPSAM Radyator braketi yorulma dayanimi incelenmistir."
+                ),
+                (
+                    "SONUCLAR Olculen gerilme genlikleri kabul kriterinin altinda kalmis, "
+                    "kritik bolgelerde hasar birikimi sinir degerin altinda hesaplanmistir."
+                ),
+            ],
+            page_provenance={2: {"extraction_method": "ocr", "ocr_attempted": True}},
+        )
+
+        review = ReportReviewService(self.session).analyze_documents([document_id])
+
+        extraction_checks = {
+            check["rule_id"]: check["status"]
+            for check in review["documents"][0]["checks"]
+            if check["category"] == "extraction"
+        }
+        self.assertEqual(
+            {"extraction.no_text": "pass", "extraction.ocr_low_quality": "pass"},
+            extraction_checks,
+        )
+
+    def test_extraction_rules_fall_back_to_page_text_without_stored_metrics(self) -> None:
+        # Pages ingested before the provenance columns existed carry NULL, and
+        # must not be read as "native page, zero characters".
+        document_id = self._add_document(
+            "SYN-EXTRACTION-LEGACY",
+            [
+                (
+                    "RAPOR NO: SYN-EXTRACTION-LEGACY TARIH: 2026-08-27 HAZIRLAYAN: TEST "
+                    "KONTROL: TEST KAPSAM Aks govdesi incelenmistir."
+                ),
+                (
+                    "SONUCLAR Olculen gerilme degerleri kabul kriterinin altinda kalmis ve "
+                    "tasarim uygun bulunmustur."
+                ),
+            ],
+            record_page_metrics=False,
+        )
+
+        review = ReportReviewService(self.session).analyze_documents([document_id])
+
+        rule_ids = {item["rule_id"] for item in review["findings"]}
+        # Both pages carry real text, so nothing is reported as unreadable, and
+        # with no recorded OCR attempt the OCR rule makes no claim at all.
+        self.assertNotIn("extraction.no_text", rule_ids)
+        self.assertNotIn("extraction.ocr_low_quality", rule_ids)
+
 
 
 if __name__ == "__main__":

@@ -1,0 +1,138 @@
+[
+  {
+    "name": "SYN NVH-01 temiz NVH raporu",
+    "report_code": "2026-SYN-e-NVH-01",
+    "profile": "auto",
+    "expect_profile": "nvh",
+    "expect_status": {
+      "nvh.measurement_setup": "pass",
+      "nvh.signal_processing": "pass",
+      "nvh.acceptance_basis": "pass",
+      "metadata.required_fields": "pass",
+      "structure.required_sections": "pass"
+    },
+    "expect_rules_absent": ["extraction.no_text", "numbers.decimal_style"]
+  },
+  {
+    "name": "SYN CFD-01 temiz CFD raporu",
+    "report_code": "2026-SYN-e-CFD-01",
+    "profile": "auto",
+    "expect_profile": "cfd",
+    "expect_status": {
+      "cfd.model_boundary_setup": "pass",
+      "cfd.numerical_evidence": "pass",
+      "cfd.result_traceability": "pass"
+    },
+    "expect_rules_absent": ["extraction.no_text"]
+  },
+  {
+    "name": "SYN DUR-01 temiz dayanim raporu",
+    "report_code": "2026-SYN-e-DUR-01",
+    "profile": "auto",
+    "expect_profile": "durability",
+    "expect_status": {
+      "durability.material_definition": "pass",
+      "durability.load_boundary_setup": "pass",
+      "durability.model_evidence": "pass",
+      "durability.result_criterion": "pass"
+    }
+  },
+  {
+    "name": "SYN TEST-01 temiz test raporu (docx)",
+    "report_code": "2026-SYN-e-TEST-01",
+    "profile": "auto",
+    "expect_profile": "test",
+    "expect_status": {
+      "test.setup_traceability": "pass",
+      "test.procedure_traceability": "pass",
+      "test.acceptance_result": "pass",
+      "test.measurement_traceability": "pass"
+    }
+  },
+  {
+    "name": "SYN NVH-02 eksik olcum ekseni",
+    "report_code": "2026-SYN-e-NVH-02",
+    "profile": "auto",
+    "expect_profile": "nvh",
+    "expect_rules_present": ["nvh.measurement_setup"],
+    "expect_status": {
+      "nvh.signal_processing": "pass",
+      "nvh.acceptance_basis": "pass"
+    }
+  },
+  {
+    "name": "SYN CFD-02 yakinsama kaniti yok",
+    "report_code": "2026-SYN-e-CFD-02",
+    "profile": "auto",
+    "expect_profile": "cfd",
+    "expect_rules_present": ["cfd.numerical_evidence"],
+    "expect_status": {"cfd.model_boundary_setup": "pass"}
+  },
+  {
+    "name": "SYN DUR-02 kabul kriteri olmayan sonuc",
+    "report_code": "2026-SYN-e-DUR-02",
+    "profile": "auto",
+    "expect_profile": "durability",
+    "expect_rules_present": ["durability.result_criterion"],
+    "expect_status": {
+      "durability.material_definition": "pass",
+      "durability.load_boundary_setup": "pass"
+    }
+  },
+  {
+    "name": "SYN TEST-02 kalibrasyon kaydi yok",
+    "report_code": "2026-SYN-e-TEST-02",
+    "profile": "auto",
+    "expect_profile": "test",
+    "expect_rules_present": ["test.measurement_traceability"],
+    "expect_status": {"test.acceptance_result": "pass"}
+  },
+  {
+    "name": "SYN GEN-01 kapak alanlari eksik",
+    "report_code": "2026-SYN-e-GEN-01",
+    "profile": "general",
+    "expect_profile": "general",
+    "expect_rules_present": ["metadata.required_fields"]
+  },
+  {
+    "name": "SYN GEN-02 tablo ve sekil numaralandirma sorunlari",
+    "report_code": "2026-SYN-e-GEN-02",
+    "profile": "auto",
+    "expect_rules_present": [
+      "captions.sequence",
+      "captions.title",
+      "captions.references"
+    ],
+    "expect_status": {
+      "captions.sequence": "fail",
+      "captions.title": "fail",
+      "captions.references": "needs_review"
+    }
+  },
+  {
+    "name": "SYN GEN-03 ondalik ayraci ve dosya yolu",
+    "report_code": "2026-SYN-e-GEN-03",
+    "profile": "general",
+    "expect_profile": "general",
+    "expect_rules_present": ["numbers.decimal_style", "content.embedded_paths"]
+  },
+  {
+    "name": "SYN GEN-04 metni okunamayan sayfa",
+    "report_code": "2026-SYN-e-GEN-04",
+    "profile": "general",
+    "expect_profile": "general",
+    "expect_rules_present": ["extraction.no_text"],
+    "expect_status": {"extraction.no_text": "fail"}
+  },
+  {
+    "name": "SYN DUR-03 RevB duzeltilmis revizyon",
+    "report_code": "2026-SYN-e-DUR-03-RevB",
+    "profile": "auto",
+    "expect_profile": "durability",
+    "expect_status": {
+      "durability.material_definition": "pass",
+      "durability.load_boundary_setup": "pass",
+      "durability.result_criterion": "pass"
+    }
+  }
+]

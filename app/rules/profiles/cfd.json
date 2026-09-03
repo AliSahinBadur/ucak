@@ -1,0 +1,137 @@
+{
+  "profile": "cfd",
+  "label": "CFD",
+  "detect_priority": 20,
+  "aliases": [
+    "cfd",
+    "computational fluid dynamics"
+  ],
+  "detect_patterns": [
+    "\\bcfd\\b",
+    "akiskanlar dinamigi",
+    "akiskan analizi",
+    "defrost analizi"
+  ],
+  "rules": [
+    {
+      "rule_id": "cfd.model_boundary_setup",
+      "label": "CFD model ve sinir sartlari",
+      "category": "cfd",
+      "severity": "warning",
+      "message": "CFD cozum modeli veya sinir sartlari raporda tam izlenemiyor.",
+      "suggested_fix": "Solver/fizik modelini ve giris-cikis, debi, basinc, sicaklik gibi sinir sartlarini degerleriyle belirtin.",
+      "requirement_groups": [
+        {
+          "label": "cozum modeli / solver",
+          "aliases": [
+            "solver",
+            "fluent",
+            "star-ccm",
+            "openfoam",
+            "turbulans",
+            "k-epsilon",
+            "k-omega",
+            "rans",
+            "navier-stokes",
+            "cfd modeli"
+          ]
+        },
+        {
+          "label": "sinir sartlari",
+          "aliases": [
+            "sinir sart",
+            "boundary condition",
+            "inlet",
+            "outlet",
+            "giris hizi",
+            "cikis basinci",
+            "debi",
+            "fan devri",
+            "sicaklik siniri"
+          ]
+        }
+      ]
+    },
+    {
+      "rule_id": "cfd.numerical_evidence",
+      "label": "CFD ag ve yakinsama kaniti",
+      "category": "cfd",
+      "severity": "warning",
+      "message": "CFD cozumunun sayisal yeterlilik kaniti raporda tam gorunmuyor.",
+      "suggested_fix": "Ag/hucre bilgilerini ve iteratif yakinsama, residual veya zamana bagli cozumde zaman adimi kanitini ekleyin.",
+      "requirement_groups": [
+        {
+          "label": "ag / mesh bilgisi",
+          "aliases": [
+            "mesh",
+            "grid",
+            "ag yapisi",
+            "ag kalitesi",
+            "eleman sayisi",
+            "hucre sayisi",
+            "cell count",
+            "y+",
+            "inflation"
+          ]
+        },
+        {
+          "label": "yakinsama / zaman adimi",
+          "aliases": [
+            "yakinsama",
+            "convergence",
+            "residual",
+            "iterasyon",
+            "iteration",
+            "zaman adimi",
+            "time step",
+            "courant"
+          ]
+        }
+      ]
+    },
+    {
+      "rule_id": "cfd.result_traceability",
+      "label": "CFD sonuc ve karsilastirma izlenebilirligi",
+      "category": "cfd",
+      "severity": "warning",
+      "message": "CFD sonucunun birimi veya karsilastirma dayanagi tam izlenemiyor.",
+      "suggested_fix": "Ana ciktilari birimleriyle verin ve referans/hedef/kabul kriteriyle karsilastirin.",
+      "requirement_groups": [
+        {
+          "label": "birimli sonuc",
+          "aliases": [
+            "m3/s",
+            "m3/h",
+            "m/s",
+            "kg/s",
+            " kpa",
+            " pa",
+            " bar",
+            "celsius",
+            "°c",
+            "derece c",
+            "debi",
+            "basinc",
+            "sicaklik",
+            "hiz dagilimi"
+          ]
+        },
+        {
+          "label": "karsilastirma / kriter",
+          "aliases": [
+            "mevcut tasarim",
+            "referans tasarim",
+            "oneri",
+            "karsilastir",
+            "iyiles",
+            "hedef",
+            "kabul",
+            "limit",
+            "uygun",
+            "sonuc"
+          ]
+        }
+      ]
+    }
+  ]
+}

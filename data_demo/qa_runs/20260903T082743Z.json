@@ -1,0 +1,633 @@
+{
+  "timestamp": "2026-09-03T08:27:43.313953+00:00",
+  "app_version": "0.51.3",
+  "python": "3.13.0",
+  "cases_file": "C:\\Users\\gblag\\Desktop\\intership_project\\some-name-1\\some-source\\ucak\\test_cases\\qa_cases.json",
+  "k": 5,
+  "gate_version": "v2",
+  "versions": [
+    "v2",
+    "v3"
+  ],
+  "summary": {
+    "passed": 0,
+    "failed": 22,
+    "cases": 22
+  },
+  "legacy_id_cases": [],
+  "metrics": {
+    "v2": {
+      "error": "metrics disabled with --no-metrics"
+    },
+    "v3": {
+      "error": "metrics disabled with --no-metrics"
+    }
+  },
+  "cases": [
+    {
+      "name": "NVH-01 yol verisi parkurlari",
+      "type": "qa",
+      "versions": {
+        "v2": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: BozukYol, Arnavut Kaldırım, Otoban"
+          ],
+          "elapsed_seconds": 0.0108,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: BozukYol, Arnavut Kaldırım, Otoban"
+          ],
+          "elapsed_seconds": 2.0502,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: 2025-BIG-E-NVH-01",
+        "unresolved reference: 2025-BIG-E-NVH-01"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "NVH-01 yol datası parkurlari",
+      "type": "qa",
+      "versions": {
+        "v2": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: BozukYol, Arnavut Kaldırım, Otoban"
+          ],
+          "elapsed_seconds": 0.0078,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: BozukYol, Arnavut Kaldırım, Otoban"
+          ],
+          "elapsed_seconds": 0.0023,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: 2025-BIG-E-NVH-01",
+        "unresolved reference: 2025-BIG-E-NVH-01"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "NVH-01 ISO 2631",
+      "type": "qa",
+      "versions": {
+        "v2": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: ISO, 2631"
+          ],
+          "elapsed_seconds": 0.004,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: ISO, 2631"
+          ],
+          "elapsed_seconds": 0.001,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: 2025-BIG-E-NVH-01",
+        "unresolved reference: 2025-BIG-E-NVH-01"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "Konfor typo arama",
+      "type": "search",
+      "versions": {
+        "v2": {
+          "failures": [
+            "no results",
+            "missing result text: KONFOR"
+          ],
+          "elapsed_seconds": 0.0014,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "no results",
+            "missing result text: KONFOR"
+          ],
+          "elapsed_seconds": 0.0003,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: 2025-BIG-E-NVH-01"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "Konfort typo arama",
+      "type": "search",
+      "versions": {
+        "v2": {
+          "failures": [
+            "no results",
+            "missing result text: KONFOR"
+          ],
+          "elapsed_seconds": 0.0008,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "no results",
+            "missing result text: KONFOR"
+          ],
+          "elapsed_seconds": 0.0003,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: 2025-BIG-E-NVH-01"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "Titreşim analizi arama",
+      "type": "search",
+      "versions": {
+        "v2": {
+          "failures": [
+            "no results"
+          ],
+          "elapsed_seconds": 0.0016,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "no results"
+          ],
+          "elapsed_seconds": 0.0003,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: ayna"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "Yan ayna değerleri",
+      "type": "qa",
+      "versions": {
+        "v2": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: gRMS, Crest"
+          ],
+          "elapsed_seconds": 0.0027,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: gRMS, Crest"
+          ],
+          "elapsed_seconds": 0.001,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: ayna",
+        "unresolved reference: ayna"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "Yan ayna ivmeolcer yerlesimi",
+      "type": "qa",
+      "versions": {
+        "v2": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: yan ayna, ivme"
+          ],
+          "elapsed_seconds": 0.0033,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: yan ayna, ivme"
+          ],
+          "elapsed_seconds": 0.0009,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: ayna",
+        "unresolved reference: ayna"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "DUR-01 malzeme",
+      "type": "qa",
+      "versions": {
+        "v2": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: S235"
+          ],
+          "elapsed_seconds": 0.0031,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: S235"
+          ],
+          "elapsed_seconds": 0.0009,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: 2025-BIG-E-DUR-01",
+        "unresolved reference: 2025-BIG-E-DUR-01"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "DUR-01 akma mukavemeti",
+      "type": "qa",
+      "versions": {
+        "v2": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: 235, MPa"
+          ],
+          "elapsed_seconds": 0.0018,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: 235, MPa"
+          ],
+          "elapsed_seconds": 0.0009,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: 2025-BIG-E-DUR-01",
+        "unresolved reference: 2025-BIG-E-DUR-01"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "Fren pedali tasarim sayisi",
+      "type": "qa",
+      "versions": {
+        "v2": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: 3, tasarım"
+          ],
+          "elapsed_seconds": 0.0047,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: 3, tasarım"
+          ],
+          "elapsed_seconds": 0.0011,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: fren + pedal",
+        "unresolved reference: fren + pedal"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "Fren pedali amacı",
+      "type": "qa",
+      "versions": {
+        "v2": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: fren, pedal, statik"
+          ],
+          "elapsed_seconds": 0.003,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: fren, pedal, statik"
+          ],
+          "elapsed_seconds": 0.0009,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: fren + pedal",
+        "unresolved reference: fren + pedal"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "TEST-13 ekipmanlar",
+      "type": "qa",
+      "versions": {
+        "v2": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: EdaqXR, GPS, Sıcaklık Sensörü"
+          ],
+          "elapsed_seconds": 0.0027,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: EdaqXR, GPS, Sıcaklık Sensörü"
+          ],
+          "elapsed_seconds": 0.0012,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: 2025-BIG-E-TEST-13",
+        "unresolved reference: 2025-BIG-E-TEST-13"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "TEST-13 sensor sayisi",
+      "type": "qa",
+      "versions": {
+        "v2": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: 14, sıcaklık"
+          ],
+          "elapsed_seconds": 0.0035,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: 14, sıcaklık"
+          ],
+          "elapsed_seconds": 0.001,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: 2025-BIG-E-TEST-13",
+        "unresolved reference: 2025-BIG-E-TEST-13"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "HIGH-G amacı",
+      "type": "qa",
+      "versions": {
+        "v2": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: yanal ivme, direksiyon, side slip"
+          ],
+          "elapsed_seconds": 0.002,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: yanal ivme, direksiyon, side slip"
+          ],
+          "elapsed_seconds": 0.0009,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: high + g",
+        "unresolved reference: high + g"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "HIGH-G ruzgar kosulu",
+      "type": "qa",
+      "versions": {
+        "v2": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: 16, km"
+          ],
+          "elapsed_seconds": 0.0029,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "answer_found=false",
+            "missing answer text: 16, km"
+          ],
+          "elapsed_seconds": 0.001,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: high + g",
+        "unresolved reference: high + g"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "Alternator braket arama",
+      "type": "search",
+      "versions": {
+        "v2": {
+          "failures": [
+            "no results",
+            "missing result text: alternator, braket"
+          ],
+          "elapsed_seconds": 0.001,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "no results",
+            "missing result text: alternator, braket"
+          ],
+          "elapsed_seconds": 0.0003,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: alternator"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "Kalorifer optimizasyon arama",
+      "type": "search",
+      "versions": {
+        "v2": {
+          "failures": [
+            "no results",
+            "missing result text: kalorifer"
+          ],
+          "elapsed_seconds": 0.0011,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "no results",
+            "missing result text: kalorifer"
+          ],
+          "elapsed_seconds": 0.0003,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: kalorifer"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "ECE R107 arama",
+      "type": "search",
+      "versions": {
+        "v2": {
+          "failures": [
+            "no results",
+            "missing result text: ECE, R107"
+          ],
+          "elapsed_seconds": 0.001,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "no results",
+            "missing result text: ECE, R107"
+          ],
+          "elapsed_seconds": 0.0003,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: r107"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "Kompozit sasi arama",
+      "type": "search",
+      "versions": {
+        "v2": {
+          "failures": [
+            "no results",
+            "missing result text: kompozit, şasi"
+          ],
+          "elapsed_seconds": 0.001,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "no results",
+            "missing result text: kompozit, şasi"
+          ],
+          "elapsed_seconds": 0.0003,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: kompozit"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "Fren pedali arama",
+      "type": "search",
+      "versions": {
+        "v2": {
+          "failures": [
+            "no results",
+            "missing result text: fren, pedal"
+          ],
+          "elapsed_seconds": 0.0012,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "no results",
+            "missing result text: fren, pedal"
+          ],
+          "elapsed_seconds": 0.0003,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: fren + pedal"
+      ],
+      "expected_document_ids": []
+    },
+    {
+      "name": "TASE sicaklik arama",
+      "type": "search",
+      "versions": {
+        "v2": {
+          "failures": [
+            "no results",
+            "missing result text: Sıcaklık, TASE"
+          ],
+          "elapsed_seconds": 0.0011,
+          "ranked_document_ids": []
+        },
+        "v3": {
+          "failures": [
+            "no results",
+            "missing result text: Sıcaklık, TASE"
+          ],
+          "elapsed_seconds": 0.0003,
+          "ranked_document_ids": []
+        }
+      },
+      "passed": false,
+      "problems": [
+        "unresolved reference: 2025-BIG-E-TEST-13"
+      ],
+      "expected_document_ids": []
+    }
+  ]
+}

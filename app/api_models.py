@@ -46,6 +46,9 @@ class IngestResponse(BaseModel):
     file_name: str | None = None
     pages: int | None = None
     ocr_pages: int = 0
+    # Deterministic per-document extraction rollup; absent on a duplicate,
+    # which re-uses the record written by the first ingest.
+    extraction_quality: dict | None = None
     chunks: int | None = None
     embeddings_created: int = 0
     embedding_provider: str
@@ -57,6 +60,7 @@ class BatchIngestItemResponse(BaseModel):
     document_id: int | None = None
     pages: int | None = None
     ocr_pages: int = 0
+    extraction_quality: dict | None = None
     chunks: int | None = None
     embeddings_created: int = 0
     embedding_provider: str | None = None
@@ -311,6 +315,29 @@ class ReportReviewDecisionRequest(BaseModel):
     decision: Literal["open", "confirmed", "dismissed"]
     note: str = Field(default="", max_length=1000)
     reviewer: str = Field(default="", max_length=120)
+
+
+class RulePrecisionRuleResponse(BaseModel):
+    rule_id: str
+    label: str
+    category: str
+    in_catalog: bool
+    confirmed: int
+    dismissed: int
+    open: int
+    decided: int
+    documents: int
+    # None while the rule is under the decision threshold: an unmeasured rule
+    # must not read as a rule scoring zero.
+    precision: float | None = None
+    status: Literal["measured", "insufficient_data"]
+
+
+class RulePrecisionResponse(BaseModel):
+    minimum_decisions: int
+    document_ids: list[int]
+    rules: list[RulePrecisionRuleResponse]
+    summary: dict
 
 
 class ReportReviewDecisionResponse(BaseModel):

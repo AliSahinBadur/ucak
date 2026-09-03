@@ -1,0 +1,65 @@
+[
+  {
+    "name": "DUR-01 dayanim profili ve kapak alanlari",
+    "report_code": "2025-BIG-E-DUR-01",
+    "profile": "auto",
+    "expect_profile": "durability",
+    "expect_rules_absent": ["extraction.no_text"],
+    "expect_status": {
+      "durability.material_definition": "pass",
+      "durability.result_criterion": "pass"
+    }
+  },
+  {
+    "name": "DUR-02 dayanim yuk ve sinir sartlari",
+    "report_code": "2025-BIG-e-DUR-02",
+    "profile": "durability",
+    "expect_profile": "durability",
+    "expect_status": {
+      "durability.load_boundary_setup": "pass",
+      "durability.model_evidence": "pass"
+    }
+  },
+  {
+    "name": "DUR-03 revizyon raporu temel kontroller",
+    "report_code": "2025-BIG-e-DUR-03",
+    "profile": "durability",
+    "expect_profile": "durability",
+    "expect_rules_absent": ["extraction.no_text", "metadata.required_fields"]
+  },
+  {
+    "name": "NVH-01 olcum duzeni ve sinyal isleme",
+    "report_code": "2025-BIG-e-NVH-01",
+    "profile": "auto",
+    "expect_profile": "nvh",
+    "expect_status": {
+      "nvh.measurement_setup": "pass",
+      "nvh.signal_processing": "pass",
+      "nvh.acceptance_basis": "pass"
+    }
+  },
+  {
+    "name": "NVH-02 kabul dayanagi ve caption sirasi",
+    "report_code": "2025-BIG-e-NVH-02",
+    "profile": "nvh",
+    "expect_profile": "nvh",
+    "expect_rules_absent": ["captions.sequence", "extraction.no_text"]
+  },
+  {
+    "name": "TEST-13 test profili izlenebilirlik",
+    "report_code": "2025-BIG-E-TEST-13",
+    "profile": "auto",
+    "expect_profile": "test",
+    "expect_status": {
+      "test.setup_traceability": "pass",
+      "test.acceptance_result": "pass"
+    }
+  },
+  {
+    "name": "TASE03 eski rapor genel profil",
+    "report_code": "2021-Citivolt-TASE03",
+    "profile": "general",
+    "expect_profile": "general",
+    "expect_rules_absent": ["extraction.no_text"]
+  }
+]

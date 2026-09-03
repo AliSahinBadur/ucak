@@ -2,7 +2,18 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -23,6 +34,10 @@ class Document(Base):
     file_type: Mapped[str] = mapped_column(String(32), nullable=False)
     file_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     file_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    # Deterministic extraction rollup written by IngestService: page counts,
+    # OCR counts, sparse/no-text counts and mean characters per page. NULL on
+    # documents ingested before extraction provenance was recorded.
+    extraction_quality: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     pages: Mapped[list["DocumentPage"]] = relationship(
@@ -44,6 +59,13 @@ class DocumentPage(Base):
     raw_text: Mapped[str] = mapped_column(Text, nullable=False)
     clean_text: Mapped[str] = mapped_column(Text, nullable=False)
     section_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Extraction provenance and size, written by IngestService from the parsed
+    # section. All four are NULL for pages persisted before these columns
+    # existed, which readers must treat as "unknown" rather than "native, empty".
+    extraction_method: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    ocr_attempted: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    char_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    word_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     document: Mapped["Document"] = relationship(back_populates="pages")
 

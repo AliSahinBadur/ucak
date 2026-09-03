@@ -15,6 +15,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.db.models import ChunkEmbedding, Document, DocumentChunk, DocumentPage
+from app.processing import extraction_metrics
 from app.services.ingest_service import IngestService
 from app.services.search_service import SearchService
 from app.services.vector_index import get_vector_index
@@ -126,6 +127,7 @@ def test_ingest_pdf_persists_pages_chunks_and_embeddings(db_session, sample_pdf,
     assert result["pages"] == 2
     assert result["chunks"] == 2
     assert result["ocr_pages"] == 0
+    assert result["extraction_quality"]["page_count"] == 2
     assert result["embeddings_created"] == 2
     assert result["embedding_provider"] == "token-hash-v1"
 
@@ -309,3 +311,96 @@ def test_ingest_creates_its_storage_directory_on_demand(db_session, tmp_path) ->
     IngestService(db_session, storage_dir=nested)
 
     assert nested.is_dir()
+
+
+# --- extraction provenance ---------------------------------------------------
+#
+# The three cases downstream review has to tell apart are native text, text OCR
+# rescued, and a page nothing readable came out of. None of that is recoverable
+# from the stored text alone, so ingest records it per page and rolls it up onto
+# the document.
+
+
+def test_ingest_records_per_page_extraction_provenance(db_session, sample_pdf, storage_dir) -> None:
+    result = IngestService(db_session, storage_dir=storage_dir).ingest(sample_pdf)
+
+    pages = db_session.scalars(
+        select(DocumentPage)
+        .where(DocumentPage.document_id == result["document_id"])
+        .order_by(DocumentPage.page_number)
+    ).all()
+
+    for page in pages:
+        # Both fixture pages carry well over the OCR threshold, so the parser's
+        # native text is kept and Tesseract is never consulted.
+        assert page.extraction_method == "native"
+        assert page.ocr_attempted is False
+        assert page.char_count == len(page.clean_text.strip())
+        assert page.word_count == extraction_metrics.word_count(page.clean_text)
+        assert page.char_count > extraction_metrics.LOW_QUALITY_CHARACTERS
+        assert page.word_count > extraction_metrics.LOW_QUALITY_WORDS
+
+
+def test_ingest_writes_the_document_extraction_quality_rollup(db_session, sample_pdf, storage_dir) -> None:
+    result = IngestService(db_session, storage_dir=storage_dir).ingest(sample_pdf)
+
+    document = db_session.get(Document, result["document_id"])
+    rollup = document.extraction_quality
+
+    assert rollup["page_count"] == 2
+    assert rollup["stored_page_count"] == 2
+    assert rollup["ocr_page_count"] == 0
+    assert rollup["ocr_attempted_page_count"] == 0
+    assert rollup["sparse_page_count"] == 0
+    assert rollup["no_text_page_count"] == 0
+    assert rollup["empty_pages"] == []
+    # The rollup is the same object the caller gets back, so an API client and
+    # the review engine read identical numbers.
+    assert result["extraction_quality"] == rollup
+
+    stored_chars = db_session.scalars(
+        select(DocumentPage.char_count).where(DocumentPage.document_id == document.id)
+    ).all()
+    assert rollup["total_chars"] == sum(stored_chars)
+    assert rollup["mean_chars_per_page"] == round(sum(stored_chars) / 2, 1)
+
+
+def test_pages_that_produce_no_text_are_recorded_in_the_rollup(
+    db_session, tmp_path, storage_dir, monkeypatch
+) -> None:
+    # OCR is forced off so a blank page behaves the same way on a workstation
+    # with Tesseract installed as it does on the CI runner without it.
+    monkeypatch.setattr(
+        "app.services.ocr_service.SelectiveOCRService.available",
+        property(lambda self: False),
+    )
+    blank_in_the_middle = _write_pdf(
+        tmp_path / "bos-sayfa.pdf", page_texts=(PAGE_TEXTS[0], "", PAGE_TEXTS[1])
+    )
+
+    result = IngestService(db_session, storage_dir=storage_dir).ingest(blank_in_the_middle)
+
+    # The empty page is dropped before persistence, so the rollup is the only
+    # place it is ever recorded.
+    assert result["pages"] == 2
+    rollup = db_session.get(Document, result["document_id"]).extraction_quality
+    assert rollup["page_count"] == 3
+    assert rollup["stored_page_count"] == 2
+    assert rollup["empty_pages"] == [2]
+    assert rollup["no_text_page_count"] == 1
+    assert rollup["no_text_pages"] == [2]
+    stored_page_numbers = db_session.scalars(
+        select(DocumentPage.page_number).where(DocumentPage.document_id == result["document_id"])
+    ).all()
+    assert list(stored_page_numbers) == [1, 3]
+
+
+def test_a_duplicate_does_not_rewrite_the_extraction_rollup(db_session, sample_pdf, storage_dir) -> None:
+    service = IngestService(db_session, storage_dir=storage_dir)
+    first = service.ingest(sample_pdf)
+    original = dict(db_session.get(Document, first["document_id"]).extraction_quality)
+
+    second = service.ingest(sample_pdf)
+
+    assert "extraction_quality" not in second
+    assert db_session.get(Document, first["document_id"]).extraction_quality == original

@@ -37,6 +37,7 @@ os.environ["CATIA_SKILL_ENABLED"] = "false"
 from app.db.models import Base  # noqa: E402
 from app.db.models import ChunkEmbedding, Document, DocumentChunk, DocumentPage  # noqa: E402
 from app.db.session import SessionLocal, engine, init_db  # noqa: E402
+from app.processing import extraction_metrics  # noqa: E402
 from app.services.embedding_service import TokenHashEmbeddingService  # noqa: E402
 from app.services.vector_index import invalidate_vector_index  # noqa: E402
 
@@ -119,7 +120,16 @@ def add_page(
     *,
     page_number: int = 1,
     section_title: str | None = None,
+    extraction_method: str | None = "native",
+    ocr_attempted: bool | None = False,
+    record_metrics: bool = True,
 ) -> DocumentPage:
+    """Insert a page carrying the same extraction provenance ingest records.
+
+    `record_metrics=False` leaves all four provenance columns NULL, which is
+    how a page persisted before those columns existed looks on disk -- readers
+    must treat that as "unknown", not as "native page with no text".
+    """
     page = DocumentPage(
         document_id=document.id,
         page_number=page_number,
@@ -127,6 +137,11 @@ def add_page(
         clean_text=text,
         section_title=section_title,
     )
+    if record_metrics:
+        page.extraction_method = extraction_method
+        page.ocr_attempted = ocr_attempted
+        page.char_count = extraction_metrics.char_count(text)
+        page.word_count = extraction_metrics.word_count(text)
     session.add(page)
     session.flush()
     return page

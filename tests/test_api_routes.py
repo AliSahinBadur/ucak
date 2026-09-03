@@ -495,3 +495,71 @@ def test_catia_skill_status_reports_an_unloadable_bundle(client, monkeypatch) ->
     assert payload["available"] is False
     assert payload["local_client"] is True
     assert "bulunamadi" in payload["error"]
+
+
+def test_rule_precision_lists_the_whole_catalog_before_any_decision(client, seed_corpus) -> None:
+    payload = client.get("/report-review/rule-precision").json()
+
+    from app.services.report_review_service import ReportReviewService
+
+    assert {rule["rule_id"] for rule in payload["rules"]} == set(
+        ReportReviewService.catalog_rule_ids()
+    )
+    assert payload["summary"]["measured"] == 0
+    assert all(rule["precision"] is None for rule in payload["rules"])
+
+
+def test_rule_precision_scores_a_rule_once_it_has_enough_decisions(client, seed_corpus) -> None:
+    document_id = seed_corpus["durability"].id
+    review = client.post("/chat", json={"message": "raporu kontrol et", "document_ids": [document_id]})
+    assert review.status_code == 200
+
+    # Six confirms and four dismissals over distinct findings: enough decisions
+    # for the default threshold, so the rule becomes measurable at 60%.
+    for index in range(10):
+        response = client.post(
+            "/report-review/decisions",
+            json={
+                "document_id": document_id,
+                # The route validates finding_key as a sha256 digest, which is
+                # what ReportReviewService.finding_key produces.
+                "finding_key": f"{index:064x}",
+                "rule_id": "captions.references",
+                "decision": "confirmed" if index < 6 else "dismissed",
+            },
+        )
+        assert response.status_code == 200
+
+    payload = client.get("/report-review/rule-precision").json()
+
+    rule = next(item for item in payload["rules"] if item["rule_id"] == "captions.references")
+    assert rule["status"] == "measured"
+    assert rule["precision"] == 0.6
+    assert (rule["confirmed"], rule["dismissed"], rule["decided"]) == (6, 4, 10)
+    # Worst confirm rate first, so the rule needing attention leads the table.
+    assert payload["rules"][0]["rule_id"] == "captions.references"
+
+
+def test_rule_precision_threshold_is_overridable_per_request(client, seed_corpus) -> None:
+    document_id = seed_corpus["nvh"].id
+    for index in range(3):
+        client.post(
+            "/report-review/decisions",
+            json={
+                "document_id": document_id,
+                "finding_key": f"{index + 100:064x}",
+                "rule_id": "numbers.decimal_style",
+                "decision": "dismissed",
+            },
+        )
+
+    default = client.get("/report-review/rule-precision").json()
+    lowered = client.get("/report-review/rule-precision", params={"minimum_decisions": 3}).json()
+
+    def rule_of(payload: dict) -> dict:
+        return next(item for item in payload["rules"] if item["rule_id"] == "numbers.decimal_style")
+
+    assert rule_of(default)["status"] == "insufficient_data"
+    assert rule_of(default)["precision"] is None
+    assert rule_of(lowered)["status"] == "measured"
+    assert rule_of(lowered)["precision"] == 0.0

@@ -35,8 +35,46 @@ if _is_sqlite:
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 
+# Columns added to tables that already ship in the field. `create_all` only
+# creates missing *tables*, and the project carries no migration tool, so a
+# workstation whose data/app.db predates these columns would fail every query
+# that selects them. Each entry must stay nullable and default-free: the rows
+# already on disk have no value to backfill, and readers treat NULL as
+# "unknown" rather than inventing one.
+_SQLITE_ADDED_COLUMNS: dict[str, dict[str, str]] = {
+    "documents": {
+        "extraction_quality": "JSON",
+    },
+    "document_pages": {
+        "extraction_method": "VARCHAR(32)",
+        "ocr_attempted": "BOOLEAN",
+        "char_count": "INTEGER",
+        "word_count": "INTEGER",
+    },
+}
+
+
+def _add_missing_sqlite_columns() -> None:
+    with engine.begin() as connection:
+        for table_name, columns in _SQLITE_ADDED_COLUMNS.items():
+            existing = {
+                row[1]
+                for row in connection.exec_driver_sql(f"PRAGMA table_info({table_name})")
+            }
+            if not existing:
+                continue  # create_all just built it complete, or it is not in use
+            for column_name, column_type in columns.items():
+                if column_name in existing:
+                    continue
+                connection.exec_driver_sql(
+                    f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
+                )
+
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
+    if _is_sqlite:
+        _add_missing_sqlite_columns()
 
 
 def get_session() -> Session:

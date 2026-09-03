@@ -1,0 +1,162 @@
+{
+  "profile": "test",
+  "label": "Test / Validasyon",
+  "detect_priority": 40,
+  "aliases": [
+    "test",
+    "validation",
+    "validasyon"
+  ],
+  "detect_patterns": [
+    "(?:^|[-_ ])test(?:[-_ ]|$)",
+    "test raporu",
+    "validasyon raporu"
+  ],
+  "rules": [
+    {
+      "rule_id": "test.setup_traceability",
+      "label": "Test duzeni ve kosul izlenebilirligi",
+      "category": "test",
+      "severity": "warning",
+      "message": "Test duzeni, ekipmani veya kosullari tam izlenemiyor.",
+      "suggested_fix": "Test objesi/konfigurasyonu, olcum ekipmani ve ortam/calisma kosullarini birlikte yazin.",
+      "requirement_groups": [
+        {
+          "label": "test objesi / konfigurasyon",
+          "aliases": [
+            "konfigurasyon",
+            "arac",
+            "parca",
+            "numune",
+            "prototip",
+            "seri no",
+            "sase no",
+            "motor",
+            "inverter"
+          ]
+        },
+        {
+          "label": "olcum cihazi / sensor",
+          "aliases": [
+            "sensor",
+            "termokupl",
+            "ivmeolcer",
+            "manometre",
+            "data logger",
+            "olcum cihazi",
+            "test ekipmani",
+            "cihaz"
+          ]
+        },
+        {
+          "label": "test kosulu / ortam",
+          "aliases": [
+            "test kosul",
+            "ortam sicakligi",
+            "hava sicakligi",
+            "parkur",
+            "km/h",
+            "rpm",
+            "yuk",
+            "sure",
+            "dakika",
+            "saat"
+          ]
+        }
+      ]
+    },
+    {
+      "rule_id": "test.procedure_traceability",
+      "label": "Test yontemi ve uygulama izlenebilirligi",
+      "category": "test",
+      "severity": "warning",
+      "message": "Test yontemi veya uygulama suresi/calisma noktasi tam izlenemiyor.",
+      "suggested_fix": "Tekrarlanabilir test adimlarini, sureyi ve hiz/yuk/devir gibi calisma noktalarini belirtin.",
+      "requirement_groups": [
+        {
+          "label": "yontem / prosedur",
+          "aliases": [
+            "test yontemi",
+            "test metodu",
+            "prosedur",
+            "uygulama adim",
+            "test asamalari",
+            "method"
+          ]
+        },
+        {
+          "label": "sure / calisma noktasi",
+          "aliases": [
+            "dakika",
+            "saat",
+            "sure",
+            "km/h",
+            "rpm",
+            "yuk",
+            "cevrim",
+            "cycle",
+            "tur"
+          ]
+        }
+      ]
+    },
+    {
+      "rule_id": "test.acceptance_result",
+      "label": "Test kabul kriteri ve sonuc",
+      "category": "test",
+      "severity": "warning",
+      "message": "Test sonucu ile kabul kriteri arasindaki bag tam izlenemiyor.",
+      "suggested_fix": "Kriter/limit degerini, olculen sonucu ve OK/NOK kararini ayni sonuc bolumunde verin.",
+      "requirement_groups": [
+        {
+          "label": "kabul kriteri / limit",
+          "aliases": [
+            "kabul kriter",
+            "limit deger",
+            "gereksinim",
+            "standard",
+            "standart",
+            "maksimum",
+            "minimum",
+            "hedef deger"
+          ]
+        },
+        {
+          "label": "karar / sonuc",
+          "aliases": [
+            "ok olarak",
+            "nok olarak",
+            "uygun",
+            "uygunsuz",
+            "basarili",
+            "basarisiz",
+            "test sonucu",
+            "sonuc"
+          ]
+        }
+      ]
+    },
+    {
+      "rule_id": "test.measurement_traceability",
+      "label": "Test cihaz kalibrasyon izlenebilirligi",
+      "category": "test",
+      "severity": "info",
+      "message": "Olcum cihazinin kalibrasyon veya kimlik bilgisi raporda gorunmuyor.",
+      "suggested_fix": "Uygunsa cihaz kimligini ve gecerli kalibrasyon/sertifika bilgisini rapora ekleyin.",
+      "requirement_groups": [
+        {
+          "label": "kalibrasyon / cihaz kimligi",
+          "aliases": [
+            "kalibrasyon",
+            "kalibre",
+            "kalibrasyon sertifika",
+            "cihaz seri",
+            "cihaz no",
+            "ekipman no",
+            "sertifika no"
+          ]
+        }
+      ]
+    }
+  ]
+}

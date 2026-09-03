@@ -1,0 +1,170 @@
+{
+  "profile": "durability",
+  "label": "Durability",
+  "detect_priority": 30,
+  "aliases": [
+    "dur",
+    "durability",
+    "dayanim",
+    "fatigue"
+  ],
+  "detect_patterns": [
+    "(?:^|[-_ ])dur(?:[-_ ]|$)",
+    "\\bdurability\\b",
+    "dayanim analizi",
+    "statik analiz"
+  ],
+  "rules": [
+    {
+      "rule_id": "durability.material_definition",
+      "label": "Dayanim malzeme tanimi",
+      "category": "durability",
+      "severity": "warning",
+      "message": "Dayanim hesabinda kullanilan malzeme veya mekanik ozellikler acik degil.",
+      "suggested_fix": "Her parca icin malzeme adini ve hesapta kullanilan temel mekanik ozellikleri belirtin.",
+      "requirement_groups": [
+        {
+          "label": "malzeme ve mekanik ozellik",
+          "aliases": [
+            "malzeme",
+            "elastisite",
+            "young modulu",
+            "poisson",
+            "akma dayanimi",
+            "akma mukavemeti",
+            "cekme dayanimi",
+            "s235",
+            "s355",
+            "al 6061"
+          ]
+        }
+      ]
+    },
+    {
+      "rule_id": "durability.load_boundary_setup",
+      "label": "Dayanim yuk ve sinir sartlari",
+      "category": "durability",
+      "severity": "warning",
+      "message": "Dayanim analizinin yuk veya sinir sartlari tam izlenemiyor.",
+      "suggested_fix": "Yuk buyuklugu/yonu ile sabitleme, mesnet ve temas kosullarini acikca gosterin.",
+      "requirement_groups": [
+        {
+          "label": "uygulanan yuk",
+          "aliases": [
+            "uygulanan yuk",
+            "kuvvet",
+            "basinc",
+            "tork",
+            "moment",
+            "ivme",
+            "kutle",
+            " kg",
+            " kn"
+          ]
+        },
+        {
+          "label": "sinir sartlari / mesnet",
+          "aliases": [
+            "sinir sart",
+            "mesnet",
+            "sabitlen",
+            "fixed",
+            "support",
+            "constraint",
+            "ankastre"
+          ]
+        }
+      ]
+    },
+    {
+      "rule_id": "durability.model_evidence",
+      "label": "Dayanim model ve ag kaniti",
+      "category": "durability",
+      "severity": "warning",
+      "message": "Dayanim modelinin ag veya baglanti/temas tanimi tam izlenemiyor.",
+      "suggested_fix": "Eleman/mesh yapisini ve modeldeki kaynak, civata, temas ya da baglanti kabullerini yazin.",
+      "requirement_groups": [
+        {
+          "label": "sonlu eleman / ag",
+          "aliases": [
+            "sonlu eleman",
+            "fe model",
+            "fem model",
+            "2d eleman",
+            "3d eleman",
+            "mesh",
+            "eleman boyutu",
+            "tetra",
+            "hexa",
+            "shell",
+            "solid element",
+            "ag yapisi"
+          ]
+        },
+        {
+          "label": "baglanti / temas tanimi",
+          "aliases": [
+            "contact",
+            "temas",
+            "baglanti",
+            "kaynak",
+            "weld",
+            "bolt",
+            "civata"
+          ]
+        }
+      ]
+    },
+    {
+      "rule_id": "durability.result_criterion",
+      "label": "Dayanim sonuc ve kabul kriteri",
+      "category": "durability",
+      "severity": "warning",
+      "message": "Dayanim sonucu veya kabul kriteri tam izlenemiyor.",
+      "suggested_fix": "Gerilme/deformasyon/emniyet sonucunu malzeme limiti veya kabul kriteriyle karsilastirin.",
+      "requirement_groups": [
+        {
+          "label": "sonuc buyuklugu",
+          "aliases": [
+            "von mises",
+            "gerilme",
+            "stres",
+            "stress",
+            "strain",
+            "gerinim",
+            "deformasyon",
+            "deplasman",
+            "sehim",
+            "yer degistirme",
+            "displacement",
+            "emniyet katsayi",
+            "safety factor",
+            "fatigue life",
+            "omur"
+          ]
+        },
+        {
+          "label": "kabul dayanagi",
+          "aliases": [
+            "akma dayanimi",
+            "akma mukavemeti",
+            "kopma siniri",
+            "strain siniri",
+            "izin verilen",
+            "allowable",
+            "kabul kriter",
+            "limit",
+            "emniyet katsayi",
+            "safety factor",
+            "uygun",
+            "guvenli",
+            "emniyetli",
+            "emniyetsiz",
+            "ok olarak",
+            "nok olarak"
+          ]
+        }
+      ]
+    }
+  ]
+}

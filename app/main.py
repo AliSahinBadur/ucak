@@ -62,6 +62,7 @@ from .api_models import (
     ReportComparisonUploadResponse,
     ReportReviewDecisionRequest,
     ReportReviewDecisionResponse,
+    RulePrecisionResponse,
     SearchResponse,
     StorageCheckResponse,
 )
@@ -1988,6 +1989,20 @@ def save_report_review_decision(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return ReportReviewDecisionResponse(**result)
+
+
+@app.get("/report-review/rule-precision", response_model=RulePrecisionResponse)
+def report_review_rule_precision(
+    minimum_decisions: Annotated[int | None, Query(ge=1, le=1000)] = None,
+    document_ids: Annotated[list[int] | None, Query()] = None,
+    session: Session = Depends(get_session),
+) -> RulePrecisionResponse:
+    """Which rules engineers actually agree with, from the decisions on record."""
+    report = ReportReviewService(session).rule_precision_report(
+        minimum_decisions=minimum_decisions,
+        document_ids=list(document_ids or []),
+    )
+    return RulePrecisionResponse(**report)
 
 
 @app.get("/report-review/export")

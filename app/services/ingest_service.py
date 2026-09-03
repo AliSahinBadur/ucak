@@ -14,6 +14,7 @@ from ..parsers.docx_parser import parse_docx
 from ..parsers.pdf_parser import parse_pdf
 from ..parsers.pptx_parser import parse_pptx
 from ..processing.chunker import chunk_sections
+from ..processing.extraction_metrics import metrics_for_text, summarize
 from ..processing.text_cleaner import normalize_sections
 from ..schemas import ParsedSection
 from .embedding_service import EmbeddingService, build_embedding_service
@@ -66,17 +67,41 @@ class IngestService:
             logger.exception("Ingest failed while parsing or processing %s", stored_path)
             raise
 
+        page_metrics = [
+            metrics_for_text(
+                section.page_number,
+                section.clean_text,
+                extraction_method=section.extraction_method,
+                ocr_attempted=section.ocr_attempted,
+            )
+            for section in cleaned_sections
+        ]
+        # normalize_sections drops a page whose text does not survive cleaning,
+        # so those page numbers exist nowhere else once ingest returns.
+        stored_page_numbers = {int(section.page_number) for section in cleaned_sections}
+        empty_pages = [
+            int(section.page_number)
+            for section in parsed_sections
+            if int(section.page_number) not in stored_page_numbers
+        ]
+        extraction_quality = summarize(
+            page_metrics,
+            parsed_page_count=len(parsed_sections),
+            empty_pages=empty_pages,
+        )
+
         document = Document(
             title=title,
             file_name=file_name,
             file_type=extension.lstrip("."),
             file_hash=file_hash,
             file_path=str(stored_path),
+            extraction_quality=extraction_quality,
         )
         self.session.add(document)
         self.session.flush()
 
-        for section in cleaned_sections:
+        for section, metrics in zip(cleaned_sections, page_metrics, strict=True):
             self.session.add(
                 DocumentPage(
                     document_id=document.id,
@@ -84,6 +109,10 @@ class IngestService:
                     raw_text=section.raw_text,
                     clean_text=section.clean_text,
                     section_title=section.section_title,
+                    extraction_method=section.extraction_method,
+                    ocr_attempted=section.ocr_attempted,
+                    char_count=metrics.char_count,
+                    word_count=metrics.word_count,
                 )
             )
 
@@ -123,6 +152,7 @@ class IngestService:
             "file_name": file_name,
             "pages": len(cleaned_sections),
             "ocr_pages": ocr_pages,
+            "extraction_quality": extraction_quality,
             "chunks": len(chunks),
             "embeddings_created": embeddings_created,
             "embedding_provider": self.embedding_service.provider_name,

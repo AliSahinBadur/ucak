@@ -1,0 +1,139 @@
+{
+  "profile": "nvh",
+  "label": "NVH",
+  "detect_priority": 10,
+  "aliases": [
+    "nvh",
+    "noise vibration harshness"
+  ],
+  "detect_patterns": [
+    "\\bnvh\\b",
+    "gurultu.*titresim",
+    "titre(?:s|ş)im.*konfor"
+  ],
+  "rules": [
+    {
+      "rule_id": "nvh.measurement_setup",
+      "label": "NVH olcum duzeni ve kosullari",
+      "category": "nvh",
+      "severity": "warning",
+      "message": "NVH olcum duzeni raporda tam izlenemiyor.",
+      "suggested_fix": "Sensoru ve olcum noktasini, eksenleri ve her olcumdeki hiz/parkur/calisma kosulunu acikca yazin.",
+      "requirement_groups": [
+        {
+          "label": "olcum noktasi / sensor",
+          "aliases": [
+            "sensor",
+            "ivmeolcer",
+            "akselerometre",
+            "olcum noktasi",
+            "koltuk uzerinden",
+            "ayna uzerinden",
+            "ivme sensoru"
+          ]
+        },
+        {
+          "label": "eksen / olcum yonu",
+          "aliases": [
+            "x ekseni",
+            "y ekseni",
+            "z ekseni",
+            "x yonu",
+            "y yonu",
+            "z yonu",
+            "dikey eksen",
+            "boyuna eksen",
+            "enine eksen",
+            "olcum yonu"
+          ]
+        },
+        {
+          "label": "calisma / surus kosulu",
+          "aliases": [
+            "test kosulu",
+            "calisma kosulu",
+            "parkur",
+            "km/h",
+            "arac hizi",
+            "surus senaryosu",
+            "otoban",
+            "bozuk yol",
+            "rolanti",
+            "rpm"
+          ]
+        }
+      ]
+    },
+    {
+      "rule_id": "nvh.signal_processing",
+      "label": "NVH sinyal isleme tanimi",
+      "category": "nvh",
+      "severity": "warning",
+      "message": "NVH sinyal isleme yontemi raporda tam tanimlanmamis.",
+      "suggested_fix": "RMS/peak/crest gibi metrigi; ornekleme, frekans araligi, filtre veya frekans agirliklandirmasi bilgisiyle birlikte belirtin.",
+      "requirement_groups": [
+        {
+          "label": "sonuc metrigi",
+          "aliases": [
+            "grms",
+            "rms",
+            "crest faktor",
+            "vdv",
+            "peak",
+            "tepe deger",
+            "fft",
+            "psd",
+            "db(a)",
+            "dba"
+          ]
+        },
+        {
+          "label": "frekans / filtre / agirliklandirma",
+          "aliases": [
+            "frekans",
+            "hz",
+            "ornekleme",
+            "sampling",
+            "filtre",
+            "agirliklandir",
+            "frequency weighting",
+            "band"
+          ]
+        }
+      ]
+    },
+    {
+      "rule_id": "nvh.acceptance_basis",
+      "label": "NVH kabul ve yorumlama dayanagi",
+      "category": "nvh",
+      "severity": "warning",
+      "message": "NVH sonucunun hangi kritere gore yorumlandigi tam izlenemiyor.",
+      "suggested_fix": "Kullanilan standart/limit ile olculen degeri yan yana verip sonucu acikca yorumlayin.",
+      "requirement_groups": [
+        {
+          "label": "standart / limit / kabul kriteri",
+          "aliases": [
+            "iso ",
+            "standard",
+            "standart",
+            "kabul kriter",
+            "limit",
+            "esik",
+            "ok/nok"
+          ]
+        },
+        {
+          "label": "sonuc yorumu",
+          "aliases": [
+            "sonuc",
+            "degerlendirme",
+            "uygun",
+            "uygunsuz",
+            "risk",
+            "karsilastir"
+          ]
+        }
+      ]
+    }
+  ]
+}
