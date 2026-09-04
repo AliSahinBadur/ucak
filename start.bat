@@ -55,16 +55,27 @@ if !errorlevel! neq 0 (
     exit /b 1
 )
 
+REM Dinlenen adres. Varsayılan 127.0.0.1: uygulama yalnızca bu makineden
+REM açılır. Başka bir makineden bağlanmak için (CATIA skill'i dahil; ölçüm
+REM yine bu makinenin CATIA'sında çalışır) UCAK_HOST=0.0.0.0 ayarlayın ve
+REM güvenlik duvarında porta izin verin.
+if "%UCAK_HOST%"=="" set UCAK_HOST=127.0.0.1
+if "%UCAK_PORT%"=="" set UCAK_PORT=8000
+
 echo ========================================
 echo Uygulamayı Başlatıyor...
 echo ========================================
 echo.
 echo Uygulamaya buradan erişebilirsiniz:
-echo http://127.0.0.1:8000/
+if "!UCAK_HOST!"=="0.0.0.0" (
+    echo http://127.0.0.1:!UCAK_PORT!/  ^(ağdaki diğer makineler: http://BU-MAKINENIN-IP:!UCAK_PORT!/^)
+) else (
+    echo http://!UCAK_HOST!:!UCAK_PORT!/
+)
 echo.
 echo Uygulamayı durdurmak için Ctrl+C tuşlarına basın.
 echo.
 
-"!PYTHON_PATH!" -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+"!PYTHON_PATH!" -m uvicorn app.main:app --host !UCAK_HOST! --port !UCAK_PORT!
 
 pause

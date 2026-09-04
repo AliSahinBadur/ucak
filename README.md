@@ -121,6 +121,38 @@ Analiz: http://YOUR-IPV4:8001/
 Test: http://YOUR-IPV4:8002/
 ```
 
+## CATIA Mass/CG Skill Over the Network
+
+The skill endpoints (`/skills/catia-mass-cg/*`) accept any client, so an
+engineer can drive them from another machine. Serve on the LAN the usual way —
+bind to `0.0.0.0` (the `.bat` launchers read `UCAK_HOST` / `UCAK_PORT`, still
+`127.0.0.1:8000` by default):
+
+```powershell
+$env:UCAK_HOST = "0.0.0.0"
+.\start.bat
+```
+
+Two things do not move with the client:
+
+- The measurement runs on the **server's** CATIA over COM, and the Adams/Car
+  `.cmd` file is written to the **server's** disk (the workspace folder shown in
+  the module header). The UI tells a remote user this. Enable the skill on the
+  machine CATIA actually runs on.
+- CATIA answers one measurement at a time. Concurrent `cmc` commands are
+  serialised; a second engineer gets "another measurement is running" instead of
+  a corrupted result.
+
+With `APP_AUTH_ENABLED=false` every caller shares the `local` workspace and its
+run history. Turn auth on (see above) so each engineer gets their own.
+
+To restrict which clients may use the skill, list them (`;` or `,` separated;
+`local`/`localhost` covers the loopback spellings) — empty means no restriction:
+
+```powershell
+$env:CATIA_SKILL_ALLOWED_CLIENTS = "local;10.0.0.7"
+```
+
 ## Embeddings
 
 The app auto-detects a local embedding model in `models/` when available.

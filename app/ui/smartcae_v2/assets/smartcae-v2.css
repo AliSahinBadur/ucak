@@ -2377,6 +2377,20 @@ body.evidence-open .evidence-panel.preview-active {
 }
 
 .catia-notice[hidden] { display: none; }
+
+/* Uzaktan bağlanan istemciye gösterilen "ölçüm sunucuda çalışır" satırı bir
+   engel değil, yer bildirimi: kırmızı uyarı yerine sakin bir bilgi kutusu. */
+.catia-notice[data-tone="info"] {
+  border-color: var(--line);
+  border-left-color: var(--line-strong);
+  background: var(--canvas);
+}
+
+.catia-notice[data-tone="info"] code {
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
 .catia-notice code {
   padding: 2px 5px;
   border-radius: 5px;

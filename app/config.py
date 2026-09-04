@@ -168,6 +168,14 @@ class Settings(BaseSettings):
     CATIA_SKILL_WORKSPACE_ROOT_RAW: str = Field(
         default="", validation_alias="CATIA_SKILL_WORKSPACE_ROOT"
     )
+    # Uçlar varsayılan olarak her istemciye açık. Ölçüm her hâlükârda sunucunun
+    # CATIA'sında çalışır, bu yüzden LAN'daki mühendis de aynı makineyi
+    # kullanmış olur; istemcinin IP'si bunu değiştirmez. Erişimi daraltmak
+    # isteyen kurulum buraya bir istemci listesi yazar (";" ya da "," ile
+    # ayrılmış); "local" / "localhost" loopback'in tüm yazımlarını kapsar.
+    CATIA_SKILL_ALLOWED_CLIENTS_RAW: str = Field(
+        default="", validation_alias="CATIA_SKILL_ALLOWED_CLIENTS"
+    )
 
     @field_validator("CATIA_SKILL_SOURCE", mode="after")
     @classmethod
@@ -252,6 +260,22 @@ class Settings(BaseSettings):
             if root not in unique:
                 unique.append(root)
         return tuple(unique)
+
+    @property
+    def CATIA_SKILL_ALLOWED_CLIENTS(self) -> tuple[str, ...]:
+        """Boş demet: kısıtlama yok, her istemci geçer."""
+        hosts: list[str] = []
+        for part in self.CATIA_SKILL_ALLOWED_CLIENTS_RAW.replace(",", ";").split(";"):
+            token = part.strip().casefold()
+            if not token:
+                continue
+            # "localhost" yazan da "local" yazanla aynı şeyi kastediyor;
+            # tek bir işarete indiriyoruz ki çağıran taraf loopback'in
+            # yazımlarını ("127.0.0.1", "::1") tek yerde bilsin.
+            token = "local" if token == "localhost" else token
+            if token not in hosts:
+                hosts.append(token)
+        return tuple(hosts)
 
     @property
     def CATIA_SKILL_WORKSPACE_ROOT(self) -> Path:

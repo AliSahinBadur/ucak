@@ -474,8 +474,9 @@ def test_catia_skill_status_describes_a_ready_module(client, monkeypatch) -> Non
     payload = client.get("/skills/catia-mass-cg/status").json()
 
     assert payload["available"] is True
-    # TestClient talks to the app in-process, so it counts as local.
-    assert payload["local_client"] is True
+    # TestClient talks to the app in-process, so it counts as loopback.
+    assert payload["client_allowed"] is True
+    assert payload["remote_client"] is False
     assert payload["source"] == "fake"
     assert payload["model"] == "qwen3:4b-instruct"
 
@@ -493,8 +494,80 @@ def test_catia_skill_status_reports_an_unloadable_bundle(client, monkeypatch) ->
 
     assert payload["enabled"] is True
     assert payload["available"] is False
-    assert payload["local_client"] is True
+    assert payload["client_allowed"] is True
     assert "bulunamadi" in payload["error"]
+
+
+def _lan_client(client_host: str = "192.168.1.44"):
+    """A TestClient that presents itself as an off-box LAN address."""
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    return TestClient(app, client=(client_host, 51000))
+
+
+def test_catia_skill_serves_a_lan_client_when_no_allowlist_is_set(client, monkeypatch) -> None:
+    """The measurement runs on the server either way, so the client's address
+    is not a gate by default -- it only changes what the UI tells the user."""
+    from app import main
+
+    monkeypatch.setattr(main.settings, "CATIA_SKILL_ENABLED", True)
+    monkeypatch.setattr(main.settings, "CATIA_SKILL_ALLOWED_CLIENTS_RAW", "")
+
+    def explode():
+        raise main.CatiaSkillUnavailableError("Skill paketi bulunamadi")
+
+    monkeypatch.setattr(main, "get_catia_skill_service", explode)
+
+    with _lan_client() as lan:
+        payload = lan.get("/skills/catia-mass-cg/status").json()
+        chat = lan.post("/skills/catia-mass-cg/chat", json={"message": "doctor"})
+
+    assert payload["client_allowed"] is True
+    # Not a block, but the UI says the run happens on the server's CATIA.
+    assert payload["remote_client"] is True
+    # 503 (skill bundle stubbed out), not 403: the client itself got through.
+    assert chat.status_code == 503
+
+
+def test_catia_skill_allowlist_keeps_out_a_client_outside_the_list(client, monkeypatch) -> None:
+    from app import main
+
+    monkeypatch.setattr(main.settings, "CATIA_SKILL_ENABLED", True)
+    monkeypatch.setattr(main.settings, "CATIA_SKILL_ALLOWED_CLIENTS_RAW", "local;10.0.0.7")
+
+    with _lan_client() as lan:
+        payload = lan.get("/skills/catia-mass-cg/status").json()
+        chat = lan.post("/skills/catia-mass-cg/chat", json={"message": "doctor"})
+        approve = lan.post("/skills/catia-mass-cg/approve", json={"session_id": "0123456789ab"})
+
+    assert payload["client_allowed"] is False
+    assert chat.status_code == 403
+    assert approve.status_code == 403
+    assert "CATIA_SKILL_ALLOWED_CLIENTS" in chat.json()["detail"]
+
+
+def test_catia_skill_allowlist_admits_a_listed_address_and_loopback(client, monkeypatch) -> None:
+    from app import main
+
+    monkeypatch.setattr(main.settings, "CATIA_SKILL_ENABLED", True)
+    monkeypatch.setattr(main.settings, "CATIA_SKILL_ALLOWED_CLIENTS_RAW", "localhost, 10.0.0.7")
+    monkeypatch.setattr(
+        main,
+        "get_catia_skill_service",
+        lambda: SimpleNamespace(status=lambda: {"enabled": True, "source": "fake"}),
+    )
+
+    with _lan_client("10.0.0.7") as listed:
+        listed_payload = listed.get("/skills/catia-mass-cg/status").json()
+    with _lan_client("10.0.0.8") as unlisted:
+        unlisted_payload = unlisted.get("/skills/catia-mass-cg/status").json()
+
+    assert listed_payload["client_allowed"] is True
+    assert unlisted_payload["client_allowed"] is False
+    # "localhost" in the list covers the loopback spellings, TestClient included.
+    assert client.get("/skills/catia-mass-cg/status").json()["client_allowed"] is True
 
 
 def test_rule_precision_lists_the_whole_catalog_before_any_decision(client, seed_corpus) -> None:

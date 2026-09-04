@@ -1478,28 +1478,51 @@ def _catia_skill_username(request: Request) -> str:
     return str(getattr(request.state, "username", "") or "local")
 
 
-def _is_local_catia_client(request: Request) -> bool:
-    # "testclient": Starlette TestClient süreç içinden gelir, ağdan gelmez.
-    host = request.client.host if request.client else None
-    return host in {"127.0.0.1", "::1", "testclient"}
+# "testclient": Starlette TestClient süreç içinden gelir, ağdan gelmez.
+_LOOPBACK_CLIENT_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient"})
+
+
+def _is_loopback_client(request: Request) -> bool:
+    host = (request.client.host if request.client else "").casefold()
+    return host in _LOOPBACK_CLIENT_HOSTS
+
+
+def _catia_client_allowed(request: Request) -> bool:
+    """İstemci CATIA skill uçlarını kullanabilir mi?
+
+    cmc, CATIA'ya COM üzerinden bağlanır; ölçüm her zaman sunucunun
+    CATIA'sında çalışır ve .cmd sunucunun diskine yazılır. Bu, istemcinin
+    nerede olduğundan bağımsız: LAN'dan bakan mühendis de aynı makineyi
+    kullanmış olur, sadece klavyesi uzakta. O yüzden varsayılan kısıtlama
+    yok; daraltmak isteyen kurulum CATIA_SKILL_ALLOWED_CLIENTS ile bir
+    liste verir (AGENT_INTEGRATION_PLAN §2'deki localhost-only v1 kararının
+    yerine).
+    """
+    allowlist = settings.CATIA_SKILL_ALLOWED_CLIENTS
+    if not allowlist:
+        return True
+    host = (request.client.host if request.client else "").casefold()
+    if not host:
+        return False
+    if host in allowlist:
+        return True
+    return "local" in allowlist and host in _LOOPBACK_CLIENT_HOSTS
 
 
 def _require_catia_skill_client(request: Request) -> None:
-    """CATIA skill uçları: bayrak açık olmalı ve istemci yerel olmalı.
-
-    cmc, CATIA'ya COM üzerinden aynı makinede bağlanır; LAN'daki bir istemcinin
-    isteği sunucunun CATIA'sında ölçüm başlatır ve sunucunun diskine .cmd yazar.
-    O yüzden uçlar yalnızca localhost'tan çalışır (AGENT_INTEGRATION_PLAN §2).
-    """
+    """CATIA skill uçları: bayrak açık olmalı ve istemci listeden geçmeli."""
     if not settings.CATIA_SKILL_ENABLED:
         raise HTTPException(
             status_code=404,
             detail="CATIA skill'i devre dışı. Açmak için CATIA_SKILL_ENABLED=true ayarlayın.",
         )
-    if not _is_local_catia_client(request):
+    if not _catia_client_allowed(request):
         raise HTTPException(
             status_code=403,
-            detail="CATIA skill'i yalnızca CATIA'nın çalıştığı makineden (localhost) kullanılabilir.",
+            detail=(
+                "CATIA skill'i bu istemciye kapalı: sunucudaki "
+                "CATIA_SKILL_ALLOWED_CLIENTS listesi bu adrese izin vermiyor."
+            ),
         )
 
 
@@ -1507,20 +1530,29 @@ def _require_catia_skill_client(request: Request) -> None:
 def catia_skill_status(request: Request) -> dict:
     """UI bu uca bakarak modülü gösterip göstermeyeceğine karar verir.
 
-    `local_client`, chat/approve uçlarının bu istemci için 403 döneceğini
-    arayüzün önceden söyleyebilmesi içindir: LAN'dan bakan biri modülü boş
-    bir sohbet olarak değil, sebebiyle birlikte görür.
+    `client_allowed`, chat/approve uçlarının bu istemci için 403 döneceğini
+    arayüzün önceden söyleyebilmesi içindir: listeden geçmeyen biri modülü
+    boş bir sohbet olarak değil, sebebiyle birlikte görür. `remote_client`
+    ise engel değil bilgi: uzaktan bakan mühendise ölçümün kendi makinesinde
+    değil sunucuda çalışacağını söylemek için.
     """
     if not settings.CATIA_SKILL_ENABLED:
         return {"enabled": False}
-    local_client = _is_local_catia_client(request)
+    client_allowed = _catia_client_allowed(request)
+    remote_client = not _is_loopback_client(request)
     try:
-        return {"available": True, **get_catia_skill_service().status(), "local_client": local_client}
+        return {
+            "available": True,
+            **get_catia_skill_service().status(),
+            "client_allowed": client_allowed,
+            "remote_client": remote_client,
+        }
     except CatiaSkillUnavailableError as exc:
         return {
             "enabled": True,
             "available": False,
-            "local_client": local_client,
+            "client_allowed": client_allowed,
+            "remote_client": remote_client,
             "error": str(exc),
         }
 

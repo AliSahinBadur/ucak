@@ -129,6 +129,22 @@ class CatiaSkillServiceTests(unittest.TestCase):
             workspace = Path(temp_dir) / "ws" / "local"
             self.assertEqual([], list(workspace.glob("runs/*/export.cmd")))
 
+    def test_a_second_measurement_waits_instead_of_racing_catia(self) -> None:
+        """Uclar artik LAN'a acik: iki oturum ayni anda olcum isteyebilir.
+        CATIA tek COM ornegi oldugu icin ikinci komut calismamali, modele
+        okunur bir E_BUSY donmeli ve diske hicbir sey yazilmamali."""
+        with TemporaryDirectory() as temp_dir:
+            service = self._service(temp_dir, "stub-onay-akisi.jsonl")
+            self.assertTrue(service._cmc_lock.acquire(blocking=False))
+            try:
+                turn = service.chat("araç montajından kütle çıkar, ARAC-X / BASE / R04")
+            finally:
+                service._cmc_lock.release()
+
+            codes = [item.get("code") for item in turn["events"] if item["kind"] == "result"]
+            self.assertIn("E_BUSY", codes)
+            self.assertEqual([], list((Path(temp_dir) / "ws").glob("*/runs/*")))
+
     def test_preview_and_button_approval_exports(self) -> None:
         with TemporaryDirectory() as temp_dir:
             service = self._service(temp_dir, "stub-onay-akisi.jsonl")

@@ -200,6 +200,11 @@ class CatiaSkillService:
         self.system_prompt = (self.skill_root / "SKILL.md").read_text(encoding="utf-8")
         self._sessions: dict[str, CatiaSkillSession] = {}
         self._sessions_lock = threading.Lock()
+        # Ölçüm sırası: CATIA süreç dışında tek bir COM örneği, workspace de
+        # tek bir runs/ klasörü. Uçlar artık yalnız localhost'a değil listeyle
+        # yönetilen her istemciye açık olduğu için iki mühendis aynı anda
+        # ölçüm başlatabilir; komutları burada sıraya sokuyoruz.
+        self._cmc_lock = threading.Lock()
 
     # -- oturumlar ----------------------------------------------------------
 
@@ -362,13 +367,29 @@ class CatiaSkillService:
     def _dispatch(self, session: CatiaSkillSession, command: str, events: list[dict]) -> tuple[dict, str | None]:
         events.append({"kind": "command", "text": command})
         args = SimpleNamespace(fake=self.fake, timeout=self.cmc_timeout_seconds)
-        result, preview_text = self.runner.dispatch(
-            command,
-            session.workspace,
-            str(self.skill_root),
-            args,
-            session.gate,
-        )
+        if self._cmc_lock.acquire(blocking=False):
+            try:
+                result, preview_text = self.runner.dispatch(
+                    command,
+                    session.workspace,
+                    str(self.skill_root),
+                    args,
+                    session.gate,
+                )
+            finally:
+                self._cmc_lock.release()
+        else:
+            # Turu 409'la düşürmek yerine harness'ın kendi hata biçiminde
+            # (E_TIMEOUT, E_BLOCKED gibi) bir sonuç dönüyoruz: model bunu
+            # okuyup kullanıcıya söyler, sohbet geçmişi tutarlı kalır.
+            result, preview_text = {
+                "status": "error",
+                "state": "ERROR",
+                "code": "E_BUSY",
+                "message_tr": "Şu anda başka bir ölçüm sürüyor; CATIA aynı anda tek ölçüm yapabilir.",
+                "hint_tr": "Süren ölçüm bitince aynı isteği tekrar söyleyin.",
+                "_blocked": True,
+            }, None
         events.append(
             {
                 "kind": "result",

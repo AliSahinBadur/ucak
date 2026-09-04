@@ -26,7 +26,8 @@
     catiaStatus: {
       enabled: false,
       available: false,
-      localClient: true,
+      clientAllowed: true,
+      remoteClient: false,
       usable: false,
       source: "fake",
       model: "",
@@ -1870,7 +1871,7 @@
     const status = state.catiaStatus;
     if (!status.enabled) return "CATIA skill'i kapalı. Sunucuda CATIA_SKILL_ENABLED=true ile açılması gerekiyor.";
     if (!status.available) return `CATIA skill paketi yüklenemedi: ${status.error || "bilinmeyen hata"}`;
-    if (!status.localClient) return "CATIA skill'i yalnızca CATIA'nın çalıştığı makineden (localhost) kullanılabilir.";
+    if (!status.clientAllowed) return "CATIA skill'i bu istemciye kapalı: sunucudaki CATIA_SKILL_ALLOWED_CLIENTS listesi bu adrese izin vermiyor.";
     return "";
   }
 
@@ -2162,14 +2163,16 @@
   function applyCatiaStatus(data) {
     const enabled = Boolean(data?.enabled);
     const available = enabled && data?.available !== false;
-    const localClient = data?.local_client !== false;
-    const usable = available && localClient;
+    const clientAllowed = data?.client_allowed !== false;
+    const remoteClient = data?.remote_client === true;
+    const usable = available && clientAllowed;
     const usesCatia = String(data?.source || "") === "catia";
 
     state.catiaStatus = {
       enabled,
       available,
-      localClient,
+      clientAllowed,
+      remoteClient,
       usable,
       source: usesCatia ? "catia" : "fake",
       model: data?.model || "",
@@ -2192,7 +2195,7 @@
 
     catiaStateValue.textContent = !enabled
       ? "Kapalı"
-      : !available ? "Paket yüklenemedi" : !localClient ? "Uzak istemci" : "Hazır";
+      : !available ? "Paket yüklenemedi" : !clientAllowed ? "İstemciye kapalı" : "Hazır";
     catiaStateValue.className = !enabled ? "" : usable ? "ready" : available ? "warning" : "error";
     catiaSourceValue.textContent = !enabled ? "—" : usesCatia ? "CATIA (COM)" : "fake (sentetik montaj)";
     catiaModelValue.textContent = data?.model || "—";
@@ -2206,15 +2209,24 @@
     updateChatSkillMode();
 
     if (!enabled) {
+      catiaNotice.dataset.tone = "error";
       catiaNotice.innerHTML = "CATIA skill'i kapalı. Açmak için CATIA'nın çalıştığı makinede <code>CATIA_SKILL_ENABLED=true</code> ayarlayıp uygulamayı yeniden başlat. Gerçek montajdan ölçüm için ayrıca <code>CATIA_SKILL_SOURCE=catia</code> gerekir.";
     } else if (!available) {
+      catiaNotice.dataset.tone = "error";
       catiaNotice.innerHTML = `Skill paketi yüklenemedi: ${escapeHtml(data?.error || "bilinmeyen hata")}`;
-    } else if (!localClient) {
-      catiaNotice.innerHTML = "Bu modül yalnızca CATIA'nın çalıştığı makineden (localhost) kullanılabilir: ölçüm sunucunun CATIA'sında başlar ve <code>.cmd</code> dosyası sunucunun diskine yazılır.";
+    } else if (!clientAllowed) {
+      catiaNotice.dataset.tone = "error";
+      catiaNotice.innerHTML = "Bu istemci sunucudaki <code>CATIA_SKILL_ALLOWED_CLIENTS</code> listesinde yok; ölçüm ve aktarım uçları 403 döner.";
+    } else if (remoteClient) {
+      // Engel değil, yer bildirimi: uzaktan çalıştıran mühendis ölçümün kendi
+      // makinesinde değil sunucunun CATIA'sında olduğunu bilsin.
+      catiaNotice.dataset.tone = "info";
+      catiaNotice.innerHTML = "Uzaktan bağlısın: ölçüm sunucunun CATIA'sında çalışır ve <code>.cmd</code> dosyası sunucunun diskine (yukarıdaki çalışma klasörü) yazılır, kendi bilgisayarına değil.";
     } else {
+      catiaNotice.dataset.tone = "info";
       catiaNotice.innerHTML = "";
     }
-    catiaNotice.hidden = usable;
+    catiaNotice.hidden = !catiaNotice.innerHTML;
 
     if (!enabled && state.activeView === "catia") setView("home");
   }
