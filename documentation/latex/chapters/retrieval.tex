@@ -1,0 +1,273 @@
+\chapter{Retrieval and answering}
+\label{ch:retrieval}
+
+Retrieval is where most of the project's engineering lives. The contract is
+simple --- given a Turkish or English question, return the chunks that actually
+answer it, with the report and page they came from --- and the implementation is
+tuned around one failure mode: a semantically plausible chunk from the wrong
+report is worse than no answer at all.
+
+\section{Search modes}
+
+\code{SearchService} (\file{app/services/search\_service.py}) offers three
+modes, selected by the \code{mode} parameter on \route{GET /search},
+\route{POST /ask} and \route{POST /chat}.
+
+\subsection{Keyword search}
+
+Token-level scoring over chunk text, section titles, document titles and file
+names. Notable behaviour:
+
+\begin{itemize}
+\item \textbf{Turkish folding.} Queries and text are folded through
+\file{app/text/normalize.py} (\code{ı} to \code{i}, \code{ğ} to \code{g} and so
+on) before matching, so a query typed without Turkish characters still hits.
+\item \textbf{Generic tokens are discounted.} Words that appear in almost every
+question --- \code{rapor}, \code{analiz}, \code{hangi}, \code{nedir},
+\code{sonuc} and about thirty more --- carry little weight, so they cannot carry
+a match on their own.
+\item \textbf{Domain aliases expand.} \code{titresim} also matches \code{nvh}
+and \code{vibration}; \code{dayanim} matches \code{dur}, \code{durability};
+\code{termal} matches \code{thermal}, \code{cfd}. The table lives in
+\code{SearchService.TOKEN\_ALIASES}.
+\item \textbf{Fuzzy scanning is bounded} to \code{MAX\_FUZZY\_SCAN\_ROWS}
+(1500) rows, so a vague query cannot turn into a full-table scan.
+\end{itemize}
+
+Keyword search works with no model installed, and it is the mode the system
+falls back to whenever semantic retrieval is unavailable.
+
+\subsection{Semantic search}
+
+The query is embedded and scored against the cached vector index with one cosine
+matrix product (Chapter~\ref{ch:architecture}). Candidates then pass through
+several gates.
+
+\begin{longtable}{L{0.34\textwidth} L{0.12\textwidth} L{0.42\textwidth}}
+\toprule
+\textbf{Guard} & \textbf{Value} & \textbf{Purpose} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\code{MIN\_SEMANTIC\_SCORE} & \code{0.22} & Floor for any semantic candidate. \\
+\code{MIN\_SEMANTIC\_NO\_OVERLAP\_SCORE} & \code{0.27} & Higher floor when the
+chunk shares no query token at all. \\
+\code{MAX\_SEMANTIC\_CANDIDATES} & \code{500} & Cap on candidates carried into
+the scoring stage. \\
+Required-token gate & --- & For identity-shaped queries (a report code, a
+vehicle name) the chunk must contain the identifying token, whatever the cosine
+score says. \\
+\end{longtable}
+
+\subsection{Hybrid search}
+
+The default. Keyword and semantic results are gathered with widened limits
+(\code{4x} and \code{3x} the requested limit), min-max normalized within their
+own result set, and combined:
+
+\begin{shellblock}
+combined = 0.45 * (keyword_score / keyword_max)
+         + 0.55 * (semantic_score / semantic_max)
+         + 0.15 * lexical_rerank_score      (added once per contributing side)
+\end{shellblock}
+
+Then two corrections are applied:
+
+\begin{itemize}
+\item a chunk found \textbf{only} semantically and scoring below
+\code{MIN\_SEMANTIC\_NO\_OVERLAP\_SCORE} is zeroed out --- this is the guard
+against confident nonsense from the wrong report; and
+\item \code{match\_type} is set to \code{hybrid}, \code{semantic} or
+\code{keyword} according to which sides actually contributed.
+\end{itemize}
+
+If semantic search returns nothing, hybrid degrades cleanly to keyword results
+with metadata reranking.
+
+\subsection{Metadata reranking}
+
+Whatever the mode, the final ordering passes through
+\code{\_metadata\_rerank\_results}, which reads the catalog text linked to each
+document (report code, vehicle, discipline, year) and promotes chunks whose
+document matches the identity terms of the query. This is what makes ``the NVH
+report for BIG-E'' return chunks from that report rather than the best-phrased
+passage in the corpus.
+
+By default at most one chunk per document is returned
+(\code{MAX\_RESULTS\_PER\_DOCUMENT = 1}), so a five-result answer surveys five
+reports instead of five paragraphs of one.
+
+\subsection{Search scope}
+
+\route{GET /search} takes \code{search\_scope}:
+
+\begin{description}
+\item[\code{content} (default)] Rank chunks. Each result is a passage with its
+page range.
+\item[\code{reports}] Rank documents. \code{report\_search()} aggregates chunk
+evidence per document and returns the reports themselves --- the mode behind the
+``find the report'' half of the UI.
+\end{description}
+
+\section{Retrieval versions}
+
+\code{retrieval\_version} selects the retrieval implementation. It is a request
+parameter, not configuration, so a single instance can be compared against
+itself.
+
+\begin{longtable}{L{0.10\textwidth} L{0.80\textwidth}}
+\toprule
+\textbf{Version} & \textbf{Behaviour} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\code{v1} & Legacy in-house path. Query and document text are embedded with the
+\emph{same} symmetric call, and the required-token gate is applied to every
+result, not only to identity-shaped queries. Stricter, and blunter. \\
+\code{v2} & Default in-house path. Queries use \code{embed\_query} and documents
+\code{embed\_document}, which matters for asymmetric embedding models; the token
+gate applies only where query identity demands it. \\
+\code{v3} & The Haystack pipeline (\code{HaystackRetrievalService}), built over
+the same stored chunks and vectors. It is a second opinion, not a replacement:
+if \code{haystack-ai} is not installed the endpoint answers \code{503} rather
+than silently falling back. \\
+\end{longtable}
+
+\file{run\_qa\_checks.py} scores \code{v2} and \code{v3} side by side on every
+run; see Chapter~\ref{ch:testing}.
+
+\section{The orchestrator}
+
+\code{RetrievalOrchestrator} is an opt-in shell around \code{SearchService},
+switched on per request with \code{use\_query\_enhancement} and
+\code{use\_reranking} on \route{GET /search}. With both off --- the default ---
+behaviour is exactly \code{SearchService}.
+
+\begin{description}
+\item[\code{QueryUnderstandingService}] Produces an intent, a normalized query,
+expanded query variants and metadata filters (year range, author, software,
+analysis type). It has a deterministic implementation that runs with no model;
+the LLM path only refines what the deterministic path already produced, and any
+failure falls back to it.
+
+\item[\code{Reranker}] \code{NoOpReranker} unless \env{RERANKER\_ENABLED} is set.
+The shipped \code{ScoreReranker} reorders by combined score; the interface is a
+\code{Protocol}, so a cross-encoder can be dropped in without touching callers.
+\end{description}
+
+The orchestrator returns a \code{retrieval} block alongside the results,
+describing what it did --- which queries were run, what was expanded, which
+provider answered. That block is the reason the feature is opt-in per request:
+it makes an experiment observable.
+
+\section{Similar reports}
+
+Two related features, both built on chunk-level similarity aggregated to the
+document:
+
+\begin{description}
+\item[\code{similar\_documents\_for\_results()}] Given the current result set,
+find other documents whose chunks are close to the matched ones. Returned inline
+with every search response.
+\item[\code{similar\_documents\_for\_document()}] Given a document, find its
+neighbours. Used from the document detail view.
+\end{description}
+
+Both require \code{MIN\_SIMILAR\_DOCUMENT\_SCORE} (0.24) and report the matched
+chunk count alongside the score, so a single lucky chunk is visibly different
+from a document that matches throughout.
+
+\section{Duplicate detection}
+\label{sec:duplicate-detection}
+
+\code{DuplicateDetectionService} finds \emph{near}-duplicates --- the same report
+re-exported, renamed, or re-issued with a new cover --- as opposed to the
+byte-identical duplicates ingestion already rejects.
+
+Each document is reduced to a signature: an average embedding over its chunks
+plus a normalized key built from the title and file name. A candidate pair is
+scored on both axes, and the recorded \code{reason} says which axis carried it:
+title similarity, embedding similarity, or both.
+
+\begin{itemize}
+\item \route{POST /duplicates/scan} runs as a background job, takes a
+\code{threshold} (default \code{0.90}) and supports \code{dry\_run}.
+\item \route{GET /duplicates} lists stored pairs.
+\item Pairs live in \code{duplicate\_report\_pairs} with a \code{status} field,
+so a reviewed pair does not come back as new next scan.
+\end{itemize}
+
+\section{Question answering}
+
+Four services answer questions, each over a different scope. They share one
+rule: \textbf{the answer is built from retrieved passages, and every response
+carries those passages.}
+
+\begin{description}
+\item[\code{QAService}] Single-report and general report Q\&A behind
+\route{POST /ask}. Retrieves, filters candidates against the question profile,
+and builds an extractive answer --- a list answer, a summary answer, or a passage
+answer, depending on what the question asks for. Guard thresholds
+(\code{MIN\_ANSWER\_SCORE = 0.58}, token-overlap and section-title minima) decide
+whether an answer is claimed at all; below them the response is honest about
+having found nothing.
+
+\item[\code{DocumentIntelligenceService}] The chat path behind
+\route{POST /chat}. It adds conversation history, resolution of document
+mentions (``in that report''), evidence selection and scoring,
+citation-coverage measurement over the generated text, and a grounded confidence
+estimate. It also routes questions that are really review or caption-numbering
+questions to \code{ReportReviewService} and \code{ReportQualityService}.
+
+\item[\code{MultiDocumentQAService}] \route{POST /ask/multi-document}: answers
+across a chosen set of reports and detects comparison questions, returning
+per-document rows rather than one blended paragraph.
+
+\item[\code{CatalogService.answer\_catalog\_question}]
+\route{POST /ask/catalog}: answers over catalog \emph{metadata} rather than
+report text --- counts by analysis type, comparisons between vehicles,
+rankings. See Chapter~\ref{ch:catalog}.
+\end{description}
+
+\section{Generated answers}
+
+Generation is optional and constrained:
+
+\begin{itemize}
+\item \code{AnswerGenerationService} runs only when \env{LLM\_ANSWER\_ENABLED} is
+on and a provider is available, and it is given the retrieved sources, not the
+corpus.
+\item Generated text is sanitized, and citation coverage is measured against the
+supplied sources; a low-coverage answer lowers the reported confidence.
+\item If generation is unavailable or fails, the extractive answer that was
+already built is returned. No endpoint has an LLM on its critical path.
+\end{itemize}
+
+\section{Chat routing}
+
+\route{POST /chat} takes \code{assistant\_mode}.
+
+\begin{longtable}{L{0.14\textwidth} L{0.76\textwidth}}
+\toprule
+\textbf{Mode} & \textbf{Behaviour} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\code{auto} & Routes per message. Small talk, arithmetic and questions about the
+application itself go to the general chat model; anything that looks like a
+report question goes to retrieval. \\
+\code{general} & Always the local chat model. No retrieval, no sources. \\
+\code{report} & Always source-grounded retrieval, even for a message that does
+not look like a report question. \\
+\end{longtable}
+
+The routing heuristics in \file{app/main.py} are deterministic string checks ---
+folded text, small-talk phrases, a simple arithmetic detector, report-focused
+term lists. The model is never asked to decide whether to use retrieval.
+
+The response reports what happened: \code{retrieval\_used},
+\code{retrieval\_provider}, \code{retrieval\_version}, \code{confidence} and the
+trimmed \code{history} to send back with the next turn.

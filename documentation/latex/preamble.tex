@@ -1,0 +1,153 @@
+% ---------------------------------------------------------------------------
+% Preamble for the Big_Agent manual.
+%
+% Deliberately limited to packages present in a default TeX Live / MiKTeX
+% install, and to pdflatex: the manual has to build on an engineer's Windows
+% workstation without a package-manager expedition. Turkish characters are
+% handled by inputenc + T1 fontenc, so no XeLaTeX/LuaLaTeX is required.
+% ---------------------------------------------------------------------------
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+\usepackage[
+  a4paper,
+  top=2.6cm,
+  bottom=2.6cm,
+  left=3.0cm,
+  right=2.6cm,
+  headheight=14pt
+]{geometry}
+
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{listings}
+\usepackage{needspace}
+
+\usepackage[
+  colorlinks=true,
+  linkcolor=BigAgentAccent,
+  urlcolor=BigAgentAccent,
+  citecolor=BigAgentAccent,
+  pdftitle={Big\_Agent Documentation},
+  pdfauthor={Big\_Agent project},
+  pdfsubject={Local-first report assistant for vehicle test and analysis documents},
+  bookmarksnumbered=true
+]{hyperref}
+
+% --- colours ---------------------------------------------------------------
+\definecolor{BigAgentAccent}{HTML}{8F1421}
+\definecolor{BigAgentRule}{HTML}{AE848D}
+\definecolor{CodeBackground}{HTML}{F7F3F4}
+\definecolor{CodeComment}{HTML}{6E7781}
+\definecolor{CodeKeyword}{HTML}{8F1421}
+\definecolor{CodeString}{HTML}{1F6F43}
+\definecolor{NoteBackground}{HTML}{FDECEF}
+
+% --- headers and footers ---------------------------------------------------
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\nouppercase{\leftmark}}
+\fancyhead[R]{\small Big\_Agent \version}
+\fancyfoot[C]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\fancypagestyle{plain}{%
+  \fancyhf{}%
+  \fancyfoot[C]{\small\thepage}%
+  \renewcommand{\headrulewidth}{0pt}%
+}
+
+% --- listings --------------------------------------------------------------
+\lstdefinestyle{bigagent}{
+  backgroundcolor=\color{CodeBackground},
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{CodeKeyword}\bfseries,
+  commentstyle=\color{CodeComment}\itshape,
+  stringstyle=\color{CodeString},
+  breaklines=true,
+  breakatwhitespace=false,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  frame=leftline,
+  framerule=1.2pt,
+  rulecolor=\color{BigAgentRule},
+  framesep=8pt,
+  xleftmargin=10pt,
+  aboveskip=1.1em,
+  belowskip=1.1em,
+  upquote=true,
+  literate=%
+    {ı}{{\i}}1 {İ}{{\.I}}1
+    {ğ}{{\u{g}}}1 {Ğ}{{\u{G}}}1
+    {ş}{{\c{s}}}1 {Ş}{{\c{S}}}1
+    {ö}{{\"o}}1 {Ö}{{\"O}}1
+    {ü}{{\"u}}1 {Ü}{{\"U}}1
+    {ç}{{\c{c}}}1 {Ç}{{\c{C}}}1
+}
+\lstset{style=bigagent}
+
+% A plain, language-neutral transcript block: PowerShell sessions, tree
+% diagrams, console output.
+\lstnewenvironment{shellblock}[1][]
+  {\lstset{language=,#1}}
+  {}
+
+\lstnewenvironment{jsonblock}[1][]
+  {\lstset{language=,morestring=[b]",stringstyle=\color{CodeString},#1}}
+  {}
+
+\lstnewenvironment{pyblock}[1][]
+  {\lstset{language=Python,#1}}
+  {}
+
+% --- a light "note" box, built without tcolorbox ---------------------------
+\newenvironment{callout}[1]
+  {\par\needspace{3\baselineskip}%
+   \begin{list}{}{%
+     \setlength{\leftmargin}{1.2em}%
+     \setlength{\rightmargin}{0.6em}%
+     \setlength{\topsep}{0.9em}}%
+   \item[]\textcolor{BigAgentAccent}{\textbf{#1}}\par\vspace{0.3em}}
+  {\end{list}\par}
+
+% --- table helpers ---------------------------------------------------------
+% Ragged-right X columns: the reference tables carry prose, and justified
+% narrow columns produce rivers.
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\setlength{\LTpre}{1.0em}
+\setlength{\LTpost}{1.0em}
+\renewcommand{\arraystretch}{1.25}
+
+% --- lists -----------------------------------------------------------------
+\setlist[itemize]{topsep=0.4em,itemsep=0.25em,parsep=0pt}
+\setlist[enumerate]{topsep=0.4em,itemsep=0.25em,parsep=0pt}
+\setlist[description]{topsep=0.5em,itemsep=0.4em,parsep=0pt,style=nextline}
+
+% --- inline shorthands -----------------------------------------------------
+% Names like CATIA_SKILL_CMC_TIMEOUT_SECONDS are single unbreakable words, and
+% set solid in a narrow table column they run past the rule. Inside these
+% macros an underscore becomes a legal breakpoint, so a long identifier wraps
+% at a seam the reader already reads as one. \_ is a control sequence, so
+% giving it a new meaning inside the group takes effect even though the
+% argument was tokenized earlier.
+\newcommand{\ttbreakable}[1]{{\small\ttfamily\def\_{\textunderscore\allowbreak}#1}}
+\newcommand{\code}[1]{\ttbreakable{#1}}
+\newcommand{\env}[1]{\ttbreakable{#1}}
+\newcommand{\route}[1]{\ttbreakable{#1}}
+\newcommand{\file}[1]{\ttbreakable{#1}}
+
+\sloppy

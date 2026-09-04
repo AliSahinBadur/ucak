@@ -1,0 +1,284 @@
+\chapter{Configuration}
+\label{ch:configuration}
+
+All configuration lives in one place: the \code{Settings} class in
+\file{app/config.py}, a \code{pydantic-settings} model. Values are read from the
+process environment and from a \file{.env} file in the project root (UTF-8).
+\code{get\_settings()} is \code{lru\_cache}d, so settings are resolved
+\textbf{once per process} --- changing an environment variable after start has
+no effect until the application is restarted.
+
+Copy \file{.env.example} to \file{.env} and uncomment only what you need to
+override.
+
+\begin{shellblock}
+Copy-Item .env.example .env
+\end{shellblock}
+
+\section{Application and storage}
+
+\begin{longtable}{L{0.26\textwidth} L{0.16\textwidth} L{0.46\textwidth}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Meaning} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Meaning} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\env{APP\_VARIANT} & \code{big\_agent} & Product identity: \code{big\_agent},
+\code{raporhub} or \code{repocto}. An unknown value is normalized back to the
+default. \\
+\env{BIG\_AGENT\_DATA\_DIR} & \code{./data} & Root for everything the
+application writes. \code{\textasciitilde} is expanded and the directory is
+created at import time. \\
+\end{longtable}
+
+Two paths are derived from the data directory and cannot be set directly:
+
+\begin{description}
+\item[\code{DOCUMENTS\_DIR}] \code{<DATA\_DIR>/documents} --- the stored copy of
+every ingested file.
+\item[\code{DATABASE\_URL}] \code{sqlite:///<DATA\_DIR>/app.db}.
+\end{description}
+
+\section{Authentication}
+
+The built-in login is LAN-demo grade: a signed cookie over a static user list.
+It keeps two test teams apart on an internal network; it is not a security
+boundary against a determined attacker.
+
+\begin{longtable}{L{0.26\textwidth} L{0.20\textwidth} L{0.42\textwidth}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Meaning} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\env{APP\_AUTH\_ENABLED} & \code{false} & Turns the login middleware on. \\
+\env{APP\_USERS} & (empty) & \code{user:password} pairs separated by \code{;}. \\
+\env{APP\_SESSION\_SECRET} & (empty) & Key for the session cookie signature. Set
+a long random value. \\
+\env{APP\_AUTH\_COOKIE\_NAME} & \code{big\_agent\_session} & Cookie name. Give
+each instance its own so two instances on one host do not overwrite each
+other's sessions. \\
+\end{longtable}
+
+Sessions last eight hours. With authentication off every caller is the anonymous
+\code{local} user, which matters wherever state is partitioned per user ---
+notably the CATIA skill workspace.
+
+\section{Embeddings}
+
+\begin{longtable}{L{0.28\textwidth} L{0.16\textwidth} L{0.44\textwidth}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Meaning} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\env{EMBEDDING\_MODEL\_PATH} / \env{EMBEDDING\_MODEL\_NAME} & auto-detected &
+Model directory or Hugging Face id. Empty means: probe \file{models/} for a
+known Qwen3 embedding folder, else \code{Qwen/Qwen3-Embedding-0.6B}. \\
+\env{EMBEDDING\_BACKEND} / \env{EMBEDDING\_PROVIDER} & derived &
+\code{sentence-transformers} when the resolved model path exists on disk,
+otherwise \code{token-hash}. \\
+\env{EMBEDDING\_DEVICE} & \code{auto} & \code{auto} resolves to \code{cuda} when
+CUDA-enabled torch is importable, else \code{cpu}. Explicit values pass straight
+through. \\
+\env{EMBEDDING\_LOCAL\_FILES\_ONLY} & \code{false} & Forbid any download
+attempt; required for air-gapped installs. \\
+\env{EMBEDDING\_SHOW\_PROGRESS} & \code{false} & Show the
+sentence-transformers progress bar. \\
+\end{longtable}
+
+\section{Language models}
+
+There are three LLM roles and they cascade. \env{REPORT\_LLM\_*} falls back
+through \env{CHAT\_LLM\_*} to the base \env{LLM\_*} value, and finally to its
+own static default. The cascade uses pydantic's \code{AliasChoices}, which
+resolves an alias naming a sibling field against that field's fully resolved
+value --- not merely against raw environment-variable presence.
+
+\subsection*{Base role (and the fallback for the two below)}
+
+\begin{longtable}{L{0.28\textwidth} L{0.26\textwidth} L{0.34\textwidth}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Meaning} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\env{LLM\_ENABLED} & \code{false} & Master switch for the optional LLM layer. \\
+\env{LLM\_BACKEND} & \code{disabled} & \code{ollama} or \code{disabled}.
+Case-folded on read. \\
+\env{LLM\_MODEL\_NAME} / \env{LLM\_MODEL\_PATH} & (empty) & Model identifier for
+the backend. \\
+\env{LLM\_MAX\_CONTEXT\_TOKENS} & \code{4096} & Prompt budget hint. \\
+\env{LLM\_TIMEOUT\_SECONDS} & \code{30} & Request timeout in seconds. \\
+\env{LLM\_ANSWER\_ENABLED} & \code{false} & Lets
+\code{AnswerGenerationService} rewrite an extractive answer. \\
+\env{OLLAMA\_HOST} & \code{http://127.0.0.1:11434} & Ollama base URL; a trailing
+slash is stripped. \\
+\end{longtable}
+
+\subsection*{Chat role --- the general-purpose conversational model}
+
+\begin{longtable}{L{0.30\textwidth} L{0.20\textwidth} L{0.38\textwidth}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Meaning} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\env{CHAT\_LLM\_ENABLED} & \code{true} & Enables \code{genel} chat mode and
+auto-routed general answers. \\
+\env{CHAT\_LLM\_BACKEND} & \code{ollama} & Backend name. \\
+\env{CHAT\_LLM\_MODEL\_NAME} & \code{qwen2.5:3b} & Falls back to
+\env{LLM\_MODEL\_NAME}. \\
+\env{CHAT\_LLM\_TIMEOUT\_SECONDS} & \code{45} & Falls back to
+\env{LLM\_TIMEOUT\_SECONDS}. \\
+\end{longtable}
+
+\subsection*{Report role --- report drafting and the semantic review pass}
+
+\begin{longtable}{L{0.32\textwidth} L{0.18\textwidth} L{0.38\textwidth}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Meaning} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\env{REPORT\_LLM\_ENABLED} & \code{true} & Enables the generated report draft and
+semantic review findings. \\
+\env{REPORT\_LLM\_BACKEND} & \code{ollama} & Falls back to
+\env{CHAT\_LLM\_BACKEND}. \\
+\env{REPORT\_LLM\_MODEL\_NAME} & \code{qwen2.5:3b} & Falls back to
+\env{CHAT\_LLM\_MODEL\_NAME}, then \env{LLM\_MODEL\_NAME}. \\
+\env{REPORT\_LLM\_TIMEOUT\_SECONDS} & \code{45} & Falls back to
+\env{CHAT\_LLM\_TIMEOUT\_SECONDS}, then \env{LLM\_TIMEOUT\_SECONDS}. \\
+\end{longtable}
+
+\section{Reranker}
+
+\begin{longtable}{L{0.26\textwidth} L{0.20\textwidth} L{0.42\textwidth}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Meaning} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\env{RERANKER\_ENABLED} & \code{false} & Enables candidate reordering after
+retrieval. \\
+\env{RERANKER\_BACKEND} & \code{disabled} & \code{disabled} selects the no-op
+reranker; \code{score} reorders candidates by their combined retrieval score. \\
+\env{RERANKER\_MODEL\_PATH} & (empty) & Reserved for a cross-encoder backend. \\
+\end{longtable}
+
+\section{OCR}
+
+\begin{longtable}{L{0.30\textwidth} L{0.16\textwidth} L{0.42\textwidth}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Meaning} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\env{OCR\_ENABLED} & \code{true} & Selective OCR for PDF pages with too little
+selectable text. \\
+\env{OCR\_LANGUAGES} & \code{tur+eng} & Tesseract language spec. An empty value
+falls back to \code{tur+eng}. \\
+\env{OCR\_DPI} & \code{250} & Rasterization DPI, clamped to 150--400. \\
+\env{OCR\_MIN\_TEXT\_CHARACTERS} & \code{100} & Below this much native text a
+page becomes an OCR candidate. Clamped to a minimum of 20. \\
+\env{OCR\_TESSDATA\_DIR} / \env{TESSDATA\_PREFIX} & (empty) & Language data
+directory; auto-detected when empty. \\
+\env{OCR\_TESSERACT\_CMD} / \env{TESSERACT\_CMD} & (empty) & Path to the
+Tesseract executable when it is not on \env{PATH}. \\
+\end{longtable}
+
+\section{Catalog and library roots}
+
+\begin{longtable}{L{0.28\textwidth} L{0.14\textwidth} L{0.46\textwidth}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Meaning} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\env{CATALOG\_SEARCH\_ROOTS} & see below & Semicolon-separated roots scanned when
+matching a catalog row to a report file on a share. The shipped default lists
+the company report share followed by \code{V:/RAPORLAR} and \code{V:/}. \\
+\env{REPOCTO\_LIBRARY\_ROOTS} & (empty) & Extra roots allowed for
+\route{POST /library/scan}. The built-in defaults --- \code{DOCUMENTS\_DIR},
+\file{data/documents}, \code{V:/RAPORLAR} and the CAE digital-transformation
+folder --- are always included, and the endpoint refuses any path outside the
+resulting allow-list. \\
+\end{longtable}
+
+\section{CATIA mass/CG skill}
+
+\begin{longtable}{L{0.30\textwidth} L{0.20\textwidth} L{0.38\textwidth}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Meaning} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Meaning} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\env{CATIA\_SKILL\_ENABLED} & \code{true} in code, \code{false} in
+\file{.env.example} & Enable it on the workstation where CATIA actually
+runs. \\
+\env{CATIA\_SKILL\_SOURCE} & \code{fake} & \code{fake} drives a synthetic
+assembly (practice mode, no CATIA needed); \code{catia} opens a real COM
+connection. Any other value normalizes back to \code{fake}. \\
+\env{CATIA\_SKILL\_MODEL\_NAME} & \code{qwen3:4b-instruct} & Ollama model. Needs
+reliable tool calling. \\
+\env{CATIA\_SKILL\_WORKSPACE\_ROOT} & \code{<DATA\_DIR>/catia\_skill} & Where run
+history and exported \file{.cmd} files are written, one sub-folder per user. \\
+\env{CATIA\_SKILL\_LLM\_TIMEOUT\_SECONDS} & \code{600} & Per-turn model
+timeout. \\
+\env{CATIA\_SKILL\_CMC\_TIMEOUT\_SECONDS} & \code{900} & Per-measurement
+timeout. \\
+\env{CATIA\_SKILL\_MAX\_STEPS} & \code{12} & Tool-call budget per conversation
+turn. \\
+\env{CATIA\_SKILL\_MAX\_NUDGES} & \code{3} & How often the harness may correct a
+misbehaving model before giving up. \\
+\env{CATIA\_SKILL\_ALLOWED\_CLIENTS} & (empty) & Client allow-list, \code{;} or
+\code{,} separated. Empty means no restriction. \code{local} and
+\code{localhost} are one token covering every loopback spelling. \\
+\end{longtable}
+
+\section{Value parsing rules}
+
+A few conventions apply across the whole settings model, and knowing them avoids
+surprises.
+
+\begin{itemize}
+\item \textbf{Booleans are loose.} \code{1}, \code{true}, \code{yes} and
+\code{on} (any case) are true; everything else is false. A typo is not an error
+--- \code{ture} reads as \code{false}.
+\item \textbf{Backend names are case-folded} and stripped, so \code{Ollama} and
+\code{ollama} select the same backend.
+\item \textbf{List-shaped values} are semicolon-separated strings in the
+environment, exposed as tuples through a derived property
+(\code{CATALOG\_SEARCH\_ROOTS}, \code{REPOCTO\_LIBRARY\_ROOTS},
+\code{CATIA\_SKILL\_ALLOWED\_CLIENTS}). Blank entries are dropped.
+\item \textbf{Numeric guards clamp rather than reject.} An out-of-range
+\env{OCR\_DPI} is pulled into 150--400 instead of raising.
+\end{itemize}
+
+\section{Configuration in tests}
+
+\file{tests/conftest.py} sets the environment \textbf{at import time}, before
+anything under \file{app} is imported: a throwaway \env{BIG\_AGENT\_DATA\_DIR},
+\env{EMBEDDING\_BACKEND=token-hash}, and every LLM disabled. This ordering is
+load-bearing --- \file{app/db/session.py} builds the engine from
+\code{Settings} when it is imported and \code{get\_settings()} is cached, so a
+fixture body cannot redirect the database after the fact. See
+Chapter~\ref{ch:testing}.

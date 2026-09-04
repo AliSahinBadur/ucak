@@ -1,0 +1,140 @@
+\chapter{Catalog, library and graph}
+\label{ch:catalog}
+
+Most organizations already have a report register --- an Excel sheet listing
+every report, its vehicle, its discipline and where the file lives on a share.
+The catalog features connect that register to the ingested corpus, so a question
+can be answered about \emph{reports that exist} and not only about reports that
+happen to have been ingested.
+
+\section{The catalog}
+
+\subsection{Import}
+
+\route{POST /catalog/import} accepts \file{.xlsx} (via \code{openpyxl}) or a
+delimited text file. Delimiter detection for text is automatic: tab, semicolon
+or comma, whichever the first 2\,KB suggests.
+
+A row must have at least six columns, and the first four must be non-empty.
+
+\begin{longtable}{L{0.10\textwidth} L{0.22\textwidth} L{0.56\textwidth}}
+\toprule
+\textbf{Column} & \textbf{Field} & \textbf{Note} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+1 & \code{report\_code} & Required. Also inspected as a possible file path. \\
+2 & \code{vehicle\_name} & Required. \\
+3 & \code{report\_title} & Required. \\
+4 & \code{discipline} & Required. Upper-cased on import. \\
+5 & \code{report\_date} & Optional. Dates are stored as ISO strings. \\
+6 & \code{authors} & Optional. \\
+\end{longtable}
+
+Header rows are detected by their wording and skipped. A cell hyperlink is the
+preferred source of the file path --- an Excel register usually links the report
+rather than spelling the path out; \code{file:} URLs are decoded,
+\code{http(s)} links are ignored, and separators are normalized to Windows form.
+
+Each row is hashed. Re-importing the same sheet creates nothing new; if a row now
+carries a source path it did not have before, only that path is updated. The
+response reports \code{rows\_seen}, \code{created\_count},
+\code{duplicate\_count}, \code{updated\_count} and the first twenty row-level
+errors.
+
+\subsection{Searching the catalog}
+
+\route{GET /catalog/search} filters by free text, vehicle and discipline.
+\route{GET /catalog/table} returns the register as a table, joined with what is
+known about each row's ingestion state --- whether a document is linked, how many
+chunks it has, and whether those chunks are embedded.
+
+\subsection{Catalog questions}
+
+\route{POST /ask/catalog} answers questions about the \emph{register itself}
+rather than report content. \code{CatalogService} profiles the question (vehicles
+mentioned, discipline, year, report code, intent) and then answers one of:
+
+\begin{itemize}
+\item an \textbf{analysis-type summary} --- what kinds of analysis exist for a
+vehicle;
+\item a \textbf{vehicle comparison} --- two or more vehicles side by side, with a
+declared winner where the question asks for one; or
+\item a \textbf{ranking} --- vehicles ordered by report count within a discipline
+or year.
+\end{itemize}
+
+Everything is computed from catalog rows with SQL and deterministic profiling; no
+model is involved.
+
+\subsection{Linking catalog rows to files}
+
+The link between a register row and a real file is the interesting part, because
+the file lives on a share whose layout nobody controls.
+
+\code{CatalogIngestService} searches the roots in \env{CATALOG\_SEARCH\_ROOTS}
+with hard bounds --- maximum directory visits, maximum depth, maximum files per
+directory, and a wall-clock deadline on the whole share scan. A disconnected
+network drive slows a request down; it cannot pin a worker indefinitely.
+
+\begin{longtable}{L{0.44\textwidth} L{0.46\textwidth}}
+\toprule
+\textbf{Endpoint} & \textbf{Purpose} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Endpoint} & \textbf{Purpose} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\route{GET /catalog/\{id\}/file-candidates} & The files that might be this row's
+report, scored. \\
+\route{GET /catalog/\{id\}/file-preview} & Preview one specific candidate. \\
+\route{GET /catalog/\{id\}/best-file-preview} & Preview the best candidate. \\
+\route{GET /catalog/\{id\}/best-file-preview-info} & Metadata about that
+candidate without fetching it. \\
+\route{POST /catalog/\{id\}/open-best-file} & Open it in the operating system's
+default application (server-side, Windows). \\
+\route{POST /catalog/ingest-candidate} & Ingest one chosen candidate and link it
+to the row. \\
+\route{POST /catalog/ingest-sample} & Background job: ingest a few reports per
+discipline. \code{dry\_run} defaults to \code{true}, so the safe call is the
+default one. \\
+\route{POST /catalog/ingest-selected} & Background job: ingest the listed catalog
+rows. \\
+\route{POST /catalog/reconcile-documents} & Re-check existing links against the
+documents in the database; supports \code{dry\_run}. \\
+\end{longtable}
+
+Links are stored in \code{catalog\_document\_links}, at most one document per
+catalog entry, with the \code{match\_method} that produced the link.
+
+\section{The library browser}
+
+\route{POST /library/scan} returns a bounded, read-only tree of the supported
+report files under a path. It exists for the \code{repocto} variant's file
+browser, and it is written defensively:
+
+\begin{itemize}
+\item the path must sit inside an allowed root (\env{REPOCTO\_LIBRARY\_ROOTS}
+plus the built-in defaults) --- anything else is refused;
+\item the walk is capped at 800 documents, 800 directories, depth 10, and 2000
+entries per directory; and
+\item only \file{.pdf}, \file{.docx} and \file{.pptx} appear in the result.
+\end{itemize}
+
+It never reads file contents, and it never ingests anything.
+
+\section{The graph overview}
+
+\route{GET /graph/overview} builds a small graph of the corpus from catalog
+entries: nodes for vehicles, disciplines, years and authors, with edges to the
+reports that connect them, plus tag counts. The result is bounded (\code{limit}
+defaults to 160, clamped to 20--300) because the view is meant to be readable,
+not exhaustive.
+
+The \code{ANALYSIS TYPE} placeholder discipline --- a header artefact that
+survives some registers --- is filtered out here, as it is everywhere else in the
+catalog code.

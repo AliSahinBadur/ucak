@@ -1,0 +1,132 @@
+\chapter{Overview}
+\label{ch:overview}
+
+\section{What the system does}
+
+Big\_Agent turns a folder of engineering reports into something an engineer can
+question. The pipeline is deliberately ordinary: parse, clean, chunk, embed,
+retrieve, and answer only from what was retrieved. The deterministic half of
+the system is the product; the language model is an optional layer on top of
+it, and the application stays useful when that layer is switched off.
+
+\section{Capabilities}
+
+\begin{longtable}{L{0.26\textwidth} L{0.66\textwidth}}
+\toprule
+\textbf{Area} & \textbf{What is implemented} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Area} & \textbf{What is implemented} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+Ingestion & Single-file and folder ingestion of PDF, DOCX and PPTX, duplicate
+detection by file hash, selective OCR for scanned PDF pages. \\
+Processing & Whitespace and Unicode normalization that preserves Turkish
+characters, repeated header/footer removal, overlapping chunking. \\
+Retrieval & Keyword search, semantic search over stored embeddings, hybrid
+scoring, and an optional Haystack pipeline as a second retrieval
+implementation. \\
+Question answering & Source-grounded answers over one report, several reports,
+or the report catalog; every answer carries the passages it was built from. \\
+Catalog & Excel/catalog import, catalog-to-file matching over network shares,
+preview and open workflows, and a graph overview of the corpus. \\
+Review & Deterministic report-review rules with discipline profiles, human
+confirm/dismiss decisions, per-rule precision, PDF review records, and revision
+comparison. \\
+Comparison & Pairwise and multi-report comparison with highlighted PDF
+evidence. \\
+Drafting & A report draft builder that writes a cover block and a body grounded
+in retrieved passages, exportable as PDF. \\
+CATIA skill & A mass/centre-of-gravity measurement skill driven from the chat
+UI, backed by the \file{skill/catia-mass-cg.skill} package. \\
+\end{longtable}
+
+\section{Product variants}
+
+One codebase serves three product identities, selected with \env{APP\_VARIANT}
+(see \file{app/branding.py}).
+
+\begin{longtable}{L{0.16\textwidth} L{0.18\textwidth} L{0.22\textwidth} L{0.32\textwidth}}
+\toprule
+\textbf{Variant} & \textbf{Display name} & \textbf{Data dir env} & \textbf{Notes} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\code{big\_agent} & SmartCAE AI & \env{BIG\_AGENT\_DATA\_DIR} & Default. The
+only variant with a fully wired application workspace. \\
+\code{raporhub} & RaporHub & \env{RAPORHUB\_DATA\_DIR} & Landing experience
+served from \file{app/ui/raporhub\_landing}. \\
+\code{repocto} & RepOcto & \env{REPOCTO\_DATA\_DIR} & Landing experience plus
+the library browser (\route{POST /library/scan}). \\
+\end{longtable}
+
+The variant changes the API title, the browser icon, the palette and which
+front end \route{/} serves. It does not change the retrieval or review engines.
+
+\section{User interfaces}
+
+\begin{description}
+\item[\route{/}] The SmartCAE v2 workspace (\file{app/ui/smartcae\_v2}) for the
+\code{big\_agent} variant, or the variant landing page otherwise.
+
+\item[\route{/app}, \route{/legacy}] The earlier single-page interface in
+\file{app/static}. Still served, still functional, and useful when debugging an
+endpoint without the newer front end.
+
+\item[\route{/docs}, \route{/redoc}] FastAPI's generated OpenAPI documentation
+for the live instance. This manual describes intent and behaviour; \route{/docs}
+is the authority on the exact schema of the version you are running.
+\end{description}
+
+\section{Design rules the project holds to}
+
+These are worth stating up front, because most of the code makes more sense once
+they are known.
+
+\begin{enumerate}
+\item \textbf{The deterministic retrieval system is the main system.} LLM
+features are layered on top and must fail soft: an unavailable model degrades an
+answer, it never breaks an endpoint.
+
+\item \textbf{Defaults are offline.} \env{LLM\_ENABLED=false},
+\env{LLM\_BACKEND=disabled}, \env{RERANKER\_ENABLED=false}. The application must
+start with no model present at all.
+
+\item \textbf{Embedding models and generation models are separate roles.} A
+\code{Qwen3-Embedding-*} model produces retrieval vectors and nothing else; it
+is never loaded with a causal-LM head.
+
+\item \textbf{Turkish text is first-class.} Normalization folds Turkish
+characters for matching but never destroys them in stored text.
+
+\item \textbf{Parser, processing, database and service responsibilities stay
+separate}, and interfaces stay modular so the embedding provider or vector
+backend can be replaced.
+\end{enumerate}
+
+\section{Local data policy}
+
+The following are intentionally not committed to the repository:
+
+\begin{itemize}
+\item \file{data/} --- the SQLite database, stored documents, job artefacts
+\item \file{models/} --- local embedding model weights
+\item report files: \file{.pdf}, \file{.docx}, \file{.pptx}, \file{.xlsx},
+\file{.csv}
+\item \file{.env} files
+\end{itemize}
+
+This keeps company documents, local databases and model weights out of version
+control. Synthetic corpora produced by
+\file{scripts/generate\_sample\_reports.py} are gitignored too; see
+Chapter~\ref{ch:testing}.
+
+\section{Version}
+
+The running version is \code{APP\_VERSION} in \file{app/version.py}, returned by
+\route{GET /health} and \route{GET /system/model-status} and used as the FastAPI
+application version. This manual is written against \version.

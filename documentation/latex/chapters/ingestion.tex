@@ -1,0 +1,230 @@
+\chapter{The ingestion pipeline}
+\label{ch:ingestion}
+
+Ingestion is the part of the system everything else depends on, so it is
+deliberately the least clever part. One call to \code{IngestService.ingest()}
+takes a file and leaves behind a document row, its pages, its chunks and their
+embeddings --- or raises, having stored nothing but the file copy.
+
+\begin{shellblock}
+file --> hash --> duplicate?  --yes--> return {"status": "duplicate"}
+                     |no
+                     v
+                  store copy in data/documents/
+                     |
+                     v
+                  parse  (pdf | docx | pptx)  -> list[ParsedSection]
+                     |
+                     v
+                  selective OCR (PDF only, sparse pages)
+                     |
+                     v
+                  normalize -> list[CleanSection]   (drops empty pages)
+                     |
+                     v
+                  chunk     -> list[ChunkPayload]   (650 words / 75 overlap)
+                     |
+                     v
+                  persist: Document + DocumentPage* + DocumentChunk*
+                     |
+                     v
+                  embed each chunk -> ChunkEmbedding (float32 blob)
+                     |
+                     v
+                  commit + invalidate the vector index
+\end{shellblock}
+
+\section{Supported formats}
+
+\file{.pdf}, \file{.docx} and \file{.pptx}. Anything else raises
+\code{ValueError} from the service and becomes \code{400 Unsupported file type}
+at the HTTP layer.
+
+\section{Deduplication}
+
+The file is hashed (SHA-256, streamed) before anything else. If a document with
+that hash exists, ingestion stops and returns \code{status: "duplicate"} with
+the existing document id --- no second copy, no re-parse. \code{file\_hash}
+carries a unique index, so the invariant is enforced by the database and not
+only by the check.
+
+This is exact-bytes deduplication. Two exports of the same report with different
+metadata are different files here; near-duplicates are a separate concern
+handled in Section~\ref{sec:duplicate-detection}.
+
+\section{Storage}
+
+The accepted file is copied into \code{<DATA\_DIR>/documents} under
+\code{<sanitized stem>\_\_<first 8 hex of the hash><extension>} --- readable
+enough to recognize in a file listing, unique enough not to collide --- and
+\code{documents.file\_path} records where it went.
+\code{resolve\_document\_file\_path()} re-resolves that path at read time, so an
+installation that was moved to another drive still finds its files: it tries the
+stored path, then the path relative to the current documents directory, then the
+bare file name inside it.
+
+\section{Parsers}
+
+Every parser returns the same structure --- \code{list[ParsedSection]} with a
+page number, the raw text, an optional section title, and the extraction
+provenance fields. Weak documents produce empty-safe output rather than
+exceptions.
+
+\begin{description}
+\item[PDF (\file{app/parsers/pdf\_parser.py})] \code{pypdf} extracts text page by
+page. A section title is guessed from the first line that is either all-caps or
+ends with a colon. After extraction the page list is handed to the selective OCR
+service, and any page that came back from OCR gets its title re-detected from
+the new text.
+
+\item[DOCX (\file{app/parsers/docx\_parser.py})] \code{python-docx} walks
+paragraphs. A paragraph whose style name starts with \code{Heading} closes the
+current section and opens a new one, so ``pages'' here are logical sections
+numbered from 1. Table rows are appended as pipe-separated lines, which keeps
+tabular values searchable without pretending to preserve layout.
+
+\item[PPTX (\file{app/parsers/pptx\_parser.py})] Slides are read straight from
+the OOXML inside the \file{.pptx} archive with the standard library --- no
+PowerPoint and no extra dependency. Slide order comes from the numeric part of
+\file{ppt/slides/slideN.xml}; each slide is one section, and its first
+meaningful line becomes the section title.
+\end{description}
+
+\section{Selective OCR}
+
+\code{SelectiveOCRService} exists to rescue scanned pages without paying for OCR
+on documents that do not need it. It applies only to PDFs, and only to pages
+whose native text scores below \env{OCR\_MIN\_TEXT\_CHARACTERS}.
+
+\begin{itemize}
+\item The page is rasterized with \code{pymupdf} at \env{OCR\_DPI} and passed to
+Tesseract with \env{OCR\_LANGUAGES}.
+\item Native and OCR text are merged rather than swapped, so a page that had a
+little real text does not lose it.
+\item The section records \code{extraction\_method="ocr"} and
+\code{ocr\_attempted=True}, which is what makes the result auditable afterwards.
+\item If Tesseract, its language data or \code{pymupdf} is missing, the service
+reports itself unavailable and ingestion continues with native text only.
+\end{itemize}
+
+\section{Normalization}
+
+\code{normalize\_sections()} (\file{app/processing/text\_cleaner.py}) does three
+things.
+
+\begin{enumerate}
+\item \textbf{Clean each page.} NFC normalization, \code{\textbackslash r\textbackslash n}
+folding, per-line whitespace collapse, and at most one blank line between
+blocks. Turkish characters are preserved exactly --- folding for \emph{matching}
+happens later and separately, in \file{app/text/normalize.py}.
+
+\item \textbf{Drop repeated page artefacts.} A line 3--120 characters long that
+appears on at least half the pages (minimum two) is treated as a running header
+or footer and removed from every page.
+
+\item \textbf{Drop pages that cleaned to nothing.} Their page numbers survive
+only in the extraction quality rollup, as \code{empty\_pages}.
+\end{enumerate}
+
+The cleaning is intentionally conservative. Aggressive cleaning removes wording
+that retrieval needs; both the raw and the cleaned text are stored, so nothing
+is lost either way.
+
+\section{Chunking}
+
+\code{chunk\_sections()} walks the cleaned sections and emits overlapping word
+blocks.
+
+\begin{longtable}{L{0.24\textwidth} L{0.14\textwidth} L{0.50\textwidth}}
+\toprule
+\textbf{Parameter} & \textbf{Default} & \textbf{Note} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\code{target\_words} & \code{650} & Within the 500--800 range the project settled
+on. \\
+\code{overlap\_words} & \code{75} & Must be smaller than \code{target\_words};
+otherwise \code{ValueError}. \\
+\end{longtable}
+
+Each chunk carries \code{chunk\_order} (global, 1-based, in document order), the
+page range it came from, and the section title of its source section. Chunks are
+the searchable unit: keyword search, semantic search, review rules and
+comparison all read chunks, never raw pages.
+
+\section{Extraction quality}
+
+\file{app/processing/extraction\_metrics.py} computes per-page metrics and rolls
+them up into \code{documents.extraction\_quality} (a JSON column). This is the
+field to read when an answer looks thin --- it usually means the document
+arrived as images.
+
+\begin{longtable}{L{0.32\textwidth} L{0.58\textwidth}}
+\toprule
+\textbf{Key} & \textbf{Meaning} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\code{page\_count} & Pages the parser produced. \\
+\code{stored\_page\_count} & Pages that survived normalization and have a
+\code{document\_pages} row. \\
+\code{ocr\_page\_count} / \code{ocr\_attempted\_page\_count} & Pages whose text
+came from OCR, and pages OCR was tried on. \\
+\code{sparse\_page\_count} & Pages with text below the sparse threshold. \\
+\code{no\_text\_page\_count} / \code{no\_text\_pages} & Unreadable pages,
+including the ones normalization dropped. \\
+\code{empty\_pages} & Page numbers dropped at normalization. They have no page
+row, so this is the only record they exist at all. \\
+\code{total\_chars} / \code{mean\_chars\_per\_page} & Size of what was
+extracted. \\
+\end{longtable}
+
+The value is \code{NULL} for documents ingested before the column existed; treat
+that as \emph{unknown}, not as \emph{perfect}.
+
+\section{Embeddings}
+
+Each chunk is embedded with the active provider and stored as packed
+little-endian \code{float32} bytes in \code{chunk\_embeddings}. A vector with no
+signal --- the zero vector a \code{token-hash} provider returns for text with no
+usable tokens --- is skipped rather than stored, so \code{embeddings\_created}
+can be lower than the chunk count.
+
+After the commit, \code{invalidate\_vector\_index()} drops the cached matrix so
+the next search sees the new document.
+
+\section{Ingestion endpoints}
+
+\begin{description}
+\item[\route{POST /ingest}] One file, one synchronous response. Returns document
+id, status, page and chunk counts, \code{ocr\_pages}, the extraction quality
+rollup, the number of embeddings created and the provider name.
+
+\item[\route{POST /ingest/batch}] Many files. Uploads are staged to temporary
+files first --- an \code{UploadFile} is gone once the request ends --- and the
+work is handed to a background job, which returns \code{202} with a
+\code{job\_id}. Each file gets its own database session, so one failure does not
+poison the rest of the batch; failures land in the per-item result with
+\code{status: "error"} and a message.
+\end{description}
+
+The catalog ingestion endpoints (Chapter~\ref{ch:catalog}) reuse the same
+service to pull files off network shares.
+
+\section{Result payload}
+
+\begin{jsonblock}
+{
+  "document_id": 42,
+  "status": "ingested",
+  "file_name": "2025-BIG-E-NVH-01.pdf",
+  "pages": 18,
+  "ocr_pages": 2,
+  "extraction_quality": {"...": "..."},
+  "chunks": 57,
+  "embeddings_created": 57,
+  "embedding_provider": "token-hash-v1"
+}
+\end{jsonblock}

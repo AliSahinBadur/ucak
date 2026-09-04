@@ -1,0 +1,193 @@
+\chapter{Operations}
+\label{ch:operations}
+
+\section{Running the application}
+
+\begin{shellblock}
+cd path\to\ucak
+& '.venv\Scripts\python.exe' -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+\end{shellblock}
+
+Bound to \code{127.0.0.1} the application is reachable only from the machine it
+runs on. That is the right default; everything below about the LAN is an
+explicit decision to widen it.
+
+\section{Serving a team on the local network}
+
+\begin{shellblock}
+$env:APP_AUTH_ENABLED   = "true"
+$env:APP_USERS          = "analiz:Sifre1;test:Sifre2"
+$env:APP_SESSION_SECRET = "change-this-to-a-long-random-local-secret"
+& '.venv\Scripts\python.exe' -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+\end{shellblock}
+
+Share the IPv4 address from \code{ipconfig}:
+
+\begin{shellblock}
+http://YOUR-IPV4:8000/
+\end{shellblock}
+
+Remember to allow the port in Windows Firewall. The login is LAN-demo grade ---
+a signed cookie over a static user list --- so treat it as a way to keep teams
+apart, not as protection for confidential data on an untrusted network.
+
+\section{Isolated instances}
+
+For two teams that should not see each other's corpus, run two processes with
+separate data folders, ports and cookie names.
+
+\begin{shellblock}
+# Analiz
+$env:BIG_AGENT_DATA_DIR   = ".\data_analiz"
+$env:APP_AUTH_ENABLED     = "true"
+$env:APP_USERS            = "analiz:Sifre1"
+$env:APP_SESSION_SECRET   = "change-this-to-a-long-random-local-secret"
+$env:APP_AUTH_COOKIE_NAME = "big_agent_analiz"
+& '.venv\Scripts\python.exe' -m uvicorn app.main:app --host 0.0.0.0 --port 8001
+\end{shellblock}
+
+\begin{shellblock}
+# Test
+$env:BIG_AGENT_DATA_DIR   = ".\data_test"
+$env:APP_AUTH_ENABLED     = "true"
+$env:APP_USERS            = "test:Sifre2"
+$env:APP_SESSION_SECRET   = "change-this-to-another-long-random-local-secret"
+$env:APP_AUTH_COOKIE_NAME = "big_agent_test"
+& '.venv\Scripts\python.exe' -m uvicorn app.main:app --host 0.0.0.0 --port 8002
+\end{shellblock}
+
+Distinct cookie names matter: two instances on the same host share a cookie
+namespace, and without distinct names logging into one logs you out of the
+other.
+
+\begin{callout}{Warning}
+\env{BIG\_AGENT\_DATA\_DIR} stays set for the whole PowerShell session. Every
+script run in that window afterwards --- \file{run\_qa\_checks.py},
+\file{run\_report\_review\_checks.py} --- reads the same folder. The check
+scripts print the data directory and document count on their first line for
+exactly this reason. To go back:
+\code{Remove-Item Env:\textbackslash BIG\_AGENT\_DATA\_DIR}, or open a new
+window.
+\end{callout}
+
+\section{Monitoring}
+
+\begin{shellblock}
+Invoke-RestMethod http://127.0.0.1:8000/health
+Invoke-RestMethod http://127.0.0.1:8000/system/model-status
+\end{shellblock}
+
+\route{/health} is exempt from authentication and does no database work, so it is
+safe to poll. \route{/system/model-status} reports which embedding provider and
+device are live and whether Ollama answered --- the first thing to check when
+answers get worse for no obvious reason.
+
+Application logs go to standard output at \code{INFO} via
+\code{logging.basicConfig}. Ingest and parse failures are logged with a stack
+trace before the exception propagates.
+
+\section{Rebuilding embeddings}
+\label{sec:rebuild-embeddings}
+
+Do this after changing the embedding model or provider, and after upgrading a
+database whose vectors are still in the old JSON text format.
+
+\begin{shellblock}
+$job = Invoke-RestMethod -Method Post http://127.0.0.1:8000/embeddings/rebuild
+Invoke-RestMethod "http://127.0.0.1:8000/jobs/$($job.job_id)"
+\end{shellblock}
+
+The job re-embeds every chunk with the active provider, reports progress every
+20 chunks, and invalidates the vector index when it finishes. Search keeps
+working throughout --- WAL means readers are not blocked --- but results reflect
+a partially rebuilt index until it completes.
+
+\section{Storage integrity}
+
+\begin{shellblock}
+Invoke-RestMethod http://127.0.0.1:8000/storage/check
+\end{shellblock}
+
+Lists documents whose stored file can no longer be resolved. Because
+\code{resolve\_document\_file\_path()} already tries the stored path, the path
+relative to the current documents directory, and the bare file name inside it,
+anything reported here is genuinely missing rather than merely moved.
+
+\section{Backup and restore}
+
+Everything that matters is under \code{<DATA\_DIR>}.
+
+\begin{shellblock}
+# stop the application first -- WAL files are part of the database
+Copy-Item -Recurse .\data .\data-backup-2026-01-31
+\end{shellblock}
+
+To restore, put the folder back and start the application; \code{init\_db()}
+adds any columns a newer version expects. To start clean, delete the data folder
+--- the next start recreates the database and the documents directory.
+
+Note that \file{data/app.db-wal} and \file{data/app.db-shm} are part of the
+database while the process runs. Copying \file{app.db} alone from a running
+instance can produce a file missing the most recent writes.
+
+\section{Upgrading}
+
+\begin{enumerate}
+\item Stop the application.
+\item Back up \file{data/}.
+\item Update the code and re-run \code{pip install -r requirements.txt}.
+\item Start it. \code{init\_db()} creates missing tables and adds missing
+columns.
+\item Check \route{GET /health} reports the new version, and run the test suite.
+\item If the embedding provider changed, run \route{POST /embeddings/rebuild}.
+\end{enumerate}
+
+There is no downgrade path: an older build will not know about columns a newer
+one added. Restore the backup instead.
+
+\section{Performance notes}
+
+\begin{itemize}
+\item \textbf{Jobs are serialized.} One background worker, by design --- SQLite
+allows one writer, and a queue of heavy jobs is better than a thundering herd. A
+batch ingest and an embedding rebuild will not overlap.
+\item \textbf{The vector index is a process-wide cache.} The first semantic query
+after an ingest pays to rebuild the matrix; subsequent queries do not.
+\item \textbf{Embeddings are \code{float32}.} Half the memory and materially
+faster matrix products compared with the old JSON text vectors.
+\item \textbf{Share scans are bounded} by visit counts, depth and a wall-clock
+deadline, so a disconnected network drive degrades a request instead of hanging
+it.
+\item \textbf{The sentence-transformers model dominates startup cost} when one is
+configured. With \code{token-hash} the application starts instantly, which is
+why the tests use it.
+\end{itemize}
+
+\section{Security posture}
+
+What the application does protect:
+
+\begin{itemize}
+\item the library browser refuses any path outside its allowed roots;
+\item the CATIA skill can be restricted to an explicit client list, serializes
+measurements, and gates every export behind a human approval that the model
+cannot fake;
+\item review-preview and catalog-preview endpoints validate their path arguments
+before touching the filesystem.
+\end{itemize}
+
+What it does not:
+
+\begin{itemize}
+\item the login is a static user list with a signed cookie, not an identity
+provider, and it does not distinguish roles;
+\item there is no transport encryption --- put a reverse proxy in front if that
+matters; and
+\item \route{POST /documents/\{id\}/open-folder} and
+\route{POST /catalog/\{id\}/open-best-file} act on the \textbf{server's}
+desktop. They are convenience features for a single-workstation install, and
+they behave oddly on a shared server.
+\end{itemize}
+
+Treat the whole application as trusted-network software. That is what it was
+built to be.

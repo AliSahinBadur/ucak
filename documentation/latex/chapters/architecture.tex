@@ -1,0 +1,241 @@
+\chapter{Architecture}
+\label{ch:architecture}
+
+\section{Shape of the system}
+
+Big\_Agent is a single FastAPI process over a single SQLite file. There is no
+message broker, no worker fleet and no external index: background work runs in
+an in-process thread pool, and the vector index is a NumPy matrix rebuilt from
+the database when it goes stale. That is a deliberate constraint --- the
+application has to be installable on one engineer's workstation by copying a
+folder.
+
+\begin{shellblock}
+HTTP client (SmartCAE v2 UI, legacy UI, scripts, other machines on the LAN)
+     |
+     v
++---------------------------------------------------------------+
+| app/main.py -- FastAPI: routes, auth middleware, OpenAPI       |
++---------------------------------------------------------------+
+     |                   |                      |
+     v                   v                      v
++-----------+    +----------------+    +----------------------+
+| parsers   |    | services       |    | job_manager          |
+| pdf/docx/ |    | ingest, search |    | background jobs      |
+| pptx      |    | qa, review ... |    | (thread pool)        |
++-----------+    +----------------+    +----------------------+
+     |                   |                      |
+     v                   v                      |
++-----------+    +----------------+             |
+| processing|    | vector_index   |             |
+| clean,    |    | NumPy matrix   |             |
+| chunk     |    | + cache stamp  |             |
++-----------+    +----------------+             |
+     |                   |                      |
+     +---------+---------+----------------------+
+               v
+     +--------------------------+
+     | db: SQLAlchemy + SQLite  |
+     | data/app.db (WAL)        |
+     +--------------------------+
+               |
+               v
+     data/documents/  -- stored report files, named by hash
+\end{shellblock}
+
+\section{Package map}
+
+\begin{longtable}{L{0.28\textwidth} L{0.62\textwidth}}
+\toprule
+\textbf{Module} & \textbf{Responsibility} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Module} & \textbf{Responsibility} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\file{app/main.py} & Every HTTP route, the auth middleware, the OpenAPI
+customization and the chat-routing heuristics. The only module that knows about
+requests. \\
+\file{app/config.py} & \code{Settings} --- the single source of configuration.
+See Chapter~\ref{ch:configuration}. \\
+\file{app/branding.py} & \code{AppBrand} records: display name, initials,
+palette, cookie and data directory defaults per product variant. \\
+\file{app/version.py} & \code{APP\_VERSION}, reported by \route{/health} and used
+as the FastAPI application version. \\
+\file{app/schemas.py} & The internal pipeline dataclasses:
+\code{ParsedSection}, \code{CleanSection}, \code{ChunkPayload}. Not HTTP
+models. \\
+\file{app/api\_models.py} & The pydantic request and response models for the
+HTTP layer. \\
+\file{app/db/} & \file{models.py} (ORM tables) and \file{session.py} (engine,
+pragmas, additive schema evolution, the \code{get\_session} dependency). \\
+\file{app/parsers/} & One function per input format, all returning
+\code{list[ParsedSection]}. \\
+\file{app/processing/} & \code{text\_cleaner} (normalize, drop repeated
+headers/footers), \code{chunker} (overlapping word blocks),
+\code{extraction\_metrics} (per-page quality rollup). \\
+\file{app/text/normalize.py} & Turkish-aware folding and tokenization shared by
+search, catalog matching and review rules. \\
+\file{app/rules/} & \file{profile\_catalog.py} plus one JSON file per discipline
+under \file{profiles/}. Discipline rules are data, not code. \\
+\file{app/services/} & Everything else: ingest, search, retrieval, QA, catalog,
+review, comparison, drafting, duplicates, graph, jobs, the CATIA bridge. \\
+\file{app/ui/}, \file{app/static/} & Front ends: SmartCAE v2 workspace, the two
+landing pages, and the legacy single-page UI. \\
+\end{longtable}
+
+\section{Request lifecycle}
+
+\begin{enumerate}
+\item \textbf{Lifespan.} \code{init\_db()} runs once at startup:
+\code{create\_all} plus the additive column check described below.
+
+\item \textbf{Auth middleware.} When \env{APP\_AUTH\_ENABLED} is on, every
+request except \route{/health}, \route{/login}, \route{/logout} and
+\route{/favicon.ico} --- plus the landing page for the \code{raporhub} and
+\code{repocto} variants --- must carry a valid signed session cookie. An HTML
+\code{GET} without one is redirected to \route{/login}; anything else gets
+\code{401}.
+
+\item \textbf{Route.} Routes are ordinary \code{def} functions, so Starlette runs
+them in its thread pool. That is why the SQLite engine is built with
+\code{check\_same\_thread=False} and a 30-second busy timeout.
+
+\item \textbf{Session dependency.} \code{get\_session} yields a
+\code{SessionLocal} and closes it in a \code{finally} block. Services take the
+session as a constructor argument --- they never open their own, except inside
+background jobs.
+
+\item \textbf{Response model.} Almost every route declares a response model from
+\file{app/api\_models.py}, which is what makes the generated OpenAPI schema
+worth reading.
+\end{enumerate}
+
+\section{Database engine}
+
+SQLite is used with settings chosen for a multi-threaded single process.
+
+\begin{longtable}{L{0.32\textwidth} L{0.58\textwidth}}
+\toprule
+\textbf{Setting} & \textbf{Why} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\code{check\_same\_thread=False} & Routes run in a thread pool, so connections
+cross threads. \\
+\code{timeout=30} / \code{PRAGMA busy\_timeout=30000} & A writer waits out a
+concurrent write instead of failing with ``database is locked'' at the 5-second
+default. \\
+\code{PRAGMA journal\_mode=WAL} & Readers keep working during writes ---
+important while a batch ingest job is running. \\
+\code{PRAGMA synchronous=NORMAL} & Throughput, accepting the usual WAL
+durability trade-off. \\
+\code{autoflush=False} & Services decide when to flush; ingest depends on
+explicit flush points to obtain generated ids. \\
+\end{longtable}
+
+\section{Schema evolution without a migration tool}
+\label{sec:schema-evolution}
+
+The project carries no migration framework, and \code{create\_all} only creates
+missing \emph{tables}, never missing columns. A workstation whose
+\file{data/app.db} predates a column would fail every query that selects it.
+
+\file{app/db/session.py} therefore keeps an explicit map of columns added to
+tables that already shipped, and \code{init\_db()} adds any that are absent with
+\code{ALTER TABLE}:
+
+\begin{pyblock}
+_SQLITE_ADDED_COLUMNS = {
+    "documents": {"extraction_quality": "JSON"},
+    "document_pages": {
+        "extraction_method": "VARCHAR(32)",
+        "ocr_attempted": "BOOLEAN",
+        "char_count": "INTEGER",
+        "word_count": "INTEGER",
+    },
+}
+\end{pyblock}
+
+Two rules make this safe, and both must hold for any future entry:
+
+\begin{itemize}
+\item every added column stays \textbf{nullable and default-free} --- the rows
+already on disk have no value to backfill; and
+\item \textbf{readers treat NULL as ``unknown''}, never as a synthesized value.
+A page with \code{extraction\_method IS NULL} was ingested before provenance
+existed; it is not ``native with empty text''.
+\end{itemize}
+
+\section{Background jobs}
+
+Long operations return immediately instead of holding an HTTP connection open.
+\code{JobManager} (\file{app/services/job\_manager.py}) is a small in-process
+scheduler over a \code{ThreadPoolExecutor} with a \textbf{single worker}, so jobs
+run one at a time and never contend for the SQLite write lock.
+
+\begin{shellblock}
+POST /ingest/batch        -> 202 {"job_id": ..., "status": "queued"}
+POST /catalog/ingest-sample
+POST /catalog/ingest-selected
+POST /duplicates/scan
+POST /embeddings/rebuild
+
+GET  /jobs/{job_id}       -> queued | running | succeeded | failed
+                             + progress {done, total, message}
+                             + result (on success) or error (on failure)
+GET  /jobs                -> the most recent records
+\end{shellblock}
+
+A job body receives a \code{JobContext} and calls
+\code{context.set\_progress(done, total, message)} as it advances. Jobs open
+their \textbf{own} session (\code{SessionLocal()}) and close it themselves: the
+request-scoped session is gone by the time the job runs. Finished records are
+pruned so the list stays bounded.
+
+\section{Vector index}
+
+Semantic search does not query embeddings row by row.
+\file{app/services/vector\_index.py} loads all stored vectors into one NumPy
+matrix, normalizes it once, and answers a query with a single matrix product.
+
+The cache is stamped with a cheap signature over \code{chunk\_embeddings}: the
+row count, the maximum chunk id and the sum of chunk ids. That triple changes
+whenever an embedding is added, removed or replaced, so a reader is never served
+a stale matrix even if nobody invalidated it. Writers still call
+\code{invalidate\_vector\_index()} after a commit --- ingest and the embedding
+rebuild both do --- to drop the matrix eagerly.
+
+Embeddings are stored as packed little-endian \code{float32} bytes. Databases
+written by older versions hold JSON text in the same column;
+\code{EmbeddingService.deserialize} accepts both, and one
+\route{/embeddings/rebuild} run converts them.
+
+\section{Service composition}
+
+Services are plain classes constructed per request with an explicit session, and
+they compose by construction rather than by inheritance.
+
+\begin{shellblock}
+DocumentIntelligenceService     -- chat/report answering
+  +-- SearchService             -- keyword / semantic / hybrid
+  |     +-- EmbeddingService    -- token-hash | sentence-transformers
+  |     +-- VectorIndex         -- cached NumPy matrix
+  +-- HaystackRetrievalService  -- the v3 retrieval implementation
+  +-- ReportReviewService       -- rule findings, when the question asks
+  +-- ReportQualityService      -- caption/numbering questions
+  +-- LLMProvider               -- optional generation
+
+RetrievalOrchestrator           -- opt-in enhancement shell
+  +-- QueryUnderstandingService -- intent, expansions, metadata filters
+  +-- SearchService
+  +-- Reranker                  -- no-op unless enabled
+\end{shellblock}
+
+Every optional dependency has a null implementation (\code{NoOpReranker}, a
+disabled \code{LLMProvider}, the \code{token-hash} embedding service), which is
+how the application keeps working with nothing installed.

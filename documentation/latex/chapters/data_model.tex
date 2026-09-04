@@ -1,0 +1,216 @@
+\chapter{Data model}
+\label{ch:data-model}
+
+The database is one SQLite file, \code{<DATA\_DIR>/app.db}, defined by the
+SQLAlchemy models in \file{app/db/models.py}. Timestamps are timezone-aware UTC.
+
+\begin{shellblock}
+documents 1---* document_pages
+    |
+    +-----* document_chunks 1---1 chunk_embeddings
+    |
+    +-----* report_review_decisions
+    |
+    +-----* duplicate_report_pairs   (twice: document_id_a, document_id_b)
+    |
+    +-----1 catalog_document_links *---1 report_catalog_entries
+\end{shellblock}
+
+\section{\texorpdfstring{\code{documents}}{documents}}
+
+One row per ingested file.
+
+\begin{longtable}{L{0.24\textwidth} L{0.16\textwidth} L{0.50\textwidth}}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Note} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\code{id} & int PK & \\
+\code{title} & str(255) & The file stem at ingest time. \\
+\code{file\_name} & str(255) & The name as uploaded. \\
+\code{file\_type} & str(32) & \code{pdf}, \code{docx}, \code{pptx}. \\
+\code{file\_hash} & str(64), unique & SHA-256. The deduplication key. \\
+\code{file\_path} & str(1024) & Where the copy was stored; re-resolved at read
+time. \\
+\code{extraction\_quality} & JSON, nullable & The rollup described in
+Chapter~\ref{ch:ingestion}. \code{NULL} means the document predates the column
+--- unknown, not perfect. \\
+\code{created\_at} & datetime & \\
+\end{longtable}
+
+Cascades: deleting a document deletes its pages and chunks
+(\code{all, delete-orphan}).
+
+\section{\texorpdfstring{\code{document\_pages}}{document\textunderscore pages}}
+
+One row per page (PDF), logical section (DOCX) or slide (PPTX) that survived
+normalization.
+
+\begin{longtable}{L{0.24\textwidth} L{0.16\textwidth} L{0.50\textwidth}}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Note} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\code{document\_id} & FK, indexed & \\
+\code{page\_number} & int & 1-based, in document order. \\
+\code{raw\_text} / \code{clean\_text} & text & Both are kept: raw for
+provenance, clean for retrieval. \\
+\code{section\_title} & str(255), nullable & Detected heading, where the format
+allows one. \\
+\code{extraction\_method} & str(32), nullable & \code{native} or \code{ocr}. \\
+\code{ocr\_attempted} & bool, nullable & Whether OCR was tried on this page. \\
+\code{char\_count} / \code{word\_count} & int, nullable & Size of the cleaned
+text. \\
+\end{longtable}
+
+The last four are nullable because they were added to a table already in the
+field; \code{NULL} means \emph{unknown}, never ``native and empty''.
+
+\section{\texorpdfstring{\code{document\_chunks}}{document\textunderscore chunks}}
+
+The searchable unit.
+
+\begin{longtable}{L{0.24\textwidth} L{0.16\textwidth} L{0.50\textwidth}}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Note} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\code{document\_id} & FK, indexed & \\
+\code{page\_start} / \code{page\_end} & int & The page range the chunk
+covers. \\
+\code{section\_title} & str(255), nullable & Inherited from the source
+section. \\
+\code{chunk\_text} & text & Cleaned text, 650 words with 75 overlapping. \\
+\code{chunk\_order} & int & Global order within the document, 1-based. \\
+\end{longtable}
+
+\section{\texorpdfstring{\code{chunk\_embeddings}}{chunk\textunderscore embeddings}}
+
+\begin{longtable}{L{0.24\textwidth} L{0.16\textwidth} L{0.50\textwidth}}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Note} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\code{chunk\_id} & FK PK & One embedding per chunk, at most. \\
+\code{embedding} & blob & Packed little-endian \code{float32}. \\
+\end{longtable}
+
+Databases written by older versions hold JSON text in this column --- SQLite
+stores either in a TEXT-affinity column --- and
+\code{EmbeddingService.deserialize} accepts both. One
+\route{POST /embeddings/rebuild} converts them.
+
+Chunks whose vector has no signal have no row here, so the embedding count can
+legitimately be lower than the chunk count.
+
+\section{\texorpdfstring{\code{report\_catalog\_entries}}{report\textunderscore catalog\textunderscore entries}}
+
+The imported register.
+
+\begin{longtable}{L{0.24\textwidth} L{0.18\textwidth} L{0.48\textwidth}}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Note} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\code{report\_code} & str(255), indexed & The code a golden-set case names a
+report by. \\
+\code{vehicle\_name} & str(255), indexed & \\
+\code{report\_title} & str(512) & \\
+\code{discipline} & str(80), indexed & Upper-cased on import; drives review
+profile selection. \\
+\code{report\_date} & str(40), nullable & Kept as text --- registers are
+inconsistent about dates. \\
+\code{authors} & str(512), nullable & \\
+\code{source\_path} & str(1024), nullable & Where the register says the file
+lives. \\
+\code{row\_hash} & str(64), unique & Makes re-import idempotent. \\
+\code{imported\_at} & datetime & \\
+\end{longtable}
+
+\section{\texorpdfstring{\code{catalog\_document\_links}}{catalog\textunderscore document\textunderscore links}}
+
+Joins a register row to an ingested document. A unique constraint on
+\code{catalog\_entry\_id} means \textbf{at most one document per catalog entry}.
+\code{match\_method} records how the link was made (default
+\code{catalog\_ingest}).
+
+\section{\texorpdfstring{\code{duplicate\_report\_pairs}}{duplicate\textunderscore report\textunderscore pairs}}
+
+Near-duplicate candidates, unique on
+\code{(document\_id\_a, document\_id\_b)}.
+
+\begin{longtable}{L{0.28\textwidth} L{0.14\textwidth} L{0.48\textwidth}}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Note} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\code{similarity\_score} & float & The combined score. \\
+\code{title\_score} / \code{embedding\_score} & float & The two axes, kept
+separately so a pair can be understood. \\
+\code{matched\_chunks} & int & How much of the documents actually matched. \\
+\code{reason} & str(255) & Which axis carried the pair. \\
+\code{status} & str(40) & \code{candidate} until a human moves it. \\
+\code{created\_at} / \code{updated\_at} & datetime & \code{updated\_at} refreshes
+on write. \\
+\end{longtable}
+
+\section{\texorpdfstring{\code{report\_review\_decisions}}{report\textunderscore review\textunderscore decisions}}
+
+A human verdict on one finding, unique on
+\code{(document\_id, finding\_key)}.
+
+\begin{longtable}{L{0.24\textwidth} L{0.16\textwidth} L{0.50\textwidth}}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Note} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\code{finding\_key} & str(64), indexed & Hash over the identifying parts of the
+finding, so a re-run keeps the decision. \\
+\code{rule\_id} & str(120), indexed & What the precision report groups by. \\
+\code{decision} & str(24) & \code{open}, \code{confirmed} or
+\code{dismissed}. \\
+\code{note} / \code{reviewer} & text / str(120) & Optional. \\
+\code{created\_at} / \code{updated\_at} & datetime & \\
+\end{longtable}
+
+\section{Files on disk}
+
+\begin{shellblock}
+<DATA_DIR>/
+  app.db               SQLite database (plus -wal and -shm while running)
+  documents/           stored report files, <stem>__<hash8><ext>
+  qa_runs/             one JSON file per scripts/run_qa_checks.py run
+  skills/              unpacked .skill packages, stamped by archive hash
+  catia_skill/         per-user CATIA workspaces (runs, memory.sqlite, maps)
+\end{shellblock}
+
+None of this is committed; see the local data policy in
+Chapter~\ref{ch:overview}.
+
+\section{Adding a column}
+
+There is no migration tool. To add a column to a table that already ships:
+
+\begin{enumerate}
+\item add it to the ORM model as \textbf{nullable with no default};
+\item add it to \code{\_SQLITE\_ADDED\_COLUMNS} in \file{app/db/session.py} with
+its SQL type; and
+\item make every reader treat \code{NULL} as \emph{unknown}.
+\end{enumerate}
+
+\code{init\_db()} will add it on the next start of any installation that lacks
+it. See Section~\ref{sec:schema-evolution}.

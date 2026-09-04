@@ -273,6 +273,25 @@ patterns `auto` detects it by, and its rules. Adding a discipline check is a
 data edit plus a golden case — see `REPORT_REVIEW_SKILL.md` for the schema and
 the steps.
 
+## Documentation
+
+The full manual lives in `documentation/`, in two editions of the same
+fourteen chapters — architecture, the ingestion pipeline, retrieval, the review
+rules, the catalog, the CATIA skill, the HTTP API, the data model, operations
+and testing:
+
+```powershell
+# HTML (Sphinx)
+& '.venv\Scripts\python.exe' -m pip install -r documentation\sphinx\requirements.txt
+cd documentation\sphinx; .\make.bat html   # -> _build\html\index.html
+
+# PDF (hand-authored LaTeX, needs TeX Live or MiKTeX)
+cd documentation\latex; latexmk -pdf big_agent_documentation.tex
+```
+
+See `documentation/README.md` for what each chapter covers and which files to
+re-check when the code changes.
+
 ## Demo
 
 Use `DEMO_CHECKLIST.md` for the current manager-demo flow.

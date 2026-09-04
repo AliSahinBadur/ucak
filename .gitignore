@@ -38,3 +38,15 @@ TEST_CORPUS_GUIDE.md
 
 Thumbs.db
 .DS_Store
+
+# Documentation build output (documentation/README.md).
+# *.pdf and *.log are already ignored above; these are the rest of what
+# Sphinx and latexmk leave behind.
+documentation/sphinx/_build/
+documentation/latex/*.aux
+documentation/latex/*.out
+documentation/latex/*.toc
+documentation/latex/*.fls
+documentation/latex/*.fdb_latexmk
+documentation/latex/*.synctex.gz
+documentation/latex/chapters/*.aux

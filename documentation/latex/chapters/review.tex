@@ -1,0 +1,319 @@
+\chapter{Report review, comparison and drafting}
+\label{ch:review}
+
+Three features share a theme: they look at reports as \emph{documents to be
+checked}, not as a corpus to be searched.
+
+\section{Report review}
+\label{sec:report-review}
+
+The review skill inspects a technical report before it reaches a human
+reviewer. It does not re-solve the CAE analysis and it never certifies physical
+correctness. What it does is check that the report says what a report of its
+discipline is expected to say, and show the evidence for every complaint.
+
+\subsection{Findings}
+
+Every rule produces zero or more findings with a fixed shape.
+
+\begin{longtable}{L{0.24\textwidth} L{0.66\textwidth}}
+\toprule
+\textbf{Field} & \textbf{Meaning} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Field} & \textbf{Meaning} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\code{rule\_id} & Stable identifier, e.g. \code{captions.sequence} or
+\code{nvh.measurement\_setup}. \\
+\code{category} & \code{structure}, \code{captions}, \code{numbers},
+\code{extraction}, \code{content}, or the discipline name. \\
+\code{severity} & \code{critical}, \code{warning} or \code{info}. \\
+\code{status} & The engine's verdict, e.g. \code{needs\_review}. \\
+\code{message} / \code{suggested\_fix} & What is wrong, and what to do about
+it. \\
+\code{evidence} & The quoted lines the finding rests on, page-prefixed. \\
+\code{page\_start} / \code{page\_end} & Where in the report, used to drive the
+highlighted PDF preview. \\
+\code{engine} & \code{rules} or \code{semantic}. \\
+\code{finding\_key} & A hash over the identifying parts of the finding. It is
+what a human decision is recorded against, so the same finding on a re-run keeps
+its decision. \\
+\end{longtable}
+
+\subsection{Deterministic rules}
+
+These run with no model and apply to every report.
+
+\begin{longtable}{L{0.30\textwidth} L{0.60\textwidth}}
+\toprule
+\textbf{Rule} & \textbf{Checks} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Rule} & \textbf{Checks} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\code{metadata.required\_fields} & Cover fields: report number, date, prepared
+by, checked by. \\
+\code{structure.required\_sections} & Presence of a scope section and a
+results/conclusion section. \\
+\code{captions.sequence} & Table and figure numbering runs in order with no gaps
+or repeats. \\
+\code{captions.title} & Every table and figure caption actually has a title. \\
+\code{captions.references} & Captions are referenced from the body text, and
+references resolve. \\
+\code{numbers.decimal\_style} & Decimal separators are used consistently in
+measured values. \\
+\code{extraction.no\_text} & Pages whose text could not be read at all. \\
+\code{extraction.ocr\_low\_quality} & Pages where OCR produced text of doubtful
+quality. \\
+\code{content.embedded\_paths} & Local or network file paths left in the report
+body. \\
+\end{longtable}
+
+The last two categories are why extraction provenance is stored per page: a
+report the engine cannot read is a finding about the \emph{report}, not a silent
+gap in the review.
+
+\subsection{Discipline profiles}
+
+Discipline rules are \textbf{data, not code}. One JSON file per discipline lives
+in \file{app/rules/profiles/}.
+
+\begin{longtable}{L{0.20\textwidth} L{0.18\textwidth} L{0.50\textwidth}}
+\toprule
+\textbf{File} & \textbf{Label} & \textbf{Rules} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\file{nvh.json} & NVH & Measurement setup, signal processing, result
+interpretation. \\
+\file{cfd.json} & CFD & Solution model and boundary conditions, mesh,
+convergence. \\
+\file{durability.json} & Durability & Material definition, loads and supports,
+mesh, contacts, result-to-criterion link. \\
+\file{test.json} & Test / Validasyon & Test object and configuration, equipment,
+conditions, procedure, acceptance decision, calibration. \\
+\end{longtable}
+
+Every discipline rule runs through one generic handler: each
+\code{requirement\_groups} entry must be mentioned somewhere in the report by at
+least one of the wordings it lists, and the groups that are not mentioned are
+named in the finding message.
+
+\subsection{The profile file schema}
+\label{sec:profile-schema}
+
+\begin{jsonblock}
+{
+  "profile": "nvh",
+  "label": "NVH",
+  "detect_priority": 10,
+  "aliases": ["nvh", "noise vibration harshness"],
+  "detect_patterns": ["\\bnvh\\b", "titresim"],
+  "rules": [
+    {
+      "rule_id": "nvh.measurement_setup",
+      "label": "NVH olcum duzeni ve kosullari",
+      "category": "nvh",
+      "severity": "warning",
+      "message": "NVH olcum duzeni raporda tam izlenemiyor.",
+      "suggested_fix": "Sensoru ve olcum noktasini, eksenleri ve her
+                        olcumdeki calisma kosulunu yazin.",
+      "requirement_groups": [
+        {
+          "label": "olcum noktasi / sensor",
+          "aliases": ["sensor", "ivmeolcer", "akselerometre"]
+        }
+      ]
+    }
+  ]
+}
+\end{jsonblock}
+
+Top-level keys --- all six required, no others accepted:
+
+\begin{longtable}{L{0.22\textwidth} L{0.16\textwidth} L{0.52\textwidth}}
+\toprule
+\textbf{Key} & \textbf{Type} & \textbf{Meaning and constraints} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\code{profile} & string & Must equal the file name without \file{.json}.
+\code{general} and \code{auto} are reserved for the built-in profiles. \\
+\code{label} & string & The profile name shown in the interface. \\
+\code{detect\_priority} & integer & Order in which \code{auto} tries the
+identity patterns; lower goes first. A profile whose patterns are broad belongs
+later in the sequence. \\
+\code{aliases} & list of strings & Non-empty, no duplicates. What a catalog
+discipline value may say to select this profile. \\
+\code{detect\_patterns} & list of strings & Non-empty regular expressions, each
+compiled at load time, matched against the report identity when no catalog
+discipline settles it. \\
+\code{rules} & list of objects & Non-empty. The rules below. \\
+\end{longtable}
+
+Each entry in \code{rules} --- again all seven keys required, no others
+accepted:
+
+\begin{longtable}{L{0.26\textwidth} L{0.15\textwidth} L{0.49\textwidth}}
+\toprule
+\textbf{Key} & \textbf{Type} & \textbf{Meaning and constraints} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Key} & \textbf{Type} & \textbf{Meaning and constraints} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\code{rule\_id} & string & Must start with \code{<profile>.}. That prefix is
+what keeps ids unique across files without a global registry; a collision with a
+built-in or semantic rule id is rejected. \\
+\code{label} & string & Non-empty. The rule name in the interface. \\
+\code{category} & string & Non-empty. Groups the finding, conventionally the
+discipline name. \\
+\code{severity} & string & Exactly one of \code{critical}, \code{warning},
+\code{info}. \\
+\code{message} & string & Non-empty. What the reader is told when a group is
+missing. \\
+\code{suggested\_fix} & string & Non-empty. What to do about it. \\
+\code{requirement\_groups} & list of objects & Non-empty, with distinct
+\code{label} values. Each is \code{\{"label": ..., "aliases": [...]\}}, the
+aliases being a non-empty, duplicate-free list of the wordings that count as
+mentioning the thing. \\
+\end{longtable}
+
+An alias may legitimately carry a trailing space --- \code{"iso~"} so that it
+does not also match \code{isolation} --- so the emptiness check strips, but the
+stored alias does not.
+
+\file{profile\_catalog.py} validates all of this at import time, unknown keys
+included. A typo is therefore an import-time error naming the file and the path
+inside it (\code{nvh.json: rules[2].severity: must be one of critical, warning,
+info}), never a rule that quietly stops firing.
+
+Profile selection is \code{auto} by default: the catalog discipline of the
+report decides, or failing that the identity patterns in the profile files,
+tried in \code{detect\_priority} order with the first match kept.
+
+\subsection{Semantic review}
+
+An optional pass, requiring \env{REPORT\_LLM\_*} and a reachable Ollama. It asks
+for structured JSON output and looks for three things:
+
+\begin{itemize}
+\item \code{semantic.scope\_result\_alignment} --- do the results answer the
+stated scope?
+\item \code{semantic.unsupported\_conclusion} --- is each conclusion grounded in
+the report itself?
+\item \code{semantic.internal\_contradiction} --- does the text contradict
+itself?
+\end{itemize}
+
+Only findings whose quoted evidence can be verified \textbf{verbatim on the page
+they claim} survive; anything the model invented or left unsupported is dropped
+before it reaches a reviewer. With the LLM disabled the deterministic findings
+stand alone.
+
+\subsection{Human decisions and precision}
+
+A finding is a hypothesis until a person rules on it.
+
+\begin{shellblock}
+POST /report-review/decisions
+  {document_id, finding_key, rule_id,
+   decision: open | confirmed | dismissed, note, reviewer}
+\end{shellblock}
+
+Decisions are stored in \code{report\_review\_decisions}, unique per
+\code{(document\_id, finding\_key)}. \route{GET /report-review/rule-precision}
+then reports the confirm rate per rule --- how often reviewers agreed with it.
+
+A rule needs at least \code{MINIMUM\_PRECISION\_DECISIONS} (10) decided findings
+before a rate is reported: below that, one reviewer dismissing two findings
+would read as 0\,\% precision, which is noise rather than a measurement.
+
+\subsection{Evidence and export}
+
+\begin{description}
+\item[\route{GET /documents/\{id\}/review-preview}] The report PDF with the
+findings for one \code{rule\_id} highlighted on the requested page. Severity
+picks the colour (critical red, warning amber, info blue).
+
+\item[\route{GET /report-review/export}] A PDF review record for the requested
+documents: the summary table, then each finding with its evidence, severity,
+suggested fix and the human decision recorded against it.
+\end{description}
+
+\subsection{Revision comparison}
+
+When two reports are selected, the review engine compares their findings rather
+than their full text, and reports them as \textbf{new}, \textbf{resolved} and
+\textbf{still open}. It answers ``what changed about the quality of this report
+between revisions'', which is a different and more tractable question than a
+full redline.
+
+\section{Report comparison}
+
+\code{ReportComparisonService} compares report \emph{content}, either pairwise
+(\route{POST /report-comparison}) or across a set
+(\route{POST /report-comparison/multi}, \code{reference} or \code{all\_pairs}
+mode).
+
+\begin{itemize}
+\item Either side may be a document already in the database
+(\code{document\_id}) or a one-off upload
+(\route{POST /report-comparison/upload} returns an \code{upload\_token} valid
+for a short window; the file is never ingested).
+\item Chunks are aligned semantically and lexically; the result is split into
+\textbf{similarities} and \textbf{differences}, each with a topic, a summary,
+evidence from both sides and a confidence.
+\item With \code{use\_llm} and a working provider, the LLM refines topics and
+summaries. Without it the deterministic alignment stands.
+\item \route{GET /report-comparison/\{id\}/pdf/\{side\}} returns the PDF with the
+matched passages highlighted and numbered, and
+\route{GET /report-comparison/\{id\}/viewer} opens a two-pane full-screen
+viewer.
+\end{itemize}
+
+Results are cached per comparison id, which is what makes the viewer and the two
+PDF endpoints cheap to open after the comparison itself has run.
+
+\section{Report quality questions}
+
+\code{ReportQualityService} answers a narrow class of question directly from the
+document structure rather than from retrieval --- ``are the tables numbered
+correctly?'', ``which figures are missing?''. It extracts caption occurrences
+(\code{Tablo 3.2}, \code{Şekil 4}, \code{Resim 1}), checks the sequence, and
+answers with the page each conclusion came from.
+\code{DocumentIntelligenceService} routes matching chat questions here
+automatically.
+
+\section{Report drafting}
+
+\code{ReportWriterService} (\route{POST /draft-report}) builds a report draft
+from a title, an objective, free-form notes and an optional set of source
+documents.
+
+\begin{itemize}
+\item Keywords are refined from the title, objective and notes; a retrieval query
+is built from the result and run against the corpus.
+\item The draft is composed from a cover block plus a body grounded in the
+retrieved passages. \code{detail\_level} selects \code{quick} or
+\code{detailed}.
+\item With \env{REPORT\_LLM\_*} available the body is generated and then
+\textbf{sanitized} against the cover block and the allowed terms; otherwise a
+deterministic composition is used. Either way the response lists the sources it
+drew on.
+\item \route{POST /draft-report/pdf} renders the same payload as a PDF with a
+cover table, a summary table and a Turkish-capable font.
+\end{itemize}

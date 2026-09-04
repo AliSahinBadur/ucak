@@ -1,0 +1,298 @@
+\chapter{HTTP API reference}
+\label{ch:api}
+
+The running instance publishes its own schema at \route{/docs} (Swagger UI) and
+\route{/redoc}, generated from the pydantic models in \file{app/api\_models.py}.
+That is the authority on exact field types for the version you have. This
+chapter is the map: what exists, what it is for, and the parameters that matter.
+
+\section{Conventions}
+
+\begin{itemize}
+\item Request bodies are JSON unless the endpoint takes a file, in which case it
+is \code{multipart/form-data}.
+\item Long operations return \code{202} with a job record; poll
+\route{GET /jobs/\{job\_id\}} (Section~\ref{sec:jobs-api}).
+\item When authentication is enabled, every endpoint except \route{/health},
+\route{/login}, \route{/logout} and \route{/favicon.ico} requires the session
+cookie. An HTML \code{GET} without one redirects to \route{/login}; anything
+else gets \code{401}.
+\item Errors are FastAPI's \code{\{"detail": "..."\}}.
+\end{itemize}
+
+\section{System}
+
+\begin{longtable}{L{0.32\textwidth} L{0.58\textwidth}}
+\toprule
+\textbf{Endpoint} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\route{GET /health} & \code{\{status, version, application, variant\}}. Never
+requires auth --- this is the endpoint a monitor should watch. \\
+\route{GET /system/model-status} & Runtime state of the embedding provider and
+Ollama: resolved model name, device, availability. \\
+\route{GET /meta} & Branding and variant metadata for the front end. \\
+\route{GET /login}, \route{POST /login}, \route{GET /logout} & The session login
+flow. \\
+\route{GET /}, \route{/app}, \route{/legacy}, \route{/smartcae-v2} & The user
+interfaces. \\
+\end{longtable}
+
+\section{Ingestion}
+
+\begin{longtable}{L{0.30\textwidth} L{0.60\textwidth}}
+\toprule
+\textbf{Endpoint} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\route{POST /ingest} & One \code{file} (PDF, DOCX, PPTX). Returns
+\code{IngestResponse} with \code{status} \code{ingested} or \code{duplicate}.
+\code{400} for an unsupported extension. \\
+\route{POST /ingest/batch} & Many \code{files}. Returns \code{202} and a job
+whose result is a \code{BatchIngestResponse} with a per-file item list. \\
+\end{longtable}
+
+\section{Search and question answering}
+
+\begin{longtable}{L{0.26\textwidth} L{0.64\textwidth}}
+\toprule
+\textbf{Endpoint} & \textbf{Parameters} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Endpoint} & \textbf{Parameters} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\route{GET /search} & \code{query} (min 2 chars), \code{limit} 1--20 (default 5),
+\code{mode} \code{keyword}/\code{semantic}/\code{hybrid} (default
+\code{hybrid}), \code{search\_scope} \code{content}/\code{reports} (default
+\code{content}), \code{use\_query\_enhancement}, \code{use\_reranking}. Returns
+results, similar documents, the embedding provider, and a \code{retrieval} block
+when the orchestrator ran. \\
+\route{POST /ask} & \code{question}, \code{mode}, \code{limit} 1--10,
+\code{document\_id}, \code{use\_llm\_answer}. Returns the answer,
+\code{answer\_found}, \code{confidence} and the sources. \\
+\route{POST /chat} & \code{message}, \code{history}, \code{mode},
+\code{assistant\_mode} (\code{auto}/\code{report}/\code{general}),
+\code{retrieval\_version} (\code{v1}/\code{v2}/\code{v3}), \code{limit},
+\code{document\_id}, \code{document\_ids} (up to 8), \code{use\_llm\_answer}.
+Returns the answer, sources, the trimmed history, and what retrieval did.
+\code{503} when \code{v3} is requested and Haystack is unavailable. \\
+\route{POST /ask/catalog} & \code{question}, \code{limit} 1--100. Answers from
+catalog metadata. \\
+\route{POST /ask/multi-document} & \code{question}, optional
+\code{catalog\_question}, \code{mode}, \code{limit} 1--12, \code{document\_ids}.
+Detects comparison questions and answers per document. \\
+\end{longtable}
+
+\section{Documents}
+
+\begin{longtable}{L{0.36\textwidth} L{0.54\textwidth}}
+\toprule
+\textbf{Endpoint} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\route{GET /documents/list} & \code{limit} 1--500 (default 300). The ingested
+corpus. \\
+\route{GET /documents/\{id\}} & An HTML detail page: pages, chunks, extraction
+quality, similar reports. \\
+\route{GET /documents/\{id\}/file} & The stored file itself. \\
+\route{GET /documents/\{id\}/preview} & Rendered preview of \code{page} (default
+1). \\
+\route{GET /documents/\{id\}/review-preview} & Preview with the findings of one
+\code{rule\_id} highlighted. \\
+\route{POST /documents/\{id\}/open-folder} & Opens the containing folder on the
+\textbf{server} (Windows). \\
+\route{GET /storage/check} & Documents whose stored file can no longer be
+resolved. \\
+\end{longtable}
+
+\section{Duplicates and comparison}
+
+\begin{longtable}{L{0.42\textwidth} L{0.48\textwidth}}
+\toprule
+\textbf{Endpoint} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\route{GET /duplicates} & Stored near-duplicate pairs, \code{limit} 1--500. \\
+\route{POST /duplicates/scan} & \code{threshold} 0.1--1.0 (default 0.90),
+\code{dry\_run}. Returns \code{202} and a job. \\
+\route{POST /report-comparison/upload} & Stage a file for comparison without
+ingesting it; returns an \code{upload\_token}. \\
+\route{POST /report-comparison} & \code{left}/\code{right} (each
+\code{document\_id} or \code{upload\_token}), \code{use\_llm}. \\
+\route{POST /report-comparison/multi} & \code{sources} (2+), \code{mode}
+\code{reference}/\code{all\_pairs}, \code{reference\_index}, \code{use\_llm}. \\
+\route{GET /report-comparison/\{id\}/pdf/\{side\}} & The highlighted PDF for
+\code{left} or \code{right}. \\
+\route{GET /report-comparison/\{id\}/viewer} & Full-screen two-pane viewer. \\
+\end{longtable}
+
+\section{Report review}
+
+\begin{longtable}{L{0.42\textwidth} L{0.48\textwidth}}
+\toprule
+\textbf{Endpoint} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\route{POST /report-review/decisions} & Record a human
+\code{confirmed}/\code{dismissed}/\code{open} decision against a
+\code{finding\_key}, with an optional note and reviewer. \\
+\route{GET /report-review/rule-precision} & Confirm rate per rule.
+\code{minimum\_decisions} overrides the default floor of 10;
+\code{document\_ids} narrows the scope. \\
+\route{GET /report-review/export} & PDF review record for the given
+\code{document\_ids} (repeatable parameter). \\
+\end{longtable}
+
+Findings themselves are returned inline with the answers from
+\route{POST /chat} when the question is a review question; see
+Section~\ref{sec:report-review}.
+
+\section{Catalog}
+
+\begin{longtable}{L{0.44\textwidth} L{0.46\textwidth}}
+\toprule
+\textbf{Endpoint} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Endpoint} & \textbf{Description} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\route{POST /catalog/import} & Import an \file{.xlsx}/CSV/TSV register. \\
+\route{GET /catalog/search} & \code{query}, \code{vehicle}, \code{discipline},
+\code{limit} 1--100. \\
+\route{GET /catalog/table} & The register with ingestion state, \code{limit}
+20--5000. \\
+\route{POST /catalog/reconcile-documents} & Re-check catalog-to-document links;
+\code{dry\_run}. \\
+\route{GET /catalog/\{id\}/file-candidates} & Candidate files for a catalog
+row. \\
+\route{GET /catalog/\{id\}/file-preview} & Preview a named \code{file\_path}
+candidate. \\
+\route{GET /catalog/\{id\}/best-file-preview} & Preview the best candidate. \\
+\route{GET /catalog/\{id\}/best-file-preview-info} & Metadata for that
+candidate. \\
+\route{POST /catalog/\{id\}/open-best-file} & Open it on the server. \\
+\route{POST /catalog/ingest-candidate} & Ingest
+\code{\{catalog\_entry\_id, file\_path\}}. \\
+\route{POST /catalog/ingest-sample} & \code{per\_discipline} 1--10 (default 2),
+\code{dry\_run} (default \textbf{true}), \code{scan\_limit\_per\_discipline}
+1--500. Returns \code{202}. \\
+\route{POST /catalog/ingest-selected} & \code{\{catalog\_entry\_ids: [...]\}}.
+Returns \code{202}. \\
+\route{GET /graph/overview} & Corpus graph, \code{limit} 20--300 (default
+160). \\
+\route{POST /library/scan} & \code{\{path, limit\}} --- bounded read-only file
+tree inside the allowed roots. \\
+\end{longtable}
+
+\section{Drafting}
+
+\begin{longtable}{L{0.30\textwidth} L{0.60\textwidth}}
+\toprule
+\textbf{Endpoint} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\route{POST /draft-report} & Cover fields plus \code{objective},
+\code{keywords}, \code{raw\_notes}, \code{detail\_level}
+(\code{quick}/\code{detailed}), \code{mode}, \code{limit},
+\code{document\_ids}. Returns the draft, the refined keywords, the cleaned notes
+and the sources. \\
+\route{POST /draft-report/pdf} & The same payload, rendered as a PDF
+download. \\
+\end{longtable}
+
+\section{CATIA skill}
+
+\route{GET /skills/catia-mass-cg/status},
+\route{POST /skills/catia-mass-cg/chat} and
+\route{POST /skills/catia-mass-cg/approve} --- see Chapter~\ref{ch:catia}.
+
+\section{Jobs and maintenance}
+\label{sec:jobs-api}
+
+\begin{longtable}{L{0.30\textwidth} L{0.60\textwidth}}
+\toprule
+\textbf{Endpoint} & \textbf{Description} \\
+\midrule
+\endfirsthead
+\bottomrule
+\endfoot
+\route{POST /embeddings/rebuild} & Re-embed every chunk with the active
+provider. \code{202} + job. \\
+\route{GET /jobs} & The most recent job records, \code{limit} 1--100 (default
+20). \\
+\route{GET /jobs/\{job\_id\}} & One job: \code{status}
+(\code{queued}/\code{running}/\code{succeeded}/\code{failed}), \code{progress}
+\code{\{done, total, message\}}, \code{result} or \code{error}, and the
+created/started/finished timestamps. \\
+\end{longtable}
+
+A typical job flow:
+
+\begin{shellblock}
+$job = Invoke-RestMethod -Method Post http://127.0.0.1:8000/embeddings/rebuild
+Invoke-RestMethod "http://127.0.0.1:8000/jobs/$($job.job_id)"
+\end{shellblock}
+
+\section{Examples}
+
+Search:
+
+\begin{shellblock}
+Invoke-RestMethod "http://127.0.0.1:8000/search?query=fren+pedali&mode=hybrid&limit=5"
+\end{shellblock}
+
+Ingest a file:
+
+\begin{shellblock}
+$form = @{ file = Get-Item .\rapor.pdf }
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/ingest -Form $form
+\end{shellblock}
+
+Ask a grounded question:
+
+\begin{shellblock}
+$body = @{
+    message        = "BIG-E konfor raporunda hangi parkurlar var?"
+    assistant_mode = "report"
+    limit          = 5
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/chat `
+    -ContentType "application/json" -Body $body
+\end{shellblock}
+
+Record a review decision:
+
+\begin{shellblock}
+$body = @{
+    document_id = 12
+    finding_key = "9f2c1a77b3e40d18"
+    rule_id     = "captions.sequence"
+    decision    = "confirmed"
+    note        = "Tablo 4 gercekten atlanmis."
+    reviewer    = "analiz"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/report-review/decisions `
+    -ContentType "application/json" -Body $body
+\end{shellblock}

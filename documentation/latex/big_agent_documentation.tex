@@ -1,0 +1,67 @@
+% ---------------------------------------------------------------------------
+% Big_Agent -- reference manual
+%
+% Build:   latexmk -pdf big_agent_documentation.tex
+%          (or: pdflatex twice, for the table of contents and cross-references)
+%
+% This is the hand-authored LaTeX edition. The Sphinx project in
+% ../sphinx/ carries the same material for HTML; see ../README.md.
+% ---------------------------------------------------------------------------
+
+\documentclass[11pt,a4paper,oneside]{report}
+
+\input{version}
+\input{preamble}
+
+\begin{document}
+
+% --- title page ------------------------------------------------------------
+\begin{titlepage}
+\centering
+\vspace*{3.5cm}
+
+{\Huge\bfseries Big\_Agent\par}
+\vspace{0.8em}
+{\Large SmartCAE AI\par}
+
+\vspace{1.6cm}
+\rule{0.72\textwidth}{1pt}\par
+\vspace{1.2em}
+{\large A local-first report assistant for vehicle\\test and analysis documents\par}
+\vspace{1.2em}
+\rule{0.72\textwidth}{1pt}\par
+
+\vspace{2.4cm}
+{\large Reference manual\par}
+\vspace{0.6em}
+{\large Version \version\par}
+
+\vfill
+{\small Everything runs on the machine it is installed on:\\
+a local database, a local model, no document leaving the network.\par}
+\vspace{1.4cm}
+\end{titlepage}
+
+\pagenumbering{roman}
+\setcounter{page}{1}
+\tableofcontents
+\cleardoublepage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+\include{chapters/overview}
+\include{chapters/installation}
+\include{chapters/configuration}
+\include{chapters/architecture}
+\include{chapters/ingestion}
+\include{chapters/retrieval}
+\include{chapters/review}
+\include{chapters/catalog}
+\include{chapters/catia_skill}
+\include{chapters/api}
+\include{chapters/data_model}
+\include{chapters/operations}
+\include{chapters/testing}
+\include{chapters/glossary}
+
+\end{document}

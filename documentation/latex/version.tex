@@ -1,0 +1,64 @@
+% ---------------------------------------------------------------------------
+% \version -- read straight out of app/version.py at build time.
+%
+% The manual must not be able to claim a version the application does not have,
+% so nothing here is hand-maintained and there is no generated file to
+% regenerate: TeX opens version.py itself, finds the APP_VERSION line and takes
+% the text between its quotes.
+%
+% Needs a LaTeX kernel from 2020 or later (expl3 is part of the format by then)
+% and a TeX allowed to read outside its own directory -- TeX Live's default
+% openin_any=a is. If the read fails for any reason the build still finishes,
+% with the version shown as "unknown" and a line in the log saying so; a
+% missing version is worth noticing, not worth stopping for.
+%
+% Both candidate paths are tried so the manual builds from its own directory
+% (the normal case, and what the Makefile does) or from the repository root.
+% ---------------------------------------------------------------------------
+
+\ExplSyntaxOn
+
+\tl_new:N \g_bigagent_version_tl
+\tl_gset:Nn \g_bigagent_version_tl { unknown }
+\ior_new:N \g_bigagent_version_ior
+
+\cs_new_protected:Npn \bigagent_read_version:n #1
+  {
+    \ior_open:Nn \g_bigagent_version_ior {#1}
+    \ior_str_map_inline:Nn \g_bigagent_version_ior
+      {
+        \str_if_in:nnT {##1} { APP_VERSION }
+          {
+            % APP_VERSION = "0.51.3"  ->  split on the quote, keep the middle.
+            \seq_set_split:Nnn \l_tmpa_seq { " } {##1}
+            \int_compare:nNnT { \seq_count:N \l_tmpa_seq } > { 2 }
+              {
+                \tl_gset:Nx \g_bigagent_version_tl
+                  { \seq_item:Nn \l_tmpa_seq { 2 } }
+              }
+          }
+      }
+    \ior_close:N \g_bigagent_version_ior
+  }
+
+\clist_map_inline:nn { ../../app/version.py , app/version.py }
+  {
+    \str_if_eq:VnT \g_bigagent_version_tl { unknown }
+      {
+        \file_if_exist:nT {#1}
+          { \bigagent_read_version:n {#1} }
+      }
+  }
+
+\str_if_eq:VnT \g_bigagent_version_tl { unknown }
+  {
+    \iow_term:n
+      {
+        ****~Big_Agent~manual:~could~not~read~APP_VERSION~from~app/version.py;~
+        the~title~page~will~say~"unknown".~****
+      }
+  }
+
+\cs_set:Npn \version { \tl_use:N \g_bigagent_version_tl }
+
+\ExplSyntaxOff
